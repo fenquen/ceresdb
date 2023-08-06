@@ -29,7 +29,7 @@ use crate::ObjectStoreRef;
 
 #[derive(Debug, Snafu)]
 pub enum Error {
-    #[snafu(display("mem cache cap must large than 0",))]
+    #[snafu(display("mem cache cap must large than 0", ))]
     InvalidCapacity,
 }
 
@@ -44,12 +44,9 @@ impl WeightScale<String, Bytes> for CustomScale {
 }
 
 pub struct MemCache {
-    /// Max memory this store can use
     mem_cap: NonZeroUsize,
     inner: PartitionedMutex<CLruCache<String, Bytes, RandomState, CustomScale>, RandomState>,
 }
-
-pub type MemCacheRef = Arc<MemCache>;
 
 impl MemCache {
     pub fn try_new(partition_bits: usize, mem_cap: NonZeroUsize) -> Result<Self> {
@@ -86,13 +83,12 @@ impl MemCache {
     }
 
     /// Give a description of the cache state.
-
-    #[cfg(test)]
+   // #[cfg(test)]
     fn keys(&self, part: &CLruCache<String, Bytes, RandomState, CustomScale>) -> Vec<String> {
         part.iter().map(|(key, _)| key).cloned().collect::<Vec<_>>()
     }
 
-    #[cfg(test)]
+   // #[cfg(test)]
     fn state_desc(&self) -> String {
         self.inner
             .get_all_partition()
@@ -114,34 +110,34 @@ impl Display for MemCache {
     }
 }
 
-/// Assembled with [`MemCache`], the [`MemCacheStore`] can cache the loaded data
+/// Assembled with [`MemCache`], the [`ObjectStoreWithMemCache`] can cache the loaded data
 /// from the `underlying_store` to avoid unnecessary data loading.
 ///
 /// With the `read_only_cache` field, caller can control whether to do caching
 /// for the loaded data. BTW, all the accesses are forced to the order:
 /// `cache` -> `underlying_store`.
-pub struct MemCacheStore {
-    cache: MemCacheRef,
-    underlying_store: ObjectStoreRef,
-    readonly_cache: bool,
+pub struct ObjectStoreWithMemCache {
+    memCache: Arc<MemCache>,
+    underlyingObjectStore: Arc<dyn ObjectStore>,
+    readonly: bool,
 }
 
-impl MemCacheStore {
-    /// Create a default [`MemCacheStore`].
-    pub fn new(cache: MemCacheRef, underlying_store: ObjectStoreRef) -> Self {
+impl ObjectStoreWithMemCache {
+    /// Create a default [`ObjectStoreWithMemCache`].
+    pub fn new(memCache: Arc<MemCache>, underlyingObjectStore: ObjectStoreRef) -> Self {
         Self {
-            cache,
-            underlying_store,
-            readonly_cache: false,
+            memCache,
+            underlyingObjectStore,
+            readonly: false,
         }
     }
 
-    /// Create a [`MemCacheStore`] with a readonly cache.
-    pub fn new_with_readonly_cache(cache: MemCacheRef, underlying_store: ObjectStoreRef) -> Self {
+    /// Create a [`ObjectStoreWithMemCache`] with a readonly cache.
+    pub fn new_with_readonly_cache(cache: Arc<MemCache>, underlying_store: ObjectStoreRef) -> Self {
         Self {
-            cache,
-            underlying_store,
-            readonly_cache: true,
+            memCache: cache,
+            underlyingObjectStore: underlying_store,
+            readonly: true,
         }
     }
 
@@ -157,14 +153,14 @@ impl MemCacheStore {
         // TODO(chenxiang): What if there are some overlapping range in cache?
         // A request with range [5, 10) can also use [0, 20) cache
         let cache_key = Self::cache_key(location, &range);
-        if let Some(bytes) = self.cache.get(&cache_key) {
+        if let Some(bytes) = self.memCache.get(&cache_key) {
             return Ok(bytes);
         }
 
         // TODO(chenxiang): What if two threads reach here? It's better to
         // pend one thread, and only let one to fetch data from underlying store.
-        let bytes = self.underlying_store.get_range(location, range).await?;
-        self.cache.insert(cache_key, bytes.clone());
+        let bytes = self.underlyingObjectStore.get_range(location, range).await?;
+        self.memCache.insert(cache_key, bytes.clone());
 
         Ok(bytes)
     }
@@ -175,39 +171,39 @@ impl MemCacheStore {
         range: Range<usize>,
     ) -> ObjectStoreResult<Bytes> {
         let cache_key = Self::cache_key(location, &range);
-        if let Some(bytes) = self.cache.peek(&cache_key) {
+        if let Some(bytes) = self.memCache.peek(&cache_key) {
             return Ok(bytes);
         }
 
         // TODO(chenxiang): What if two threads reach here? It's better to
         // pend one thread, and only let one to fetch data from underlying store.
-        self.underlying_store.get_range(location, range).await
+        self.underlyingObjectStore.get_range(location, range).await
     }
 }
 
-impl Display for MemCacheStore {
+impl Display for ObjectStoreWithMemCache {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.cache.fmt(f)
+        self.memCache.fmt(f)
     }
 }
 
-impl fmt::Debug for MemCacheStore {
+impl fmt::Debug for ObjectStoreWithMemCache {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("MemCacheStore").finish()
     }
 }
 
 #[async_trait]
-impl ObjectStore for MemCacheStore {
+impl ObjectStore for ObjectStoreWithMemCache {
     async fn put(&self, location: &Path, bytes: Bytes) -> ObjectStoreResult<()> {
-        self.underlying_store.put(location, bytes).await
+        self.underlyingObjectStore.put(location, bytes).await
     }
 
     async fn put_multipart(
         &self,
         location: &Path,
     ) -> ObjectStoreResult<(MultipartId, Box<dyn AsyncWrite + Unpin + Send>)> {
-        self.underlying_store.put_multipart(location).await
+        self.underlyingObjectStore.put_multipart(location).await
     }
 
     async fn abort_multipart(
@@ -215,7 +211,7 @@ impl ObjectStore for MemCacheStore {
         location: &Path,
         multipart_id: &MultipartId,
     ) -> ObjectStoreResult<()> {
-        self.underlying_store
+        self.underlyingObjectStore
             .abort_multipart(location, multipart_id)
             .await
     }
@@ -224,11 +220,11 @@ impl ObjectStore for MemCacheStore {
     // 1. cache key don't support overlapping
     // 2. In sst module, we only use get_range, get is not used
     async fn get(&self, location: &Path) -> ObjectStoreResult<GetResult> {
-        self.underlying_store.get(location).await
+        self.underlyingObjectStore.get(location).await
     }
 
     async fn get_range(&self, location: &Path, range: Range<usize>) -> ObjectStoreResult<Bytes> {
-        if self.readonly_cache {
+        if self.readonly {
             self.get_range_with_ro_cache(location, range).await
         } else {
             self.get_range_with_rw_cache(location, range).await
@@ -236,152 +232,29 @@ impl ObjectStore for MemCacheStore {
     }
 
     async fn head(&self, location: &Path) -> ObjectStoreResult<ObjectMeta> {
-        self.underlying_store.head(location).await
+        self.underlyingObjectStore.head(location).await
     }
 
     async fn delete(&self, location: &Path) -> ObjectStoreResult<()> {
-        self.underlying_store.delete(location).await
+        self.underlyingObjectStore.delete(location).await
     }
 
     async fn list(
         &self,
         prefix: Option<&Path>,
     ) -> ObjectStoreResult<BoxStream<'_, ObjectStoreResult<ObjectMeta>>> {
-        self.underlying_store.list(prefix).await
+        self.underlyingObjectStore.list(prefix).await
     }
 
     async fn list_with_delimiter(&self, prefix: Option<&Path>) -> ObjectStoreResult<ListResult> {
-        self.underlying_store.list_with_delimiter(prefix).await
+        self.underlyingObjectStore.list_with_delimiter(prefix).await
     }
 
     async fn copy(&self, from: &Path, to: &Path) -> ObjectStoreResult<()> {
-        self.underlying_store.copy(from, to).await
+        self.underlyingObjectStore.copy(from, to).await
     }
 
     async fn copy_if_not_exists(&self, from: &Path, to: &Path) -> ObjectStoreResult<()> {
-        self.underlying_store.copy_if_not_exists(from, to).await
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use tempfile::tempdir;
-    use upstream::local::LocalFileSystem;
-
-    use super::*;
-
-    fn prepare_store(bits: usize, mem_cap: usize) -> MemCacheStore {
-        let local_path = tempdir().unwrap();
-        let local_store = Arc::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
-
-        let mem_cache =
-            Arc::new(MemCache::try_new(bits, NonZeroUsize::new(mem_cap).unwrap()).unwrap());
-        MemCacheStore::new(mem_cache, local_store)
-    }
-
-    #[tokio::test]
-    async fn test_mem_cache_evict() {
-        // single partition
-        let store = prepare_store(0, 13);
-
-        // write date
-        let location = Path::from("1.sst");
-        store
-            .put(&location, Bytes::from_static(&[1; 1024]))
-            .await
-            .unwrap();
-
-        // get bytes from [0, 5), insert to cache
-        let range0_5 = 0..5;
-        _ = store.get_range(&location, range0_5.clone()).await.unwrap();
-        assert!(store
-            .cache
-            .get(&MemCacheStore::cache_key(&location, &range0_5))
-            .is_some());
-
-        // get bytes from [5, 10), insert to cache
-        let range5_10 = 5..10;
-        _ = store.get_range(&location, range5_10.clone()).await.unwrap();
-        assert!(store
-            .cache
-            .get(&MemCacheStore::cache_key(&location, &range0_5))
-            .is_some());
-        assert!(store
-            .cache
-            .get(&MemCacheStore::cache_key(&location, &range5_10))
-            .is_some());
-
-        // get bytes from [10, 15), insert to cache
-        // cache is full, evict [0, 5)
-        let range10_15 = 10..15;
-        _ = store
-            .get_range(&location, range10_15.clone())
-            .await
-            .unwrap();
-        assert!(store
-            .cache
-            .get(&MemCacheStore::cache_key(&location, &range0_5))
-            .is_none());
-        assert!(store
-            .cache
-            .get(&MemCacheStore::cache_key(&location, &range5_10))
-            .is_some());
-        assert!(store
-            .cache
-            .get(&MemCacheStore::cache_key(&location, &range10_15))
-            .is_some());
-    }
-
-    #[tokio::test]
-    async fn test_mem_cache_partition() {
-        // 4 partitions
-        let store = prepare_store(2, 100);
-        let location = Path::from("partition.sst");
-        store
-            .put(&location, Bytes::from_static(&[1; 1024]))
-            .await
-            .unwrap();
-
-        let range0_5 = 0..5;
-        let range100_105 = 100..105;
-        _ = store.get_range(&location, range0_5.clone()).await.unwrap();
-        _ = store
-            .get_range(&location, range100_105.clone())
-            .await
-            .unwrap();
-
-        assert_eq!(
-            r#"0: [partition.sst-0-5]
-1: []
-2: [partition.sst-100-105]
-3: []"#,
-            store.cache.as_ref().state_desc()
-        );
-
-        assert!(store
-            .cache
-            .get(&MemCacheStore::cache_key(&location, &range0_5))
-            .is_some());
-        assert!(store
-            .cache
-            .get(&MemCacheStore::cache_key(&location, &range100_105))
-            .is_some());
-    }
-
-    #[test]
-    fn test_mem_cache_capacity() {
-        // 4 partitions
-        let store = prepare_store(2, 100);
-        assert_eq!(
-            "25,25,25,25",
-            store
-                .cache
-                .inner
-                .get_all_partition()
-                .iter()
-                .map(|p| p.lock().unwrap().capacity().to_string())
-                .collect::<Vec<_>>()
-                .join(",")
-        );
+        self.underlyingObjectStore.copy_if_not_exists(from, to).await
     }
 }

@@ -19,7 +19,7 @@ use proxy::{
     schema_config_provider::SchemaConfigProviderRef,
     Proxy,
 };
-use query_engine::executor::Executor as QueryExecutor;
+use query_engine::executor::QueryExecutor as QueryExecutor;
 use remote_engine_client::RemoteEngineImpl;
 use router::{endpoint::Endpoint, RouterRef};
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
@@ -101,11 +101,11 @@ define_result!(Error);
 
 // TODO(yingwen): Consider a config manager
 /// Server
-pub struct Server<Q: QueryExecutor + 'static> {
-    http_service: Service<Q>,
-    rpc_services: RpcServices<Q>,
-    mysql_service: mysql::MysqlService<Q>,
-    instance: InstanceRef<Q>,
+pub struct Server<QueryExecutor0: QueryExecutor + 'static> {
+    http_service: Service<QueryExecutor0>,
+    rpc_services: RpcServices<QueryExecutor0>,
+    mysql_service: mysql::MysqlService<QueryExecutor0>,
+    instance: InstanceRef<QueryExecutor0>,
     cluster: Option<ClusterRef>,
     local_tables_recoverer: Option<LocalTablesRecoverer>,
 }
@@ -199,9 +199,9 @@ pub struct Builder<Q> {
 }
 
 impl<Q: QueryExecutor + 'static> Builder<Q> {
-    pub fn new(config: ServerConfig) -> Self {
+    pub fn new(serverConfig: ServerConfig) -> Self {
         Self {
-            server_config: config,
+            server_config: serverConfig,
             remote_engine_client_config: remote_engine_client::Config::default(),
             node_addr: "".to_string(),
             config_content: None,
@@ -325,7 +325,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
         let partition_table_engine = Arc::new(PartitionTableEngine::new(remote_engine_ref.clone()));
 
         let instance = {
-            let instance = Instance {
+            InstanceRef::new(Instance {
                 catalog_manager,
                 query_executor,
                 table_engine,
@@ -334,8 +334,7 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
                 limiter: self.limiter,
                 table_manipulator,
                 remote_engine_ref,
-            };
-            InstanceRef::new(instance)
+            })
         };
 
         let grpc_endpoint = Endpoint {
@@ -355,18 +354,17 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             timeout: self.server_config.timeout.map(|v| v.0),
         };
 
-        let proxy = Arc::new(Proxy::new(
-            router.clone(),
-            instance.clone(),
-            self.server_config.forward,
-            Endpoint::new(self.node_addr, self.server_config.grpc_port),
-            self.server_config.resp_compress_min_length.as_byte() as usize,
-            self.server_config.auto_create_table,
-            provider.clone(),
-            self.server_config.hotspot,
-            engine_runtimes.clone(),
-            self.cluster.is_some(),
-        ));
+        let proxy =
+            Arc::new(Proxy::new(router.clone(),
+                                instance.clone(),
+                                self.server_config.forward,
+                                Endpoint::new(self.node_addr, self.server_config.grpc_port),
+                                self.server_config.resp_compress_min_length.as_byte() as usize,
+                                self.server_config.auto_create_table,
+                                provider.clone(),
+                                self.server_config.hotspot,
+                                engine_runtimes.clone(),
+                                self.cluster.is_some()));
 
         let http_service = http::Builder::new(http_config)
             .engine_runtimes(engine_runtimes.clone())

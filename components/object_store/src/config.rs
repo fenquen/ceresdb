@@ -11,22 +11,22 @@ use time_ext::ReadableDuration;
 #[serde(default)]
 /// Options for storage backend
 pub struct StorageOptions {
-    // 0 means disable mem cache
+    ///  0 means disable mem cache 默认的是512
     pub mem_cache_capacity: ReadableSize,
     pub mem_cache_partition_bits: usize,
-    // 0 means disable disk cache
-    // Note: disk_cache_capacity % (disk_cache_page_size * (1 << disk_cache_partition_bits)) should
-    // be 0
+    /// 0 means disable disk cache 默认也是0
+    // Note: disk_cache_capacity % (disk_cache_page_size * (1 << disk_cache_partition_bits)) should be 0
     pub disk_cache_capacity: ReadableSize,
     pub disk_cache_page_size: ReadableSize,
     pub disk_cache_partition_bits: usize,
     pub disk_cache_dir: String,
-    pub object_store: ObjectStoreOptions,
+    /// 默认是 ObjectStoreOptions::Local
+    pub objectStoreOptions: ObjectStoreOptions,
 }
 
 impl Default for StorageOptions {
     fn default() -> Self {
-        let root_path = "/tmp/ceresdb".to_string();
+        let root_path = format!("{}{}", env!("HOME"), "/ceresdb_data");
 
         StorageOptions {
             mem_cache_capacity: ReadableSize::mb(512),
@@ -35,7 +35,7 @@ impl Default for StorageOptions {
             disk_cache_capacity: ReadableSize::gb(0),
             disk_cache_page_size: ReadableSize::mb(2),
             disk_cache_partition_bits: 4,
-            object_store: ObjectStoreOptions::Local(LocalOptions {
+            objectStoreOptions: ObjectStoreOptions::Local(LocalOptions {
                 data_dir: root_path,
             }),
         }

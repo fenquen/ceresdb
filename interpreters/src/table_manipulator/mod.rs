@@ -7,9 +7,9 @@ use generic_error::GenericError;
 use macros::define_result;
 use query_frontend::plan::{CreateTablePlan, DropTablePlan};
 use snafu::{Backtrace, Snafu};
-use table_engine::engine::TableEngineRef;
+use table_engine::engine::{TableEngine, TableEngineRef};
 
-use crate::{context::Context, interpreter::Output};
+use crate::{context::InterpreterContext, interpreter::Output};
 
 pub mod catalog_based;
 pub mod meta_based;
@@ -17,7 +17,7 @@ pub mod meta_based;
 pub type TableManipulatorRef = Arc<dyn TableManipulator + Send + Sync>;
 
 #[derive(Debug, Snafu)]
-#[snafu(visibility(pub(crate)))]
+#[snafu(visibility(pub (crate)))]
 pub enum Error {
     #[snafu(display("Failed to find catalog, name:{}, err:{}", name, source))]
     FindCatalog {
@@ -72,17 +72,13 @@ define_result!(Error);
 
 #[async_trait]
 pub trait TableManipulator {
-    async fn create_table(
-        &self,
-        ctx: Context,
-        plan: CreateTablePlan,
-        table_engine: TableEngineRef,
-    ) -> Result<Output>;
+    async fn create_table(&self,
+                          interpreterContext: InterpreterContext,
+                          createTablePlan: CreateTablePlan,
+                          tableEngine: Arc<dyn TableEngine>) -> Result<Output>;
 
-    async fn drop_table(
-        &self,
-        ctx: Context,
-        plan: DropTablePlan,
-        table_engine: TableEngineRef,
-    ) -> Result<Output>;
+    async fn drop_table(&self,
+                        interpreterContext: InterpreterContext,
+                        dropTablePlan: DropTablePlan,
+                        tableEngine: Arc<dyn TableEngine>) -> Result<Output>;
 }

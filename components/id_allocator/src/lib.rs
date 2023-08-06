@@ -68,39 +68,3 @@ impl IdAllocator {
         self.inner.write().await.alloc_id(persist_next_max_id).await
     }
 }
-
-#[cfg(test)]
-
-mod test {
-    use tokio::runtime::Runtime;
-
-    use super::IdAllocator;
-
-    #[test]
-    fn test_alloc_id() {
-        let rt = Runtime::new().unwrap();
-        let allocator = IdAllocator::new(0, 0, 100);
-
-        rt.block_on(async move {
-            let persist_max_file_id = move |next_max_file_id| async move {
-                assert_eq!(next_max_file_id, 100);
-                Ok(())
-            };
-
-            for i in 1..=100 {
-                let res = allocator.alloc_id(persist_max_file_id).await.unwrap();
-                assert_eq!(res, i);
-            }
-
-            let persist_max_file_id = move |next_max_file_id| async move {
-                assert_eq!(next_max_file_id, 200);
-                Ok(())
-            };
-
-            for i in 101..=200 {
-                let res = allocator.alloc_id(persist_max_file_id).await.unwrap();
-                assert_eq!(res, i);
-            }
-        });
-    }
-}

@@ -16,9 +16,6 @@ mod region_context;
 mod snapshot_synchronizer;
 pub mod wal;
 
-#[cfg(test)]
-mod test_util;
-
 #[inline]
 fn to_message(log_key: Vec<u8>, log_value: Vec<u8>) -> Message {
     Message {

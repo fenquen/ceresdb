@@ -34,7 +34,7 @@ use log::{error, info, warn};
 use meta_client::types::{ShardInfo, TableInfo};
 use paste::paste;
 use proxy::instance::InstanceRef;
-use query_engine::executor::Executor as QueryExecutor;
+use query_engine::executor::QueryExecutor as QueryExecutor;
 use runtime::Runtime;
 use snafu::{OptionExt, ResultExt};
 use table_engine::{engine::TableEngineRef, ANALYTIC_ENGINE_TYPE};
@@ -111,8 +111,8 @@ impl<Q: QueryExecutor + 'static> Builder<Q> {
             instance,
             runtime,
             wal_region_closer: Arc::new(WalCloserAdapter {
-                data_wal: opened_wals.data_wal,
-                manifest_wal: opened_wals.manifest_wal,
+                data_wal: opened_wals.dataWalManager,
+                manifest_wal: opened_wals.manifestWalManager,
             }),
         }
     }

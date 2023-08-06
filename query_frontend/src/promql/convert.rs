@@ -153,7 +153,7 @@ impl Expr {
         );
         Ok((
             Plan::Query(QueryPlan {
-                df_plan: logic_plan,
+                dataFusionLogicalPlan: logic_plan,
                 tables,
             }),
             column_name,

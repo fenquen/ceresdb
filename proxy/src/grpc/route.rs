@@ -1,7 +1,7 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 use ceresdbproto::storage::{RouteRequest, RouteResponse};
-use query_engine::executor::Executor as QueryExecutor;
+use query_engine::executor::QueryExecutor as QueryExecutor;
 
 use crate::{error, Context, Proxy};
 

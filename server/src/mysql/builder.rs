@@ -3,7 +3,7 @@
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use proxy::Proxy;
-use query_engine::executor::Executor as QueryExecutor;
+use query_engine::executor::QueryExecutor as QueryExecutor;
 use snafu::{OptionExt, ResultExt};
 use table_engine::engine::EngineRuntimes;
 

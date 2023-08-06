@@ -8,7 +8,7 @@ use ceresdbproto::storage::{
 };
 use http::StatusCode;
 use log::debug;
-use query_engine::executor::Executor as QueryExecutor;
+use query_engine::executor::QueryExecutor as QueryExecutor;
 
 use crate::{
     context::RequestContext,

@@ -18,31 +18,27 @@ use table_engine::{
     ANALYTIC_ENGINE_TYPE,
 };
 
-use crate::{instance::InstanceRef, space::SpaceId, table::TableImpl};
+use crate::{space::SpaceId, table::TableImpl};
+use crate::instance::TableEngineInstance;
 
-/// TableEngine implementation
-pub struct TableEngineImpl {
-    /// Instance of the table engine
-    instance: InstanceRef,
+pub struct AnalyticTableEngine {
+    tableEngineInstance: Arc<TableEngineInstance>,
 }
 
-impl Clone for TableEngineImpl {
+impl Clone for AnalyticTableEngine {
     fn clone(&self) -> Self {
-        Self {
-            instance: self.instance.clone(),
-        }
+        Self { tableEngineInstance: self.tableEngineInstance.clone() }
     }
 }
 
-impl TableEngineImpl {
-    pub fn new(instance: InstanceRef) -> Self {
-        Self { instance }
+impl AnalyticTableEngine {
+    pub fn new(tableEngineInstance: Arc<TableEngineInstance>) -> Self {
+        Self { tableEngineInstance }
     }
 
     async fn close_tables_of_shard(
         &self,
-        close_requests: Vec<table_engine::engine::CloseTableRequest>,
-    ) -> Vec<table_engine::engine::Result<String>> {
+        close_requests: Vec<CloseTableRequest>, ) -> Vec<Result<String>> {
         if close_requests.is_empty() {
             return Vec::new();
         }
@@ -65,14 +61,14 @@ impl TableEngineImpl {
     }
 }
 
-impl Drop for TableEngineImpl {
+impl Drop for AnalyticTableEngine {
     fn drop(&mut self) {
         info!("Table engine dropped");
     }
 }
 
 #[async_trait]
-impl TableEngine for TableEngineImpl {
+impl TableEngine for AnalyticTableEngine {
     fn engine_type(&self) -> &str {
         ANALYTIC_ENGINE_TYPE
     }
@@ -81,7 +77,7 @@ impl TableEngine for TableEngineImpl {
         info!("Try to close table engine");
 
         // Close the instance.
-        self.instance.close().await.box_err().context(Close)?;
+        self.tableEngineInstance.close().await.box_err().context(Close)?;
 
         info!("Table engine closed");
 
@@ -96,9 +92,9 @@ impl TableEngine for TableEngineImpl {
             space_id, request
         );
 
-        let space_table = self.instance.create_table(space_id, request).await?;
+        let space_table = self.tableEngineInstance.create_table(space_id, request).await?;
 
-        let table_impl: TableRef = Arc::new(TableImpl::new(self.instance.clone(), space_table));
+        let table_impl: TableRef = Arc::new(TableImpl::new(self.tableEngineInstance.clone(), space_table));
 
         Ok(table_impl)
     }
@@ -111,45 +107,39 @@ impl TableEngine for TableEngineImpl {
             space_id, request
         );
 
-        let dropped = self.instance.drop_table(space_id, request).await?;
+        let dropped = self.tableEngineInstance.drop_table(space_id, request).await?;
         Ok(dropped)
     }
 
-    async fn open_table(&self, request: OpenTableRequest) -> Result<Option<TableRef>> {
-        let shard_id = request.shard_id;
-        let space_id = build_space_id(request.schema_id);
-        let table_id = request.table_id;
+    async fn open_table(&self, openTableRequest: OpenTableRequest) -> Result<Option<TableRef>> {
+        let shard_id = openTableRequest.shard_id;
+        let space_id = build_space_id(openTableRequest.schema_id);
+        let table_id = openTableRequest.table_id;
 
-        info!(
-            "Table engine impl open table, space_id:{}, request:{:?}",
-            space_id, request
-        );
+        info!("Table engine impl open table, space_id:{}, request:{:?}",space_id, openTableRequest);
 
         let table_def = TableDef {
-            catalog_name: request.catalog_name,
-            schema_name: request.schema_name,
-            schema_id: request.schema_id,
+            catalog_name: openTableRequest.catalog_name,
+            schema_name: openTableRequest.schema_name,
+            schema_id: openTableRequest.schema_id,
             id: table_id,
-            name: request.table_name,
+            name: openTableRequest.table_name,
         };
 
+        // fenquen 只能以shard精度来打开多个表
         let shard_request = OpenShardRequest {
             shard_id,
             table_defs: vec![table_def],
-            engine: request.engine,
+            engineType: openTableRequest.engineType,
         };
 
-        let mut shard_result = self.instance.open_tables_of_shard(shard_request).await?;
+        let mut shard_result = self.tableEngineInstance.open_tables_of_same_shard(shard_request).await?;
         let table_opt = shard_result.remove(&table_id).with_context(|| OpenTableNoCause {
             msg: Some(format!("table not exist, table_id:{table_id}, space_id:{space_id}, shard_id:{shard_id}")),
-        })?
-        .box_err()
-        .context(OpenTableWithCause {
-            msg: None,
-        })?;
+        })?.box_err().context(OpenTableWithCause { msg: None })?;
 
         let table_opt = table_opt
-            .map(|space_table| Arc::new(TableImpl::new(self.instance.clone(), space_table)) as _);
+            .map(|space_table| Arc::new(TableImpl::new(self.tableEngineInstance.clone(), space_table)) as _);
 
         Ok(table_opt)
     }
@@ -162,15 +152,15 @@ impl TableEngine for TableEngineImpl {
             space_id, request,
         );
 
-        self.instance.close_table(space_id, request).await?;
+        self.tableEngineInstance.close_table(space_id, request).await?;
 
         Ok(())
     }
 
     async fn open_shard(&self, request: OpenShardRequest) -> Result<OpenShardResult> {
         let shard_result = self
-            .instance
-            .open_tables_of_shard(request)
+            .tableEngineInstance
+            .open_tables_of_same_shard(request)
             .await
             .box_err()
             .context(OpenShard)?;
@@ -179,7 +169,7 @@ impl TableEngine for TableEngineImpl {
         for (table_id, table_res) in shard_result {
             match table_res.box_err() {
                 Ok(Some(space_table)) => {
-                    let table_impl = Arc::new(TableImpl::new(self.instance.clone(), space_table));
+                    let table_impl = Arc::new(TableImpl::new(self.tableEngineInstance.clone(), space_table));
                     engine_shard_result.insert(table_id, Ok(Some(table_impl)));
                 }
                 Ok(None) => {
@@ -194,10 +184,8 @@ impl TableEngine for TableEngineImpl {
         Ok(engine_shard_result)
     }
 
-    async fn close_shard(
-        &self,
-        request: CloseShardRequest,
-    ) -> Vec<table_engine::engine::Result<String>> {
+    async fn close_shard(&self,
+                         request: CloseShardRequest) -> Vec<table_engine::engine::Result<String>> {
         let table_defs = request.table_defs;
         let close_requests = table_defs
             .into_iter()
@@ -207,7 +195,7 @@ impl TableEngine for TableEngineImpl {
                 schema_id: def.schema_id,
                 table_name: def.name,
                 table_id: def.id,
-                engine: request.engine.clone(),
+                engine: request.engineType.clone(),
             })
             .collect();
 
@@ -215,8 +203,8 @@ impl TableEngine for TableEngineImpl {
     }
 }
 
-/// Generate the space id from the schema id with assumption schema id is unique
-/// globally.
+// fenquen schemaId 和 spaceId 本质相同
+/// Generate the space id from the schema id with assumption schema id is unique globally.
 #[inline]
 pub fn build_space_id(schema_id: SchemaId) -> SpaceId {
     schema_id.as_u32()

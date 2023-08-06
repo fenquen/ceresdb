@@ -8,16 +8,7 @@ use async_trait::async_trait;
 use futures::Future;
 use macros::define_result;
 use message_queue::kafka::kafka_impl::KafkaImpl;
-use object_store::{
-    aliyun,
-    config::{ObjectStoreOptions, StorageOptions},
-    disk_cache::DiskCacheStore,
-    mem_cache::{MemCache, MemCacheStore},
-    metrics::StoreWithMetrics,
-    obkv,
-    prefix::StoreWithPrefix,
-    s3, LocalFileSystem, ObjectStoreRef,
-};
+use object_store::{aliyun, config::{ObjectStoreOptions, StorageOptions}, disk_cache::ObjectStoreWithDiskCache, mem_cache::{MemCache, ObjectStoreWithMemCache}, metrics::ObjectStoreWithMetrics, obkv, prefix::StoreWithPrefix, s3, LocalFileSystem, ObjectStoreRef, ObjectStore};
 use snafu::{Backtrace, ResultExt, Snafu};
 use table_engine::engine::{EngineRuntimes, TableEngineRef};
 use table_kv::{memory::MemoryImpl, obkv::ObkvImpl, TableKv};
@@ -27,16 +18,17 @@ use wal::{
     rocks_impl::manager::Builder as RocksWalBuilder,
     table_kv_impl::{wal::WalNamespaceImpl, WalRuntimes},
 };
+use wal::manager::WalManager;
 
 use crate::{
-    context::OpenContext,
-    engine::TableEngineImpl,
-    instance::{open::ManifestStorages, Instance, InstanceRef},
+    context::OpenedTableEngineInstanceContext,
+    engine::AnalyticTableEngine,
+    instance::{open::ManifestStorages, TableEngineInstance, InstanceRef},
     sst::{
         factory::{FactoryImpl, ObjectStorePicker, ObjectStorePickerRef, ReadFrequency},
         meta_data::cache::{MetaCache, MetaCacheRef},
     },
-    Config, ObkvWalConfig, WalStorageConfig,
+    AnalyticEngineConfig, ObkvWalConfig, WalStorageConfig,
 };
 
 #[derive(Debug, Snafu)]
@@ -50,9 +42,9 @@ pub enum Error {
     OpenWal { source: manager::error::Error },
 
     #[snafu(display(
-        "Failed to open with the invalid config, msg:{}.\nBacktrace:\n{}",
-        msg,
-        backtrace
+    "Failed to open with the invalid config, msg:{}.\nBacktrace:\n{}",
+    msg,
+    backtrace
     ))]
     InvalidWalConfig { msg: String, backtrace: Backtrace },
 
@@ -103,47 +95,47 @@ const DISK_CACHE_DIR_NAME: &str = "sst_cache";
 ///
 /// [TableEngine]: table_engine::engine::TableEngine
 #[derive(Clone)]
-pub struct EngineBuilder<'a> {
-    pub config: &'a Config,
+pub struct AnalyticTableEngineBuilder<'a> {
+    pub analyticConfig: &'a AnalyticEngineConfig,
     pub engine_runtimes: Arc<EngineRuntimes>,
     pub opened_wals: OpenedWals,
 }
 
-impl<'a> EngineBuilder<'a> {
+impl<'a> AnalyticTableEngineBuilder<'a> {
     pub async fn build(self) -> Result<TableEngineRef> {
-        let opened_storages =
-            open_storage(self.config.storage.clone(), self.engine_runtimes.clone()).await?;
+        let openedStorages =
+            open_storage(self.analyticConfig.storage.clone(),
+                         self.engine_runtimes.clone()).await?;
+
         let manifest_storages = ManifestStorages {
-            wal_manager: self.opened_wals.manifest_wal.clone(),
-            oss_storage: opened_storages.default_store().clone(),
+            wal_manager: self.opened_wals.manifestWalManager.clone(),
+            objectStore: openedStorages.default_store().clone(),
         };
 
-        let instance = open_instance(
-            self.config.clone(),
+        let tableEngineInstance = open_instance(
+            self.analyticConfig.clone(),
             self.engine_runtimes,
-            self.opened_wals.data_wal,
+            self.opened_wals.dataWalManager,
             manifest_storages,
-            Arc::new(opened_storages),
-        )
-        .await?;
-        Ok(Arc::new(TableEngineImpl::new(instance)))
+            Arc::new(openedStorages),
+        ).await?;
+
+        Ok(Arc::new(AnalyticTableEngine::new(tableEngineInstance)))
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct OpenedWals {
-    pub data_wal: WalManagerRef,
-    pub manifest_wal: WalManagerRef,
+    pub dataWalManager: Arc<dyn WalManager>,
+    pub manifestWalManager: Arc<dyn WalManager>,
 }
 
 /// Analytic engine builder.
 #[async_trait]
 pub trait WalsOpener: Send + Sync + Default {
-    async fn open_wals(
-        &self,
-        config: &WalStorageConfig,
-        engine_runtimes: Arc<EngineRuntimes>,
-    ) -> Result<OpenedWals>;
+    async fn open_wals(&self,
+                       walStorageConfig: &WalStorageConfig,
+                       engine_runtimes: Arc<EngineRuntimes>) -> Result<OpenedWals>;
 }
 
 /// [RocksEngine] builder.
@@ -152,11 +144,9 @@ pub struct RocksDBWalsOpener;
 
 #[async_trait]
 impl WalsOpener for RocksDBWalsOpener {
-    async fn open_wals(
-        &self,
-        config: &WalStorageConfig,
-        engine_runtimes: Arc<EngineRuntimes>,
-    ) -> Result<OpenedWals> {
+    async fn open_wals(&self,
+                       config: &WalStorageConfig,
+                       engine_runtimes: Arc<EngineRuntimes>) -> Result<OpenedWals> {
         let rocksdb_wal_config = match &config {
             WalStorageConfig::RocksDB(config) => config.clone(),
             _ => {
@@ -165,14 +155,15 @@ impl WalsOpener for RocksDBWalsOpener {
                         "invalid wal storage config while opening rocksDB wal, config:{config:?}"
                     ),
                 }
-                .fail();
+                    .fail();
             }
         };
 
         let write_runtime = engine_runtimes.write_runtime.clone();
-        let data_path = Path::new(&rocksdb_wal_config.data_dir);
-        let wal_path = data_path.join(WAL_DIR_NAME);
-        let data_wal = RocksWalBuilder::new(wal_path, write_runtime.clone())
+        let rocksDbDirPath = Path::new(&rocksdb_wal_config.data_dir);
+
+        let dataPath = rocksDbDirPath.join(WAL_DIR_NAME);
+        let data_wal = RocksWalBuilder::new(dataPath, write_runtime.clone())
             .max_subcompactions(rocksdb_wal_config.data_namespace.max_subcompactions)
             .max_background_jobs(rocksdb_wal_config.data_namespace.max_background_jobs)
             .enable_statistics(rocksdb_wal_config.data_namespace.enable_statistics)
@@ -202,7 +193,7 @@ impl WalsOpener for RocksDBWalsOpener {
             .build()
             .context(OpenWal)?;
 
-        let manifest_path = data_path.join(MANIFEST_DIR_NAME);
+        let manifest_path = rocksDbDirPath.join(MANIFEST_DIR_NAME);
         let manifest_wal = RocksWalBuilder::new(manifest_path, write_runtime)
             .max_subcompactions(rocksdb_wal_config.meta_namespace.max_subcompactions)
             .max_background_jobs(rocksdb_wal_config.meta_namespace.max_background_jobs)
@@ -232,10 +223,12 @@ impl WalsOpener for RocksDBWalsOpener {
             )
             .build()
             .context(OpenManifestWal)?;
+
         let opened_wals = OpenedWals {
-            data_wal: Arc::new(data_wal),
-            manifest_wal: Arc::new(manifest_wal),
+            dataWalManager: Arc::new(data_wal),
+            manifestWalManager: Arc::new(manifest_wal),
         };
+
         Ok(opened_wals)
     }
 }
@@ -259,7 +252,7 @@ impl WalsOpener for ObkvWalsOpener {
                         "invalid wal storage config while opening obkv wal, config:{config:?}"
                     ),
                 }
-                .fail();
+                    .fail();
             }
         };
 
@@ -299,7 +292,7 @@ impl WalsOpener for MemWalsOpener {
                         "invalid wal storage config while opening memory wal, config:{config:?}"
                     ),
                 }
-                .fail();
+                    .fail();
             }
         };
 
@@ -308,7 +301,7 @@ impl WalsOpener for MemWalsOpener {
             engine_runtimes,
             self.table_kv.clone(),
         )
-        .await
+            .await
     }
 }
 
@@ -330,7 +323,7 @@ impl WalsOpener for KafkaWalsOpener {
                         "invalid wal storage config while opening kafka wal, config:{config:?}"
                     ),
                 }
-                .fail();
+                    .fail();
             }
         };
 
@@ -354,8 +347,8 @@ impl WalsOpener for KafkaWalsOpener {
         );
 
         Ok(OpenedWals {
-            data_wal: Arc::new(data_wal),
-            manifest_wal: Arc::new(manifest_wal),
+            dataWalManager: Arc::new(data_wal),
+            manifestWalManager: Arc::new(manifest_wal),
         })
     }
 }
@@ -377,8 +370,8 @@ async fn open_wal_and_manifest_with_table_kv<T: TableKv>(
         WAL_DIR_NAME,
         config.data_namespace.clone().into(),
     )
-    .await
-    .context(OpenWal)?;
+        .await
+        .context(OpenWal)?;
 
     let manifest_wal = WalNamespaceImpl::open(
         table_kv,
@@ -386,48 +379,43 @@ async fn open_wal_and_manifest_with_table_kv<T: TableKv>(
         MANIFEST_DIR_NAME,
         config.meta_namespace.clone().into(),
     )
-    .await
-    .context(OpenManifestWal)?;
+        .await
+        .context(OpenManifestWal)?;
 
     Ok(OpenedWals {
-        data_wal: Arc::new(data_wal),
-        manifest_wal: Arc::new(manifest_wal),
+        dataWalManager: Arc::new(data_wal),
+        manifestWalManager: Arc::new(manifest_wal),
     })
 }
 
-async fn open_instance(
-    config: Config,
-    engine_runtimes: Arc<EngineRuntimes>,
-    wal_manager: WalManagerRef,
-    manifest_storages: ManifestStorages,
-    store_picker: ObjectStorePickerRef,
-) -> Result<InstanceRef> {
-    let meta_cache: Option<MetaCacheRef> = config
-        .sst_meta_cache_cap
-        .map(|cap| Arc::new(MetaCache::new(cap)));
+async fn open_instance(analyticConfig: AnalyticEngineConfig,
+                       engine_runtimes: Arc<EngineRuntimes>,
+                       wal_manager: WalManagerRef,
+                       manifest_storages: ManifestStorages,
+                       store_picker: ObjectStorePickerRef) -> Result<InstanceRef> {
+    let meta_cache: Option<MetaCacheRef> = analyticConfig.sst_meta_cache_cap.map(|cap| Arc::new(MetaCache::new(cap)));
 
-    let open_ctx = OpenContext {
-        config,
-        runtimes: engine_runtimes,
+    let open_ctx = OpenedTableEngineInstanceContext {
+        analyticEngineConfig: analyticConfig,
+        engineRuntimes: engine_runtimes,
         meta_cache,
     };
 
-    let instance = Instance::open(
-        open_ctx,
-        manifest_storages,
-        wal_manager,
-        store_picker,
-        Arc::new(FactoryImpl::default()),
-    )
-    .await
-    .context(OpenInstance)?;
-    Ok(instance)
+    let tableEngineInstance =
+        TableEngineInstance::open(open_ctx,
+                                  manifest_storages,
+                                  wal_manager,
+                                  store_picker,
+                                  Arc::new(FactoryImpl::default())).await.context(OpenInstance)?;
+
+    Ok(tableEngineInstance)
 }
 
 #[derive(Debug)]
 struct OpenedStorages {
-    default_store: ObjectStoreRef,
-    store_with_readonly_cache: ObjectStoreRef,
+    /// memCacheStore -> objectStoreWithMetrics -> objectStoreWithDiskCache  localFileSystem
+    default_store: Arc<dyn ObjectStore>,
+    store_with_readonly_cache: Arc<dyn ObjectStore>,
 }
 
 impl ObjectStorePicker for OpenedStorages {
@@ -456,22 +444,15 @@ impl ObjectStorePicker for OpenedStorages {
 // |       |      |    OSS/S3....  |
 // +-------+------+----------------+
 // ```
-fn open_storage(
-    opts: StorageOptions,
-    engine_runtimes: Arc<EngineRuntimes>,
-) -> Pin<Box<dyn Future<Output = Result<OpenedStorages>> + Send>> {
+fn open_storage(storageOptions: StorageOptions,
+                engineRuntimes: Arc<EngineRuntimes>) -> Pin<Box<dyn Future<Output=Result<OpenedStorages>> + Send>> {
     Box::pin(async move {
-        let mut store = match opts.object_store {
+        let mut objectStore = match storageOptions.objectStoreOptions {
             ObjectStoreOptions::Local(local_opts) => {
-                let data_path = Path::new(&local_opts.data_dir);
-                let sst_path = data_path.join(STORE_DIR_NAME);
-                tokio::fs::create_dir_all(&sst_path)
-                    .await
-                    .context(CreateDir {
-                        path: sst_path.to_string_lossy().into_owned(),
-                    })?;
-                let store = LocalFileSystem::new_with_prefix(sst_path).context(OpenObjectStore)?;
-                Arc::new(store) as _
+                let sst_path = Path::new(&local_opts.data_dir).join(STORE_DIR_NAME);
+                tokio::fs::create_dir_all(&sst_path).await.context(CreateDir { path: sst_path.to_string_lossy().into_owned() })?;
+                let localFileSystem = LocalFileSystem::new_with_prefix(sst_path).context(OpenObjectStore)?;
+                Arc::new(localFileSystem) as _
             }
             ObjectStoreOptions::Aliyun(aliyun_opts) => {
                 let oss: ObjectStoreRef =
@@ -481,7 +462,7 @@ fn open_storage(
             }
             ObjectStoreOptions::Obkv(obkv_opts) => {
                 let obkv_config = obkv_opts.client;
-                let obkv = engine_runtimes
+                let obkv = engineRuntimes
                     .write_runtime
                     .spawn_blocking(move || ObkvImpl::new(obkv_config).context(OpenObkv))
                     .await
@@ -495,7 +476,7 @@ fn open_storage(
                         obkv_opts.max_object_size.0 as usize,
                         obkv_opts.upload_parallelism,
                     )
-                    .context(OpenObjectStore)?,
+                        .context(OpenObjectStore)?,
                 );
                 Arc::new(StoreWithPrefix::new(obkv_opts.prefix, oss).context(OpenObjectStore)?) as _
             }
@@ -507,50 +488,51 @@ fn open_storage(
             }
         };
 
-        if opts.disk_cache_capacity.as_byte() > 0 {
-            let path = Path::new(&opts.disk_cache_dir).join(DISK_CACHE_DIR_NAME);
+        // 以下类似了java的装饰器模式在原来的基地上不断增加能力
+
+        // 增强成 ObjectStoreWithDiskCache
+        // 默认是0
+        if storageOptions.disk_cache_capacity.as_byte() > 0 {
+            let path = Path::new(&storageOptions.disk_cache_dir).join(DISK_CACHE_DIR_NAME);
             tokio::fs::create_dir_all(&path).await.context(CreateDir {
                 path: path.to_string_lossy().into_owned(),
             })?;
 
-            store = Arc::new(
-                DiskCacheStore::try_new(
+            objectStore = Arc::new(
+                ObjectStoreWithDiskCache::try_new(
                     path.to_string_lossy().into_owned(),
-                    opts.disk_cache_capacity.as_byte() as usize,
-                    opts.disk_cache_page_size.as_byte() as usize,
-                    store,
-                    opts.disk_cache_partition_bits,
-                )
-                .await
-                .context(OpenObjectStore)?,
+                    storageOptions.disk_cache_capacity.as_byte() as usize,
+                    storageOptions.disk_cache_page_size.as_byte() as usize,
+                    objectStore,
+                    storageOptions.disk_cache_partition_bits,
+                ).await.context(OpenObjectStore)?,
             ) as _;
         }
 
-        store = Arc::new(StoreWithMetrics::new(
-            store,
-            engine_runtimes.io_runtime.clone(),
-        ));
+        // 增强成 ObjectStoreWithMemCache
+        objectStore = Arc::new(ObjectStoreWithMetrics::new(objectStore, engineRuntimes.io_runtime.clone()));
 
-        if opts.mem_cache_capacity.as_byte() > 0 {
+        // 增强成 ObjectStoreWithMemCache
+        // 默认512
+        if storageOptions.mem_cache_capacity.as_byte() > 0 {
             let mem_cache = Arc::new(
                 MemCache::try_new(
-                    opts.mem_cache_partition_bits,
-                    NonZeroUsize::new(opts.mem_cache_capacity.as_byte() as usize).unwrap(),
-                )
-                .context(OpenMemCache)?,
+                    storageOptions.mem_cache_partition_bits,
+                    NonZeroUsize::new(storageOptions.mem_cache_capacity.as_byte() as usize).unwrap(),
+                ).context(OpenMemCache)?,
             );
-            let default_store = Arc::new(MemCacheStore::new(mem_cache.clone(), store.clone())) as _;
-            let store_with_readonly_cache =
-                Arc::new(MemCacheStore::new_with_readonly_cache(mem_cache, store)) as _;
+
+            let default_store = Arc::new(ObjectStoreWithMemCache::new(mem_cache.clone(), objectStore.clone())) as _;
+            let store_with_readonly_cache = Arc::new(ObjectStoreWithMemCache::new_with_readonly_cache(mem_cache, objectStore)) as _;
             Ok(OpenedStorages {
                 default_store,
                 store_with_readonly_cache,
             })
         } else {
-            let store_with_readonly_cache = store.clone();
+            let a = objectStore.clone();
             Ok(OpenedStorages {
-                default_store: store,
-                store_with_readonly_cache,
+                default_store: objectStore,
+                store_with_readonly_cache: a,
             })
         }
     })

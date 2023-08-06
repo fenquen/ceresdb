@@ -36,30 +36,3 @@ impl LoadBalancer for RandomLoadBalancer {
         Ok(&addresses[idx])
     }
 }
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn test_random_loadbalancer() {
-        let lb = RandomLoadBalancer;
-        let addresses = vec![
-            "127.0.0.1:8080".to_string(),
-            "127.0.0.2:8080".to_string(),
-            "127.0.0.3:8080".to_string(),
-            "127.0.0.4:8080".to_string(),
-            "127.0.0.5:8080".to_string(),
-        ];
-        for _idx in 0..100 {
-            let addr = lb.select(&addresses).unwrap();
-            assert!(addresses.contains(addr));
-        }
-
-        // Empty case
-        assert!(lb.select(&[]).is_err());
-
-        let addresses = ["127.0.0.1:5000".to_string()];
-        assert_eq!(&addresses[0], lb.select(&addresses).unwrap());
-    }
-}

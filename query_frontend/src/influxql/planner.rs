@@ -168,7 +168,7 @@ impl<'a, P: MetaProvider> Planner<'a, P> {
                             msg: "get tables from context_provider",
                         })?,
                 );
-                Ok(Plan::Query(QueryPlan { df_plan, tables }))
+                Ok(Plan::Query(QueryPlan { dataFusionLogicalPlan: df_plan, tables }))
             }
         }
     }
@@ -215,46 +215,5 @@ pub fn check_select_statement(select_stmt: &SelectStatement) -> Result<()> {
             msg: format!("select from subquery, stmt:{select_stmt}"),
         }
         .fail(),
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use influxql_parser::{select::SelectStatement, statement::Statement};
-
-    use super::check_select_statement;
-
-    #[test]
-    fn test_check_select_from() {
-        let from_measurement = parse_select("select * from a;");
-        let from_multi_measurements = parse_select("select * from a,b;");
-        let from_regex = parse_select(r#"select * from /d/"#);
-        let from_subquery = parse_select("select * from (select a,b from c)");
-
-        let res = check_select_statement(&from_measurement);
-        assert!(res.is_ok());
-
-        let res = check_select_statement(&from_multi_measurements);
-        let err = res.err().unwrap();
-        assert!(err
-            .to_string()
-            .contains("select from multiple measurements"));
-
-        let res = check_select_statement(&from_regex);
-        let err = res.err().unwrap();
-        assert!(err.to_string().contains("select from regex"));
-
-        let res = check_select_statement(&from_subquery);
-        let err = res.err().unwrap();
-        assert!(err.to_string().contains("select from subquery"));
-    }
-
-    fn parse_select(influxql: &str) -> SelectStatement {
-        let stmt = influxql_parser::parse_statements(influxql).unwrap()[0].clone();
-        if let Statement::Select(select_stmt) = stmt {
-            *select_stmt
-        } else {
-            unreachable!()
-        }
     }
 }

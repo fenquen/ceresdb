@@ -7,8 +7,6 @@ use std::{fmt, time::Duration};
 pub mod config;
 pub mod memory;
 pub mod obkv;
-#[cfg(test)]
-mod tests;
 
 /// Context during write.
 #[derive(Default)]

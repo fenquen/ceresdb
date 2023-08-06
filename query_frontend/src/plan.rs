@@ -59,7 +59,7 @@ pub enum Plan {
 }
 
 pub struct QueryPlan {
-    pub df_plan: DataFusionLogicalPlan,
+    pub dataFusionLogicalPlan: DataFusionLogicalPlan,
     // Contains the TableProviders so we can register the them to ExecutionContext later.
     // Use TableProviderAdapter here so we can get the underlying TableRef and also be
     // able to cast to Arc<dyn TableProvider + Send + Sync>
@@ -69,7 +69,7 @@ pub struct QueryPlan {
 impl Debug for QueryPlan {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("QueryPlan")
-            .field("df_plan", &self.df_plan)
+            .field("df_plan", &self.dataFusionLogicalPlan)
             .finish()
     }
 }
@@ -126,10 +126,9 @@ pub struct InsertPlan {
     /// The table to insert
     pub table: TableRef,
     /// RowGroup to insert
-    pub rows: RowGroup,
-    /// Column indexes in schema to its default-value-expr which is used to fill
-    /// values
-    pub default_value_map: BTreeMap<usize, DfLogicalExpr>,
+    pub rowGroup: RowGroup,
+    /// Column indexes in schema to its default-value-expr which is used to fill values
+    pub columnIndex_defaultVal: BTreeMap<usize, DfLogicalExpr>,
 }
 
 #[derive(Debug)]

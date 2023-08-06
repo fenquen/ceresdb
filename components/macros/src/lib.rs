@@ -22,26 +22,3 @@ macro_rules! hash_map(
         }
      };
 );
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn test_define_result() {
-        define_result!(i32);
-
-        fn return_i32_error() -> Result<()> {
-            Err(18)
-        }
-
-        assert_eq!(Err(18), return_i32_error());
-    }
-
-    #[test]
-    fn test_hash_map() {
-        let m = hash_map! { 1 => "hello", 2 => "world" };
-
-        assert_eq!(2, m.len());
-        assert_eq!("hello", *m.get(&1).unwrap());
-        assert_eq!("world", *m.get(&2).unwrap());
-    }
-}

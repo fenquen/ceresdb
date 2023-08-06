@@ -13,13 +13,13 @@ pub struct Config {
     pub enable_statistics: bool,
     pub write_buffer_size: ReadableSize,
     pub max_write_buffer_number: i32,
-    // Number of files to trigger level-0 compaction. A value <0 means that level-0 compaction will
-    // not be triggered by number of files at all.
+    /// Number of files to trigger level-0 compaction. A value <0 means that level-0 compaction will
+    /// not be triggered by number of files at all.
     pub level_zero_file_num_compaction_trigger: i32,
-    // Soft limit on number of level-0 files. We start slowing down writes at this point. A value
-    // <0 means that no writing slow down will be triggered by number of files in level-0.
+    /// Soft limit on number of level-0 files. We start slowing down writes at this point. A value
+    /// <0 means that no writing slow down will be triggered by number of files in level-0.
     pub level_zero_slowdown_writes_trigger: i32,
-    // Maximum number of level-0 files.  We stop writes at this point.
+    /// Maximum number of level-0 files.  We stop writes at this point.
     pub level_zero_stop_writes_trigger: i32,
     pub fifo_compaction_max_table_files_size: ReadableSize,
 }

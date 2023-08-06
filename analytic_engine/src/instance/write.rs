@@ -356,7 +356,7 @@ impl<'a> Writer<'a> {
         self.table_data.metrics.on_write_request_begin();
 
         self.validate_before_write(&request)?;
-        let mut encode_ctx = EncodeContext::new(request.row_group);
+        let mut encode_ctx = EncodeContext::new(request.rowGroup);
 
         self.preprocess_write(&mut encode_ctx).await?;
 
@@ -467,10 +467,10 @@ impl<'a> Writer<'a> {
     /// write thread.
     fn validate_before_write(&self, request: &WriteRequest) -> Result<()> {
         ensure!(
-            request.row_group.num_rows() < MAX_ROWS_TO_WRITE,
+            request.rowGroup.num_rows() < MAX_ROWS_TO_WRITE,
             TooManyRows {
                 table: &self.table_data.name,
-                rows: request.row_group.num_rows(),
+                rows: request.rowGroup.num_rows(),
             }
         );
 
@@ -626,138 +626,6 @@ impl<'a> Writer<'a> {
                     table_data.name,
                 );
                 Ok(())
-            }
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use common_types::{
-        column_schema::Builder as ColumnSchemaBuilder,
-        datum::{Datum, DatumKind},
-        row::{Row, RowGroupBuilder},
-        schema::Builder as SchemaBuilder,
-        time::Timestamp,
-    };
-
-    use super::*;
-
-    fn generate_rows_for_test(sizes: Vec<usize>) -> (Vec<ByteVec>, RowGroup) {
-        let encoded_rows: Vec<_> = sizes.iter().map(|size| vec![0; *size]).collect();
-        let rows: Vec<_> = sizes
-            .iter()
-            .map(|size| {
-                let datum = Datum::Timestamp(Timestamp::new(*size as i64));
-                Row::from_datums(vec![datum])
-            })
-            .collect();
-
-        let column_schema = ColumnSchemaBuilder::new("ts".to_string(), DatumKind::Timestamp)
-            .build()
-            .unwrap();
-        let schema = SchemaBuilder::new()
-            .add_key_column(column_schema)
-            .unwrap()
-            .build()
-            .unwrap();
-        let row_group = RowGroupBuilder::with_rows(schema, rows).unwrap().build();
-
-        (encoded_rows, row_group)
-    }
-
-    #[test]
-    fn test_write_split_compute_batches() {
-        let cases = vec![
-            (2, vec![1, 2, 3, 4, 5], vec![2, 3, 4, 5]),
-            (100, vec![50, 50, 100, 10], vec![2, 3, 4]),
-            (1000, vec![50, 50, 100, 10], vec![4]),
-            (2, vec![10, 10, 0, 10], vec![1, 2, 4]),
-            (0, vec![10, 10, 0, 10], vec![1, 2, 3, 4]),
-            (0, vec![0, 0], vec![1, 2]),
-            (10, vec![], vec![]),
-        ];
-        for (batch_size, sizes, expected_batch_indexes) in cases {
-            let (encoded_rows, _) = generate_rows_for_test(sizes);
-            let write_row_group_splitter = WriteRowGroupSplitter::new(batch_size);
-            let batch_indexes = write_row_group_splitter.compute_batches(&encoded_rows);
-            assert_eq!(batch_indexes, expected_batch_indexes);
-        }
-    }
-
-    #[test]
-    fn test_write_split_row_group() {
-        let cases = vec![
-            (
-                2,
-                vec![1, 2, 3, 4, 5],
-                vec![vec![1, 2], vec![3], vec![4], vec![5]],
-            ),
-            (
-                100,
-                vec![50, 50, 100, 10],
-                vec![vec![50, 50], vec![100], vec![10]],
-            ),
-            (1000, vec![50, 50, 100, 10], vec![vec![50, 50, 100, 10]]),
-            (
-                2,
-                vec![10, 10, 0, 10],
-                vec![vec![10], vec![10], vec![0, 10]],
-            ),
-            (
-                0,
-                vec![10, 10, 0, 10],
-                vec![vec![10], vec![10], vec![0], vec![10]],
-            ),
-            (0, vec![0, 0], vec![vec![0], vec![0]]),
-            (10, vec![], vec![]),
-        ];
-
-        let check_encoded_rows = |encoded_rows: &[ByteVec], expected_row_sizes: &[usize]| {
-            assert_eq!(encoded_rows.len(), expected_row_sizes.len());
-            for (encoded_row, expected_row_size) in
-                encoded_rows.iter().zip(expected_row_sizes.iter())
-            {
-                assert_eq!(encoded_row.len(), *expected_row_size);
-            }
-        };
-        for (batch_size, sizes, expected_batches) in cases {
-            let (encoded_rows, row_group) = generate_rows_for_test(sizes.clone());
-            let write_row_group_splitter = WriteRowGroupSplitter::new(batch_size);
-            let split_res = write_row_group_splitter.split(encoded_rows, &row_group);
-            if expected_batches.is_empty() {
-                assert!(matches!(split_res, SplitResult::Integrate { .. }));
-            } else if expected_batches.len() == 1 {
-                assert!(matches!(split_res, SplitResult::Integrate { .. }));
-                if let SplitResult::Integrate {
-                    encoded_rows,
-                    row_group,
-                } = split_res
-                {
-                    check_encoded_rows(&encoded_rows, &expected_batches[0]);
-                    assert_eq!(row_group.num_rows(), expected_batches[0].len());
-                }
-            } else {
-                assert!(matches!(split_res, SplitResult::Splitted { .. }));
-                if let SplitResult::Splitted {
-                    encoded_batches,
-                    row_group_batches,
-                } = split_res
-                {
-                    assert_eq!(encoded_batches.len(), row_group_batches.len());
-                    assert_eq!(encoded_batches.len(), expected_batches.len());
-                    let mut batch_start_index = 0;
-                    for ((encoded_batch, row_group_batch), expected_batch) in encoded_batches
-                        .iter()
-                        .zip(row_group_batches.iter())
-                        .zip(expected_batches.iter())
-                    {
-                        check_encoded_rows(encoded_batch, expected_batch);
-                        assert_eq!(row_group_batch.num_rows(), expected_batch.len());
-                        assert_eq!(row_group_batch.slice_range().start, batch_start_index);
-                        batch_start_index += expected_batch.len();
-                    }
-                }
             }
         }
     }

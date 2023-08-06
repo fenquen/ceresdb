@@ -12,11 +12,9 @@ use table_engine::{engine::TableEngineRef, remote::RemoteEngineRef};
 use crate::limiter::Limiter;
 
 /// A cluster instance. Usually there is only one instance per cluster
-///
-/// Q: query_engine::executor::Executor
-pub struct Instance<Q> {
+pub struct Instance<QueryExecutor> {
     pub catalog_manager: ManagerRef,
-    pub query_executor: Q,
+    pub query_executor: QueryExecutor,
     pub table_engine: TableEngineRef,
     pub partition_table_engine: TableEngineRef,
     // User defined functions registry.

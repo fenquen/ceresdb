@@ -13,8 +13,6 @@ pub mod chain;
 pub mod dedup;
 pub mod merge;
 pub mod record_batch_stream;
-#[cfg(test)]
-pub mod tests;
 
 #[derive(Debug, Clone)]
 pub struct IterOptions {

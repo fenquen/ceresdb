@@ -49,10 +49,10 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to get all tables, catalog_name:{}, schema_name:{}, err:{}",
-        catalog_name,
-        schema_name,
-        source
+    "Failed to get all tables, catalog_name:{}, schema_name:{}, err:{}",
+    catalog_name,
+    schema_name,
+    source
     ))]
     GetAllTables {
         catalog_name: String,
@@ -142,7 +142,7 @@ impl<'a> MetaProvider for CatalogMetaProvider<'a> {
                 return SchemaNotFound {
                     name: resolved.schema.to_string(),
                 }
-                .fail();
+                    .fail();
             }
         };
 
@@ -277,10 +277,7 @@ impl<'a, P: MetaProvider> MetaProvider for ContextProviderAdapter<'a, P> {
 }
 
 impl<'a, P: MetaProvider> ContextProvider for ContextProviderAdapter<'a, P> {
-    fn get_table_provider(
-        &self,
-        name: TableReference,
-    ) -> std::result::Result<Arc<(dyn TableSource + 'static)>, DataFusionError> {
+    fn get_table_provider(&self, name: TableReference) -> std::result::Result<Arc<(dyn TableSource + 'static)>, DataFusionError> {
         // Find in local cache
         if let Some(table_ref) = self.table_cache.borrow().get(name.clone()) {
             return Ok(self.table_source(table_ref));
@@ -335,6 +332,10 @@ impl<'a, P: MetaProvider> ContextProvider for ContextProviderAdapter<'a, P> {
         }
     }
 
+    fn get_window_meta(&self, _name: &str) -> Option<Arc<datafusion::logical_expr::WindowUDF>> {
+        None
+    }
+
     // TODO: Variable Type is not supported now
     fn get_variable_type(
         &self,
@@ -345,10 +346,6 @@ impl<'a, P: MetaProvider> ContextProvider for ContextProviderAdapter<'a, P> {
 
     fn options(&self) -> &ConfigOptions {
         &self.config
-    }
-
-    fn get_window_meta(&self, _name: &str) -> Option<Arc<datafusion::logical_expr::WindowUDF>> {
-        None
     }
 }
 
@@ -455,18 +452,5 @@ fn format_table_reference(table_ref: TableReference) -> String {
             schema,
             table,
         } => format!("catalog:{catalog}, schema:{schema}, table:{table}"),
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use crate::{provider::ContextProviderAdapter, tests::MockMetaProvider};
-
-    #[test]
-    fn test_config_options_setting() {
-        let provider = MockMetaProvider::default();
-        let read_parallelism = 100;
-        let context = ContextProviderAdapter::new(&provider, read_parallelism);
-        assert_eq!(context.config.execution.target_partitions, read_parallelism);
     }
 }

@@ -38,7 +38,7 @@ pub enum Error {
     #[snafu(display("Failed to execute physical plan, err:{}", source))]
     ExecutePhysical { source: crate::physical_plan::Error },
 
-    #[snafu(display("Failed to collect record batch stream, err:{}", source,))]
+    #[snafu(display("Failed to collect record batch stream, err:{}", source, ))]
     Collect { source: table_engine::stream::Error },
 
     #[snafu(display("Timeout when execute, err:{}.\nBacktrace:\n{}", source, backtrace))]
@@ -53,18 +53,15 @@ define_result!(Error);
 // Use a type alias so that we are able to replace the implementation
 pub type RecordBatchVec = Vec<RecordBatch>;
 
-/// Query to execute
-///
-/// Contains the query plan and other infos
 #[derive(Debug)]
 pub struct Query {
     /// The query plan
-    plan: QueryPlan,
+    queryPlan: QueryPlan,
 }
 
 impl Query {
-    pub fn new(plan: QueryPlan) -> Self {
-        Self { plan }
+    pub fn new(queryPlan: QueryPlan) -> Self {
+        Self { queryPlan }
     }
 }
 
@@ -72,7 +69,7 @@ impl Query {
 ///
 /// Executes the logical plan
 #[async_trait]
-pub trait Executor: Clone + Send + Sync {
+pub trait QueryExecutor: Clone + Send + Sync {
     // TODO(yingwen): Maybe return a stream
     /// Execute the query, returning the query results as RecordBatchVec
     ///
@@ -82,30 +79,31 @@ pub trait Executor: Clone + Send + Sync {
 }
 
 #[derive(Clone, Default)]
-pub struct ExecutorImpl {
+pub struct QueryExecutorImpl {
     config: Config,
 }
 
-impl ExecutorImpl {
+impl QueryExecutorImpl {
     pub fn new(config: Config) -> Self {
         Self { config }
     }
 }
 
 #[async_trait]
-impl Executor for ExecutorImpl {
+impl QueryExecutor for QueryExecutorImpl {
     async fn execute_logical_plan(&self, ctx: ContextRef, query: Query) -> Result<RecordBatchVec> {
-        let plan = query.plan;
+        let queryPlan = query.queryPlan;
 
         // Register catalogs to datafusion execution context.
-        let catalogs = CatalogProviderAdapter::new_adapters(plan.tables.clone());
+        let catalogs = CatalogProviderAdapter::new_adapters(queryPlan.tables.clone());
         let df_ctx = ctx.build_df_session_ctx(&self.config, ctx.request_id, ctx.deadline);
+
         for (name, catalog) in catalogs {
             df_ctx.register_catalog(&name, Arc::new(catalog));
         }
         let begin_instant = Instant::now();
 
-        let physical_plan = optimize_plan(&ctx, df_ctx, plan).await?;
+        let physical_plan = optimize_plan(&ctx, df_ctx, queryPlan).await?;
 
         debug!(
             "Executor physical optimization finished, request_id:{}, physical_plan: {:?}",
@@ -129,11 +127,9 @@ impl Executor for ExecutorImpl {
     }
 }
 
-async fn optimize_plan(
-    ctx: &Context,
-    df_ctx: SessionContext,
-    plan: QueryPlan,
-) -> Result<PhysicalPlanPtr> {
+async fn optimize_plan(ctx: &Context,
+                       df_ctx: SessionContext,
+                       plan: QueryPlan) -> Result<PhysicalPlanPtr> {
     let mut logical_optimizer = LogicalOptimizerImpl::with_context(df_ctx.clone());
     let plan = logical_optimizer.optimize(plan).context(LogicalOptimize)?;
 

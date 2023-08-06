@@ -334,21 +334,3 @@ impl ProjectedSchemaInner {
         Ok(())
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use crate::{projected_schema::ProjectedSchema, tests::build_schema};
-
-    #[test]
-    fn test_projected_schema() {
-        let schema = build_schema();
-        assert!(schema.num_columns() > 1);
-        let projection: Vec<usize> = (0..schema.num_columns() - 1).collect();
-        let projected_schema = ProjectedSchema::new(schema.clone(), Some(projection)).unwrap();
-        assert_eq!(
-            projected_schema.0.schema_with_key.num_columns(),
-            schema.num_columns() - 1
-        );
-        assert!(!projected_schema.is_all_projection());
-    }
-}

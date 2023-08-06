@@ -3,13 +3,13 @@
 //! Interpreter factory
 
 use catalog::manager::ManagerRef;
-use query_engine::executor::Executor;
+use query_engine::executor::QueryExecutor;
 use query_frontend::plan::Plan;
 use table_engine::engine::TableEngineRef;
 
 use crate::{
     alter_table::AlterTableInterpreter,
-    context::Context,
+    context::InterpreterContext,
     create::CreateInterpreter,
     describe::DescribeInterpreter,
     drop::DropInterpreter,
@@ -30,13 +30,11 @@ pub struct Factory<Q> {
     table_manipulator: TableManipulatorRef,
 }
 
-impl<Q: Executor + 'static> Factory<Q> {
-    pub fn new(
-        query_executor: Q,
-        catalog_manager: ManagerRef,
-        table_engine: TableEngineRef,
-        table_manipulator: TableManipulatorRef,
-    ) -> Self {
+impl<Q: QueryExecutor + 'static> Factory<Q> {
+    pub fn new(query_executor: Q,
+               catalog_manager: ManagerRef,
+               table_engine: TableEngineRef,
+               table_manipulator: TableManipulatorRef) -> Self {
         Self {
             query_executor,
             catalog_manager,
@@ -45,19 +43,22 @@ impl<Q: Executor + 'static> Factory<Q> {
         }
     }
 
-    pub fn create(self, ctx: Context, plan: Plan) -> Result<InterpreterPtr> {
+    pub fn create(self, ctx: InterpreterContext, plan: Plan) -> Result<InterpreterPtr> {
         let validate_ctx = ValidateContext {
             enable_partition_table_access: ctx.enable_partition_table_access(),
         };
+
         let validator = Validator::new(validate_ctx);
         validator.validate(&plan)?;
 
         let interpreter = match plan {
             Plan::Query(p) => SelectInterpreter::create(ctx, p, self.query_executor),
             Plan::Insert(p) => InsertInterpreter::create(ctx, p),
-            Plan::Create(p) => {
-                CreateInterpreter::create(ctx, p, self.table_engine, self.table_manipulator)
-            }
+            Plan::Create(p) =>
+                CreateInterpreter::create(ctx,
+                                          p,
+                                          self.table_engine,
+                                          self.table_manipulator),
             Plan::Drop(p) => {
                 DropInterpreter::create(ctx, p, self.table_engine, self.table_manipulator)
             }

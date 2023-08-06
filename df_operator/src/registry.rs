@@ -51,10 +51,7 @@ impl FunctionRegistryImpl {
 
 impl FunctionRegistry for FunctionRegistryImpl {
     fn register_udf(&mut self, udf: ScalarUdf) -> Result<()> {
-        ensure!(
-            !self.scalar_functions.contains_key(udf.name()),
-            UdfExists { name: udf.name() }
-        );
+        ensure!(!self.scalar_functions.contains_key(udf.name()),UdfExists { name: udf.name()});
 
         self.scalar_functions.insert(udf.name().to_string(), udf);
 

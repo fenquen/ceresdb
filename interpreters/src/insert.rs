@@ -34,7 +34,7 @@ use snafu::{OptionExt, ResultExt, Snafu};
 use table_engine::table::{TableRef, WriteRequest};
 
 use crate::{
-    context::Context,
+    context::InterpreterContext,
     interpreter::{Insert, Interpreter, InterpreterPtr, Output, Result as InterpreterResult},
 };
 
@@ -44,8 +44,8 @@ pub enum Error {
     DatafusionExpr { source: DataFusionError },
 
     #[snafu(display(
-        "Failed to get data type from datafusion physical expr, err:{}",
-        source
+    "Failed to get data type from datafusion physical expr, err:{}",
+    source
     ))]
     DatafusionDataType { source: DataFusionError },
 
@@ -80,13 +80,13 @@ pub enum Error {
 define_result!(Error);
 
 pub struct InsertInterpreter {
-    ctx: Context,
-    plan: InsertPlan,
+    ctx: InterpreterContext,
+    insertPlan: InsertPlan,
 }
 
 impl InsertInterpreter {
-    pub fn create(ctx: Context, plan: InsertPlan) -> InterpreterPtr {
-        Box::new(Self { ctx, plan })
+    pub fn create(ctx: InterpreterContext, insertPlan: InsertPlan) -> InterpreterPtr {
+        Box::new(Self { ctx, insertPlan })
     }
 }
 
@@ -95,25 +95,24 @@ impl Interpreter for InsertInterpreter {
     async fn execute(mut self: Box<Self>) -> InterpreterResult<Output> {
         // Generate tsid if needed.
         self.maybe_generate_tsid().context(Insert)?;
+
         let InsertPlan {
             table,
-            mut rows,
-            default_value_map,
-        } = self.plan;
+            rowGroup: mut rowGroup,
+            columnIndex_defaultVal,
+        } = self.insertPlan;
 
         // Fill default values
-        fill_default_values(table.clone(), &mut rows, &default_value_map).context(Insert)?;
+        fill_default_values(table.clone(),
+                            &mut rowGroup,
+                            &columnIndex_defaultVal).context(Insert)?;
 
         // Context is unused now
         let _ctx = self.ctx;
 
-        let request = WriteRequest { row_group: rows };
+        let writeRequest = WriteRequest { rowGroup };
 
-        let num_rows = table
-            .write(request)
-            .await
-            .context(WriteTable)
-            .context(Insert)?;
+        let num_rows = table.write(writeRequest).await.context(WriteTable).context(Insert)?;
 
         Ok(Output::AffectedRows(num_rows))
     }
@@ -121,7 +120,7 @@ impl Interpreter for InsertInterpreter {
 
 impl InsertInterpreter {
     fn maybe_generate_tsid(&mut self) -> Result<()> {
-        let schema = self.plan.rows.schema();
+        let schema = self.insertPlan.rowGroup.schema();
         let tsid_idx = schema.index_of_tsid();
 
         if let Some(idx) = tsid_idx {
@@ -140,8 +139,8 @@ impl InsertInterpreter {
                 .collect();
 
             let mut hash_bytes = Vec::new();
-            for i in 0..self.plan.rows.num_rows() {
-                let row = self.plan.rows.get_row_mut(i).unwrap();
+            for i in 0..self.insertPlan.rowGroup.num_rows() {
+                let row = self.insertPlan.rowGroup.get_row_mut(i).unwrap();
 
                 let mut tsid_builder = TsidBuilder::new(&mut hash_bytes);
 
@@ -197,19 +196,18 @@ impl<'a> TsidBuilder<'a> {
 }
 
 /// Fill missing columns which can be calculated via default value expr.
-fn fill_default_values(
-    table: TableRef,
-    row_groups: &mut RowGroup,
-    default_value_map: &BTreeMap<usize, DfLogicalExpr>,
-) -> Result<()> {
+fn fill_default_values(table: TableRef,
+                       row_groups: &mut RowGroup,
+                       columnIndex_columnDefaultVal: &BTreeMap<usize, DfLogicalExpr>) -> Result<()> {
     let mut cached_column_values: HashMap<usize, DfColumnarValue> = HashMap::new();
+
     let table_arrow_schema = table.schema().to_arrow_schema_ref();
     let df_schema_ref = table_arrow_schema
         .clone()
         .to_dfschema_ref()
         .context(DatafusionSchema)?;
 
-    for (column_idx, default_value_expr) in default_value_map.iter() {
+    for (column_idx, default_value_expr) in columnIndex_columnDefaultVal.iter() {
         let execution_props = ExecutionProps::default();
 
         // Optimize logical expr
@@ -242,13 +240,11 @@ fn fill_default_values(
             .context(DatafusionSchema)?;
 
         // Create physical expr
-        let physical_expr = create_physical_expr(
-            &simplified_expr,
-            &input_df_schema,
-            &input_arrow_schema,
-            &execution_props,
-        )
-        .context(DatafusionExpr)?;
+        let physical_expr =
+            create_physical_expr(&simplified_expr,
+                                 &input_df_schema,
+                                 &input_arrow_schema,
+                                 &execution_props).context(DatafusionExpr)?;
 
         let from_type = physical_expr
             .data_type(&input_arrow_schema)
@@ -272,15 +268,15 @@ fn fill_default_values(
                 )
             })
             .collect::<Result<Vec<_>>>()?;
-        let input = if input_arrays.is_empty() {
+
+        let inputRecordBatch = if input_arrays.is_empty() {
             RecordBatch::new_empty(Arc::new(input_arrow_schema))
         } else {
-            RecordBatch::try_new(Arc::new(input_arrow_schema), input_arrays)
-                .context(BuildArrowRecordBatch)?
+            RecordBatch::try_new(Arc::new(input_arrow_schema), input_arrays).context(BuildArrowRecordBatch)?
         };
 
         let output = casted_physical_expr
-            .evaluate(&input)
+            .evaluate(&inputRecordBatch)
             .context(DatafusionExecutor)?;
 
         fill_column_to_row_group(*column_idx, &output, row_groups)?;

@@ -73,36 +73,38 @@ lazy_static! {
 }
 
 pub const METRICS: &str = "METRICS";
+
 /// A object store wrapper for collecting statistics about the underlying store.
 #[derive(Debug)]
-pub struct StoreWithMetrics {
-    store: ObjectStoreRef,
+pub struct ObjectStoreWithMetrics {
+    underlyingObjectStore: Arc<dyn ObjectStore>,
+
     /// Use a separate runtime to execute object store methods;
     /// Prevent computationally intensive tasks from occupying the runtime for a
     /// long time and causing an increase in access time.
     runtime: Arc<Runtime>,
 }
 
-impl StoreWithMetrics {
-    pub fn new(store: ObjectStoreRef, runtime: Arc<Runtime>) -> Self {
-        Self { store, runtime }
+impl ObjectStoreWithMetrics {
+    pub fn new(underlyingObjectStore: ObjectStoreRef, runtime: Arc<Runtime>) -> Self {
+        Self { underlyingObjectStore, runtime }
     }
 }
 
-impl Display for StoreWithMetrics {
+impl Display for ObjectStoreWithMetrics {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Store with metrics, underlying store:{}", self.store)
+        write!(f, "Store with metrics, underlying store:{}", self.underlyingObjectStore)
     }
 }
 
 #[async_trait]
-impl ObjectStore for StoreWithMetrics {
+impl ObjectStore for ObjectStoreWithMetrics {
     async fn put(&self, location: &Path, bytes: Bytes) -> Result<()> {
         let _timer = OBJECT_STORE_DURATION_HISTOGRAM.put.start_timer();
         OBJECT_STORE_THROUGHPUT_HISTOGRAM
             .put
             .observe(bytes.len() as f64);
-        self.store.put(location, bytes).await
+        self.underlyingObjectStore.put(location, bytes).await
     }
 
     async fn put_multipart(
@@ -113,7 +115,7 @@ impl ObjectStore for StoreWithMetrics {
 
         let instant = Instant::now();
         let loc = location.clone();
-        let store = self.store.clone();
+        let store = self.underlyingObjectStore.clone();
         let res = self
             .runtime
             .spawn(async move { store.put_multipart(&loc).await })
@@ -137,12 +139,12 @@ impl ObjectStore for StoreWithMetrics {
         let _timer = OBJECT_STORE_DURATION_HISTOGRAM
             .abort_multipart
             .start_timer();
-        self.store.abort_multipart(location, multipart_id).await
+        self.underlyingObjectStore.abort_multipart(location, multipart_id).await
     }
 
     async fn get(&self, location: &Path) -> Result<GetResult> {
         let _timer = OBJECT_STORE_DURATION_HISTOGRAM.get.start_timer();
-        let store = self.store.clone();
+        let store = self.underlyingObjectStore.clone();
         let loc = location.clone();
         self.runtime
             .spawn(async move { store.get(&loc).await })
@@ -157,7 +159,7 @@ impl ObjectStore for StoreWithMetrics {
         let _timer = OBJECT_STORE_DURATION_HISTOGRAM.get_range.start_timer();
 
         let instant = Instant::now();
-        let store = self.store.clone();
+        let store = self.underlyingObjectStore.clone();
         let loc = location.clone();
         let result = self
             .runtime
@@ -183,7 +185,7 @@ impl ObjectStore for StoreWithMetrics {
 
     async fn get_ranges(&self, location: &Path, ranges: &[Range<usize>]) -> Result<Vec<Bytes>> {
         let _timer = OBJECT_STORE_DURATION_HISTOGRAM.get_ranges.start_timer();
-        let result = self.store.get_ranges(location, ranges).await?;
+        let result = self.underlyingObjectStore.get_ranges(location, ranges).await?;
         let len: usize = result.iter().map(|v| v.len()).sum();
         OBJECT_STORE_THROUGHPUT_HISTOGRAM
             .get_ranges
@@ -195,7 +197,7 @@ impl ObjectStore for StoreWithMetrics {
         let _timer = OBJECT_STORE_DURATION_HISTOGRAM.head.start_timer();
 
         let instant = Instant::now();
-        let store = self.store.clone();
+        let store = self.underlyingObjectStore.clone();
         let loc = location.clone();
         let response = self
             .runtime
@@ -216,7 +218,7 @@ impl ObjectStore for StoreWithMetrics {
 
     async fn delete(&self, location: &Path) -> Result<()> {
         let _timer = OBJECT_STORE_DURATION_HISTOGRAM.delete.start_timer();
-        let store = self.store.clone();
+        let store = self.underlyingObjectStore.clone();
         let loc = location.clone();
         self.runtime
             .spawn(async move { store.delete(&loc).await })
@@ -229,37 +231,37 @@ impl ObjectStore for StoreWithMetrics {
 
     async fn list(&self, prefix: Option<&Path>) -> Result<BoxStream<'_, Result<ObjectMeta>>> {
         let _timer = OBJECT_STORE_DURATION_HISTOGRAM.list.start_timer();
-        self.store.list(prefix).await
+        self.underlyingObjectStore.list(prefix).await
     }
 
     async fn list_with_delimiter(&self, prefix: Option<&Path>) -> Result<ListResult> {
         let _timer = OBJECT_STORE_DURATION_HISTOGRAM
             .list_with_delimiter
             .start_timer();
-        self.store.list_with_delimiter(prefix).await
+        self.underlyingObjectStore.list_with_delimiter(prefix).await
     }
 
     async fn copy(&self, from: &Path, to: &Path) -> Result<()> {
         let _timer = OBJECT_STORE_DURATION_HISTOGRAM.copy.start_timer();
-        self.store.copy(from, to).await
+        self.underlyingObjectStore.copy(from, to).await
     }
 
     async fn rename(&self, from: &Path, to: &Path) -> Result<()> {
         let _timer = OBJECT_STORE_DURATION_HISTOGRAM.rename.start_timer();
-        self.store.rename(from, to).await
+        self.underlyingObjectStore.rename(from, to).await
     }
 
     async fn copy_if_not_exists(&self, from: &Path, to: &Path) -> Result<()> {
         let _timer = OBJECT_STORE_DURATION_HISTOGRAM
             .copy_if_not_exists
             .start_timer();
-        self.store.copy_if_not_exists(from, to).await
+        self.underlyingObjectStore.copy_if_not_exists(from, to).await
     }
 
     async fn rename_if_not_exists(&self, from: &Path, to: &Path) -> Result<()> {
         let _timer = OBJECT_STORE_DURATION_HISTOGRAM
             .rename_if_not_exists
             .start_timer();
-        self.store.rename_if_not_exists(from, to).await
+        self.underlyingObjectStore.rename_if_not_exists(from, to).await
     }
 }

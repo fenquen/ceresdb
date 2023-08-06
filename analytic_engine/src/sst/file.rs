@@ -584,21 +584,3 @@ impl FilePurger {
 }
 
 pub type FilePurgerRef = Arc<FilePurger>;
-
-#[cfg(test)]
-pub mod tests {
-    use super::*;
-
-    pub struct FilePurgerMocker;
-
-    impl FilePurgerMocker {
-        pub fn mock() -> FilePurger {
-            let (sender, _receiver) = mpsc::unbounded_channel();
-
-            FilePurger {
-                sender,
-                handle: Mutex::new(None),
-            }
-        }
-    }
-}

@@ -45,6 +45,7 @@ use crate::{
     table::data::{TableDataRef, TableShardInfo},
     RecoverMode, TableOptions,
 };
+use crate::manifest::Manifest;
 
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, Snafu)]
@@ -78,7 +79,7 @@ pub struct SpaceStore {
     /// All spaces of the engine.
     spaces: SpacesRef,
     /// Manifest (or meta) stores meta data of the engine instance.
-    manifest: ManifestRef,
+    manifest: Arc<dyn Manifest>,
     /// Wal of all tables
     wal_manager: WalManagerRef,
     /// Object store picker for persisting data.
@@ -123,16 +124,15 @@ impl SpaceStore {
     }
 }
 
-/// Table engine instance
-///
 /// Manages all spaces, also contains needed resources shared across all table
-pub struct Instance {
+pub struct TableEngineInstance {
     /// Space storage
     space_store: SpaceStoreRef,
+
     /// Runtime to execute async tasks.
     runtimes: Arc<EngineRuntimes>,
-    /// Global table options, overwrite mutable options in each table's
-    /// TableOptions.
+
+    /// Global table options, overwrite mutable options in each table's TableOptions.
     table_opts: TableOptions,
 
     // End of write group options.
@@ -140,28 +140,37 @@ pub struct Instance {
     compaction_scheduler: CompactionSchedulerRef,
 
     meta_cache: Option<MetaCacheRef>,
+
     /// Engine memtable memory usage collector
     mem_usage_collector: Arc<MemUsageCollector>,
+
     pub(crate) max_rows_in_write_queue: usize,
+
     /// Engine write buffer size
     pub(crate) db_write_buffer_size: usize,
+
     /// Space write buffer size
     pub(crate) space_write_buffer_size: usize,
+
     /// Replay wal batch size
     pub(crate) replay_batch_size: usize,
+
     /// Write sst max buffer size
     pub(crate) write_sst_max_buffer_size: usize,
+
     /// Max retry limit to flush memtables
     pub(crate) max_retry_flush_limit: usize,
+
     /// Max bytes per write batch
     pub(crate) max_bytes_per_write_batch: Option<usize>,
+
     /// Options for scanning sst
     pub(crate) scan_options: ScanOptions,
     pub(crate) iter_options: Option<IterOptions>,
     pub(crate) recover_mode: RecoverMode,
 }
 
-impl Instance {
+impl TableEngineInstance {
     /// Close the instance gracefully.
     pub async fn close(&self) -> Result<()> {
         self.file_purger.stop().await.context(StopFilePurger)?;
@@ -244,7 +253,7 @@ impl Instance {
 }
 
 // TODO(yingwen): Instance builder
-impl Instance {
+impl TableEngineInstance {
     /// Find space using read lock
     fn get_space_by_read_lock(&self, space: SpaceId) -> Option<SpaceRef> {
         let spaces = self.space_store.spaces.read().unwrap();
@@ -286,7 +295,7 @@ impl Instance {
 }
 
 /// Instance reference
-pub type InstanceRef = Arc<Instance>;
+pub type InstanceRef = Arc<TableEngineInstance>;
 
 #[inline]
 pub(crate) fn create_wal_location(table_id: TableId, shard_info: TableShardInfo) -> WalLocation {

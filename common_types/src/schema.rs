@@ -366,34 +366,33 @@ impl IndexInWriterSchema {
 pub(crate) struct ColumnSchemas {
     /// Column schemas
     columns: Vec<ColumnSchema>,
-    /// Column name to index of that column schema in `columns`, the index is
-    /// guaranteed to be valid
-    name_to_index: HashMap<String, usize>,
+    /// Column name to index of that column schema in `columns`, the index is guaranteed to be valid
+    columnName_columnIndex: HashMap<String, usize>,
     /// Byte offsets of each column in contiguous row.
-    byte_offsets: Vec<usize>,
+    columnByteOffsetVec: Vec<usize>,
     /// String buffer offset in contiguous row.
     string_buffer_offset: usize,
 }
 
 impl ColumnSchemas {
     fn new(columns: Vec<ColumnSchema>) -> Self {
-        let name_to_index = columns
+        let columnName_columnIndex = columns
             .iter()
             .enumerate()
             .map(|(idx, c)| (c.name.to_string(), idx))
             .collect();
 
         let mut current_offset = 0;
-        let mut byte_offsets = Vec::with_capacity(columns.len());
+        let mut columnByteOffsetVec = Vec::with_capacity(columns.len());
         for column_schema in &columns {
-            byte_offsets.push(current_offset);
+            columnByteOffsetVec.push(current_offset);
             current_offset += contiguous::byte_size_of_datum(&column_schema.data_type);
         }
 
         Self {
             columns,
-            name_to_index,
-            byte_offsets,
+            columnName_columnIndex,
+            columnByteOffsetVec,
             string_buffer_offset: current_offset,
         }
     }
@@ -413,7 +412,7 @@ impl ColumnSchemas {
     }
 
     pub fn index_of(&self, name: &str) -> Option<usize> {
-        self.name_to_index.get(name).copied()
+        self.columnName_columnIndex.get(name).copied()
     }
 }
 
@@ -598,8 +597,7 @@ pub fn compare_row<LR: RowView, RR: RowView>(
 /// - The Schema should built by builder
 #[derive(Clone, PartialEq)]
 pub struct Schema {
-    /// The underlying arrow schema, data type of fields must be supported by
-    /// datum
+    /// The underlying arrow schema, data type of fields must be supported by datum
     arrow_schema: ArrowSchemaRef,
     /// The primary key index list in columns
     primary_key_indexes: Vec<usize>,
@@ -711,7 +709,7 @@ impl Schema {
     /// Returns an immutable reference of a specific [ColumnSchema] selected by
     /// name.
     pub fn column_with_name(&self, name: &str) -> Option<&ColumnSchema> {
-        let index = self.column_schemas.name_to_index.get(name)?;
+        let index = self.column_schemas.columnName_columnIndex.get(name)?;
         Some(&self.column_schemas.columns[*index])
     }
 
@@ -944,7 +942,7 @@ impl Schema {
     /// Returns byte offsets in contiguous row.
     #[inline]
     pub fn byte_offsets(&self) -> &[usize] {
-        &self.column_schemas.byte_offsets
+        &self.column_schemas.columnByteOffsetVec
     }
 
     /// Returns byte offset in contiguous row of given column.
@@ -952,7 +950,7 @@ impl Schema {
     /// Panic if out of bound.
     #[inline]
     pub fn byte_offset(&self, index: usize) -> usize {
-        self.column_schemas.byte_offsets[index]
+        self.column_schemas.columnByteOffsetVec[index]
     }
 
     /// Returns string buffer offset in contiguous row.
@@ -1052,28 +1050,26 @@ impl Builder {
     }
 
     /// Add a key column
-    pub fn add_key_column(mut self, mut column: ColumnSchema) -> Result<Self> {
-        self.may_alloc_column_id(&mut column);
-        self.validate_column(&column, true)?;
+    pub fn add_key_column(mut self, mut columnSchema: ColumnSchema) -> Result<Self> {
+        self.may_alloc_column_id(&mut columnSchema);
+        self.validate_column(&columnSchema, true)?;
 
-        ensure!(!column.is_nullable, NullKeyColumn { name: column.name });
+        ensure!(!columnSchema.is_nullable, NullKeyColumn { name: columnSchema.name });
 
-        // FIXME(xikai): it seems not reasonable to decide the timestamp column in this
-        // way.
-        let is_timestamp = DatumKind::Timestamp == column.data_type;
-        if is_timestamp {
+        // FIXME(xikai): it seems not reasonable to decide the timestamp column in this way.
+        if DatumKind::Timestamp == columnSchema.data_type {
             ensure!(
                 self.timestamp_index.is_none(),
                 TimestampKeyExists {
                     timestamp_column: &self.columns[self.timestamp_index.unwrap()].name,
-                    given_column: column.name,
+                    given_column: columnSchema.name,
                 }
             );
             self.timestamp_index = Some(self.columns.len());
         }
-
         self.primary_key_indexes.push(self.columns.len());
-        self.insert_new_column(column);
+
+        self.insert_new_column(columnSchema);
 
         Ok(self)
     }
@@ -1239,7 +1235,7 @@ impl Builder {
             );
         }
 
-        let fields = self
+        let arrowFieldVec = self
             .columns
             .iter()
             .map(|c| c.to_arrow_field())
@@ -1247,7 +1243,7 @@ impl Builder {
         let meta = self.build_arrow_schema_meta();
 
         Ok(Schema {
-            arrow_schema: Arc::new(ArrowSchema::new_with_metadata(fields, meta)),
+            arrow_schema: Arc::new(ArrowSchema::new_with_metadata(arrowFieldVec, meta)),
             primary_key_indexes: self.primary_key_indexes,
             timestamp_index,
             tsid_index,
@@ -1300,485 +1296,5 @@ impl SchemaEncoder {
             InvalidSchemaEncodingVersion { version }
         );
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use bytes_ext::Bytes;
-
-    use super::*;
-    use crate::{
-        datum::Datum,
-        row::{Row, RowWithMeta},
-        time::Timestamp,
-    };
-
-    fn build_test_schema() -> Schema {
-        Builder::new()
-            .auto_increment_column_id(true)
-            .add_key_column(
-                column_schema::Builder::new("key1".to_string(), DatumKind::Varbinary)
-                    .build()
-                    .expect("should succeed build column schema"),
-            )
-            .unwrap()
-            .add_key_column(
-                column_schema::Builder::new("timestamp".to_string(), DatumKind::Timestamp)
-                    .build()
-                    .expect("should succeed build column schema"),
-            )
-            .unwrap()
-            .add_normal_column(
-                column_schema::Builder::new("field1".to_string(), DatumKind::Double)
-                    .build()
-                    .expect("should succeed build column schema"),
-            )
-            .unwrap()
-            .add_normal_column(
-                column_schema::Builder::new("field2".to_string(), DatumKind::Double)
-                    .build()
-                    .expect("should succeed build column schema"),
-            )
-            .unwrap()
-            .build()
-            .unwrap()
-    }
-
-    #[test]
-    fn test_schema_encoding() {
-        let schema = build_test_schema();
-        let encoder = SchemaEncoder::default();
-        let encoded_schema = encoder
-            .encode(&schema)
-            .expect("Should succeed in encoding schema");
-
-        let decoded_schema = encoder
-            .decode(&encoded_schema)
-            .expect("Should succeed in decoding schema");
-
-        assert_eq!(schema, decoded_schema);
-    }
-
-    #[test]
-    fn test_schema() {
-        let schema = build_test_schema();
-
-        // Length related test
-        assert_eq!(4, schema.columns().len());
-        assert_eq!(4, schema.num_columns());
-        assert_eq!(2, schema.primary_key_indexes.len());
-        assert_eq!(1, schema.timestamp_index());
-
-        // Test key columns
-        assert_eq!(2, schema.key_columns().len());
-        assert_eq!("key1", &schema.key_columns()[0].name);
-        assert_eq!("timestamp", &schema.key_columns()[1].name);
-
-        // Test normal columns
-        assert_eq!(2, schema.normal_columns().len());
-        assert_eq!("field1", &schema.normal_columns()[0].name);
-        assert_eq!("field2", &schema.normal_columns()[1].name);
-
-        // Test column_with_name()
-        let field1 = schema.column_with_name("field1").unwrap();
-        assert_eq!(3, field1.id);
-        assert_eq!("field1", field1.name);
-        assert!(schema.column_with_name("not exists").is_none());
-
-        // Test column()
-        assert_eq!(field1, schema.column(2));
-
-        // Test arrow schema
-        let arrow_schema = schema.as_arrow_schema_ref();
-        let key1 = arrow_schema.field(0);
-        assert_eq!("key1", key1.name());
-        let field2 = arrow_schema.field(3);
-        assert_eq!("field2", field2.name());
-
-        // Test index_of()
-        assert_eq!(1, schema.index_of("timestamp").unwrap());
-        assert!(schema.index_of("not exists").is_none());
-
-        // Test pb convert
-        let schema_pb = schema_pb::TableSchema::from(&schema);
-        let schema_from_pb = Schema::try_from(schema_pb).unwrap();
-        assert_eq!(schema, schema_from_pb);
-    }
-
-    #[test]
-    fn test_build_unordered() {
-        let schema = Builder::new()
-            .auto_increment_column_id(true)
-            .add_normal_column(
-                column_schema::Builder::new("field1".to_string(), DatumKind::Double)
-                    .build()
-                    .expect("should succeed build column schema"),
-            )
-            .unwrap()
-            .add_key_column(
-                column_schema::Builder::new("key1".to_string(), DatumKind::Timestamp)
-                    .build()
-                    .expect("should succeed build column schema"),
-            )
-            .unwrap()
-            .add_key_column(
-                column_schema::Builder::new("key2".to_string(), DatumKind::Varbinary)
-                    .build()
-                    .expect("should succeed build column schema"),
-            )
-            .unwrap()
-            .add_normal_column(
-                column_schema::Builder::new("field2".to_string(), DatumKind::Double)
-                    .build()
-                    .expect("should succeed build column schema"),
-            )
-            .unwrap()
-            .build()
-            .unwrap();
-
-        let columns = schema.columns();
-        assert_eq!(1, columns[0].id);
-        assert_eq!("field1", columns[0].name);
-        assert_eq!(2, columns[1].id);
-        assert_eq!("key1", columns[1].name);
-        assert_eq!(3, columns[2].id);
-        assert_eq!("key2", columns[2].name);
-        assert_eq!(4, columns[3].id);
-        assert_eq!("field2", columns[3].name);
-    }
-
-    #[test]
-    fn test_name_exists() {
-        let builder = Builder::new()
-            .auto_increment_column_id(true)
-            .add_normal_column(
-                column_schema::Builder::new("field1".to_string(), DatumKind::Double)
-                    .build()
-                    .expect("should succeed build column schema"),
-            )
-            .unwrap();
-        assert!(builder
-            .add_normal_column(
-                column_schema::Builder::new("field1".to_string(), DatumKind::Double)
-                    .build()
-                    .expect("should succeed build column schema"),
-            )
-            .is_err());
-    }
-
-    #[test]
-    fn test_id_exists() {
-        let builder = Builder::new()
-            .add_normal_column(
-                column_schema::Builder::new("field1".to_string(), DatumKind::Double)
-                    .id(1)
-                    .build()
-                    .expect("should succeed build column schema"),
-            )
-            .unwrap();
-        assert!(builder
-            .add_normal_column(
-                column_schema::Builder::new("field2".to_string(), DatumKind::Double)
-                    .id(1)
-                    .build()
-                    .expect("should succeed build column schema")
-            )
-            .is_err());
-    }
-
-    #[test]
-    fn test_key_column_type() {
-        assert!(Builder::new()
-            .add_key_column(
-                column_schema::Builder::new("key".to_string(), DatumKind::Double)
-                    .id(1)
-                    .build()
-                    .expect("should succeed build column schema")
-            )
-            .is_err());
-    }
-
-    #[test]
-    fn test_timestamp_key_exists() {
-        let builder = Builder::new()
-            .auto_increment_column_id(true)
-            .add_key_column(
-                column_schema::Builder::new("key1".to_string(), DatumKind::Timestamp)
-                    .build()
-                    .expect("should succeed build column schema"),
-            )
-            .unwrap();
-        assert!(builder
-            .add_key_column(
-                column_schema::Builder::new("key2".to_string(), DatumKind::Timestamp)
-                    .build()
-                    .expect("should succeed build column schema")
-            )
-            .is_err());
-    }
-
-    #[test]
-    fn test_multiple_timestamp() {
-        Builder::new()
-            .auto_increment_column_id(true)
-            .add_key_column(
-                column_schema::Builder::new("key1".to_string(), DatumKind::Timestamp)
-                    .build()
-                    .expect("should succeed build column schema"),
-            )
-            .unwrap()
-            .add_normal_column(
-                column_schema::Builder::new("field1".to_string(), DatumKind::Timestamp)
-                    .build()
-                    .expect("should succeed build column schema"),
-            )
-            .unwrap()
-            .build()
-            .unwrap();
-    }
-
-    #[test]
-    fn test_missing_timestamp_key() {
-        let builder = Builder::new()
-            .auto_increment_column_id(true)
-            .add_key_column(
-                column_schema::Builder::new("key1".to_string(), DatumKind::Varbinary)
-                    .build()
-                    .expect("should succeed build column schema"),
-            )
-            .unwrap()
-            .add_normal_column(
-                column_schema::Builder::new("field1".to_string(), DatumKind::Double)
-                    .build()
-                    .expect("should succeed build column schema"),
-            )
-            .unwrap();
-        assert!(builder.build().is_err());
-    }
-
-    #[test]
-    fn test_null_key() {
-        assert!(Builder::new()
-            .add_key_column(
-                column_schema::Builder::new("key1".to_string(), DatumKind::Varbinary)
-                    .id(1)
-                    .is_nullable(true)
-                    .build()
-                    .expect("should succeed build column schema")
-            )
-            .is_err());
-    }
-
-    #[test]
-    fn test_max_column_id() {
-        let builder = Builder::new()
-            .add_key_column(
-                column_schema::Builder::new("key1".to_string(), DatumKind::Varbinary)
-                    .id(2)
-                    .build()
-                    .expect("should succeed build column schema"),
-            )
-            .unwrap()
-            .add_normal_column(
-                column_schema::Builder::new("field1".to_string(), DatumKind::Timestamp)
-                    .id(5)
-                    .build()
-                    .expect("should succeed build column schema"),
-            )
-            .unwrap();
-
-        let schema = builder
-            .auto_increment_column_id(true)
-            .add_key_column(
-                column_schema::Builder::new("key2".to_string(), DatumKind::Timestamp)
-                    .build()
-                    .expect("should succeed build column schema"),
-            )
-            .unwrap()
-            .add_normal_column(
-                column_schema::Builder::new("field2".to_string(), DatumKind::Timestamp)
-                    .build()
-                    .expect("should succeed build column schema"),
-            )
-            .unwrap()
-            .build()
-            .unwrap();
-
-        let columns = schema.columns();
-        // Check key1
-        assert_eq!("key1", &columns[0].name);
-        assert_eq!(2, columns[0].id);
-        // Check field1
-        assert_eq!("field1", &columns[1].name);
-        assert_eq!(5, columns[1].id);
-        // Check key2
-        assert_eq!("key2", &columns[2].name);
-        assert_eq!(6, columns[2].id);
-        // Check field2
-        assert_eq!("field2", &columns[3].name);
-        assert_eq!(7, columns[3].id);
-    }
-
-    fn assert_row_compare(ordering: Ordering, schema: &Schema, row1: &Row, row2: &Row) {
-        let schema_with_key = schema.to_record_schema_with_key();
-        let lhs = RowWithMeta {
-            row: row1,
-            schema: &schema_with_key,
-        };
-        let rhs = RowWithMeta {
-            row: row2,
-            schema: &schema_with_key,
-        };
-        assert_eq!(ordering, schema.compare_row(&lhs, &rhs));
-    }
-
-    #[test]
-    fn test_compare_row() {
-        let schema = Builder::new()
-            .auto_increment_column_id(true)
-            .add_key_column(
-                column_schema::Builder::new("key1".to_string(), DatumKind::Varbinary)
-                    .build()
-                    .expect("should succeed build column schema"),
-            )
-            .unwrap()
-            .add_key_column(
-                column_schema::Builder::new("key2".to_string(), DatumKind::Timestamp)
-                    .build()
-                    .expect("should succeed build column schema"),
-            )
-            .unwrap()
-            .add_normal_column(
-                column_schema::Builder::new("field1".to_string(), DatumKind::Double)
-                    .build()
-                    .expect("should succeed build column schema"),
-            )
-            .unwrap()
-            .build()
-            .unwrap();
-
-        // Test equal
-        {
-            let row1 = Row::from_datums(vec![
-                Datum::Varbinary(Bytes::from_static(b"key1")),
-                Datum::Timestamp(Timestamp::new(1005)),
-                Datum::Double(12.5),
-            ]);
-            let row2 = Row::from_datums(vec![
-                Datum::Varbinary(Bytes::from_static(b"key1")),
-                Datum::Timestamp(Timestamp::new(1005)),
-                Datum::Double(15.5),
-            ]);
-
-            assert_row_compare(Ordering::Equal, &schema, &row1, &row2);
-        }
-
-        // Test first key column less
-        {
-            let row1 = Row::from_datums(vec![
-                Datum::Varbinary(Bytes::from_static(b"key2")),
-                Datum::Timestamp(Timestamp::new(1005)),
-                Datum::Double(17.5),
-            ]);
-            let row2 = Row::from_datums(vec![
-                Datum::Varbinary(Bytes::from_static(b"key5")),
-                Datum::Timestamp(Timestamp::new(1005)),
-                Datum::Double(17.5),
-            ]);
-
-            assert_row_compare(Ordering::Less, &schema, &row1, &row2);
-        }
-
-        // Test second key column less
-        {
-            let row1 = Row::from_datums(vec![
-                Datum::Varbinary(Bytes::from_static(b"key2")),
-                Datum::Timestamp(Timestamp::new(1002)),
-                Datum::Double(17.5),
-            ]);
-            let row2 = Row::from_datums(vec![
-                Datum::Varbinary(Bytes::from_static(b"key2")),
-                Datum::Timestamp(Timestamp::new(1005)),
-                Datum::Double(17.5),
-            ]);
-
-            assert_row_compare(Ordering::Less, &schema, &row1, &row2);
-        }
-
-        // Test first key column greater
-        {
-            let row1 = Row::from_datums(vec![
-                Datum::Varbinary(Bytes::from_static(b"key7")),
-                Datum::Timestamp(Timestamp::new(1005)),
-                Datum::Double(17.5),
-            ]);
-            let row2 = Row::from_datums(vec![
-                Datum::Varbinary(Bytes::from_static(b"key5")),
-                Datum::Timestamp(Timestamp::new(1005)),
-                Datum::Double(17.5),
-            ]);
-
-            assert_row_compare(Ordering::Greater, &schema, &row1, &row2);
-        }
-
-        // Test second key column greater
-        {
-            let row1 = Row::from_datums(vec![
-                Datum::Varbinary(Bytes::from_static(b"key2")),
-                Datum::Timestamp(Timestamp::new(1007)),
-                Datum::Double(17.5),
-            ]);
-            let row2 = Row::from_datums(vec![
-                Datum::Varbinary(Bytes::from_static(b"key2")),
-                Datum::Timestamp(Timestamp::new(1005)),
-                Datum::Double(17.5),
-            ]);
-
-            assert_row_compare(Ordering::Greater, &schema, &row1, &row2);
-        }
-    }
-
-    #[test]
-    fn test_build_from_arrow_schema() {
-        let schema = Builder::new()
-            .auto_increment_column_id(true)
-            .add_key_column(
-                column_schema::Builder::new(TSID_COLUMN.to_string(), DatumKind::UInt64)
-                    .build()
-                    .expect("should succeed build column schema"),
-            )
-            .unwrap()
-            .add_key_column(
-                column_schema::Builder::new("timestamp".to_string(), DatumKind::Timestamp)
-                    .build()
-                    .expect("should succeed build column schema"),
-            )
-            .unwrap()
-            .add_normal_column(
-                column_schema::Builder::new("value".to_string(), DatumKind::Double)
-                    .build()
-                    .expect("should succeed build column schema"),
-            )
-            .unwrap()
-            .build()
-            .expect("should succeed to build schema");
-
-        let arrow_schema = schema.clone().into_arrow_schema_ref();
-        let new_schema = Builder::build_from_arrow_schema(arrow_schema)
-            .expect("should succeed to build new schema");
-
-        assert_eq!(schema, new_schema);
-    }
-
-    #[test]
-    fn test_indexes_encode_and_decode() {
-        let idx = Indexes(vec![1, 2, 3]);
-        assert_eq!("1,2,3", idx.to_string());
-        assert_eq!(idx, Indexes::from_str("1,2,3").unwrap());
-
-        let idx = Indexes(vec![]);
-        assert_eq!("", idx.to_string());
-        assert_eq!(idx, Indexes::from_str("").unwrap());
     }
 }

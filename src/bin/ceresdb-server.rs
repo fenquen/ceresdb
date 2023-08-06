@@ -2,7 +2,10 @@
 
 //! The main entry point to start the server
 
-use std::env;
+#![allow(non_snake_case)]
+
+use std::{env, fs};
+use std::path::Path;
 
 use ceresdb::{
     config::{ClusterDeployment, Config},
@@ -39,13 +42,19 @@ fn fetch_version() -> String {
         ("Target", target),
         ("Build date", build_time),
     ]
-    .iter()
-    .map(|(label, value)| format!("{label}: {value}"))
-    .collect::<Vec<_>>()
-    .join("\n")
+        .iter()
+        .map(|(label, value)| format!("{label}: {value}"))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
+const DATA_DIR_PATH: &str = concat!(env!("HOME"), "/ceresdb_data");
+const WAL_DIR_PATH: &str = concat!(env!("HOME"), "/ceresdb_wal_rocksdb");
+
 fn main() {
+    _ = fs::remove_dir_all(Path::new(DATA_DIR_PATH));
+    _ = fs::remove_dir_all(Path::new(WAL_DIR_PATH));
+
     let version = fetch_version();
     let matches = App::new("CeresDB Server")
         .version(version.as_str())
@@ -56,8 +65,7 @@ fn main() {
                 .required(false)
                 .takes_value(true)
                 .help("Set configuration file, eg: \"/path/server.toml\""),
-        )
-        .get_matches();
+        ).get_matches();
 
     let mut config = match matches.value_of("config") {
         Some(path) => {
@@ -79,15 +87,14 @@ fn main() {
     println!("CeresDB server tries starting with config:{config:?}");
 
     // Setup log.
-    let runtime_level = setup::setup_logger(&config);
+    let logLevel = setup::setup_logger(&config);
 
     // Setup tracing.
     let _writer_guard = setup::setup_tracing(&config);
 
     panic_ext::set_panic_hook(false);
 
-    // Log version.
     info!("version:{}", version);
 
-    setup::run_server(config, runtime_level);
+    setup::run_server(config, logLevel);
 }

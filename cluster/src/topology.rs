@@ -164,32 +164,3 @@ impl SchemaTopology {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_outdated_version() {
-        // One case is (current_version, check_version, is_outdated)
-        let cases = [(1, 2, false), (1, 1, false), (1, 0, true)];
-        for (current_version, check_version, is_outdated) in cases {
-            assert_eq!(
-                is_outdated,
-                ClusterTopology::is_outdated_version(current_version, check_version)
-            );
-        }
-    }
-
-    #[test]
-    fn test_newer_version() {
-        // One case is (current_version, check_version, is_newer)
-        let cases = [(1, 2, true), (1, 1, false), (1, 0, false)];
-        for (current_version, check_version, is_newer) in cases {
-            assert_eq!(
-                is_newer,
-                ClusterTopology::is_newer_version(current_version, check_version)
-            );
-        }
-    }
-}

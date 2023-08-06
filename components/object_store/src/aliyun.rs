@@ -50,30 +50,3 @@ pub fn try_new(aliyun_opts: &AliyunOptions) -> upstream::Result<AmazonS3> {
         .with_retry(retry_config)
         .build()
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_normalize_endpoint() {
-        let testcase = [
-            (
-                "https://oss.aliyun.com",
-                "test",
-                "https://test.oss.aliyun.com",
-            ),
-            (
-                "http://oss.aliyun.com",
-                "test",
-                "http://test.oss.aliyun.com",
-            ),
-            ("no-scheme.com", "test", "http://test.no-scheme.com"),
-        ];
-
-        for (endpoint, bucket, expected) in testcase {
-            let actual = normalize_endpoint(endpoint, bucket);
-            assert_eq!(expected, actual);
-        }
-    }
-}

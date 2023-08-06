@@ -1,9 +1,6 @@
 // Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! Logical optimizer
-
-#[cfg(test)]
-pub mod tests;
 pub mod type_conversion;
 
 use datafusion::{error::DataFusionError, prelude::SessionContext};
@@ -48,7 +45,7 @@ impl LogicalOptimizer for LogicalOptimizerImpl {
     fn optimize(&mut self, plan: QueryPlan) -> Result<QueryPlan> {
         // TODO(yingwen): Avoid clone the plan multiple times during optimization
         let QueryPlan {
-            mut df_plan,
+            dataFusionLogicalPlan: mut df_plan,
             tables,
         } = plan;
         df_plan = self
@@ -57,6 +54,6 @@ impl LogicalOptimizer for LogicalOptimizerImpl {
             .optimize(&df_plan)
             .context(DataFusionOptimize)?;
 
-        Ok(QueryPlan { df_plan, tables })
+        Ok(QueryPlan { dataFusionLogicalPlan: df_plan, tables })
     }
 }

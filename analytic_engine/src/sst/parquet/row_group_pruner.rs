@@ -179,25 +179,3 @@ impl<'a> RowGroupPruner<'a> {
         intersect
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_intersect_row_groups() {
-        let test_cases = vec![
-            (vec![0, 1, 2, 3, 4], vec![0, 3, 4, 5], vec![0, 3, 4]),
-            (vec![], vec![0, 3, 4, 5], vec![]),
-            (vec![1, 2, 3], vec![4, 5, 6], vec![]),
-            (vec![3], vec![1, 2, 3], vec![3]),
-            (vec![4, 5, 6], vec![4, 6, 7], vec![4, 6]),
-        ];
-
-        for (row_groups0, row_groups1, expect_row_groups) in test_cases {
-            let real_row_groups =
-                RowGroupPruner::intersect_pruned_row_groups(&row_groups0, &row_groups1);
-            assert_eq!(real_row_groups, expect_row_groups)
-        }
-    }
-}

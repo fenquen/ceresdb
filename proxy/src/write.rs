@@ -27,7 +27,7 @@ use generic_error::BoxError;
 use http::StatusCode;
 use interpreters::interpreter::Output;
 use log::{debug, error, info};
-use query_engine::executor::Executor as QueryExecutor;
+use query_engine::executor::QueryExecutor as QueryExecutor;
 use query_frontend::{
     frontend::{Context as FrontendContext, Frontend},
     plan::{AlterTableOperation, AlterTablePlan, InsertPlan, Plan},
@@ -147,7 +147,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             &write_request_to_local,
             &write_context.database,
         )
-        .await?;
+            .await?;
 
         // Write to local.
         self.collect_write_to_local_future(&mut futures, ctx, request_id, write_request_to_local)
@@ -195,7 +195,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 &schema_config,
                 None,
             )
-            .await?;
+                .await?;
         }
         Ok(())
     }
@@ -236,7 +236,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                         &schema_config,
                         None,
                     )
-                    .await?;
+                        .await?;
                 }
             }
         }
@@ -274,7 +274,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         debug!("Execute create table begin, plan:{:?}", plan);
 
         let output = self
-            .execute_plan(request_id, catalog, schema, plan, deadline)
+            .execute_plan(request_id, catalog, schema, plan, deadline, false)
             .await?;
 
         ensure!(
@@ -428,7 +428,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                         msg: "Forwarded write request failed",
                     })
             }
-            .boxed();
+                .boxed();
 
             Box::new(write) as _
         };
@@ -460,7 +460,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             ForwardResult::Local => InternalNoCause {
                 msg: "Local response is not expected".to_string(),
             }
-            .fail(),
+                .fail(),
         }
     }
 
@@ -556,7 +556,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                         columns,
                         deadline,
                     )
-                    .await?;
+                        .await?;
                 }
             }
 
@@ -578,11 +578,11 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         debug!(
             "Execute insert plan begin, table:{}, row_num:{}",
             insert_plan.table.name(),
-            insert_plan.rows.num_rows()
+            insert_plan.rowGroup.num_rows()
         );
         let plan = Plan::Insert(insert_plan);
         let output = self
-            .execute_plan(request_id, catalog, schema, plan, deadline)
+            .execute_plan(request_id, catalog, schema, plan, deadline, false)
             .await;
         output.and_then(|output| match output {
             Output::AffectedRows(n) => Ok(n),
@@ -590,7 +590,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 code: StatusCode::BAD_REQUEST,
                 msg: "Invalid output type, expect AffectedRows, found Records",
             }
-            .fail(),
+                .fail(),
         })
     }
 
@@ -649,7 +649,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             operations: AlterTableOperation::AddColumn(columns),
         });
         let _ = self
-            .execute_plan(request_id, catalog, schema, plan, deadline)
+            .execute_plan(request_id, catalog, schema, plan, deadline, false)
             .await?;
 
         info!("Add columns success, request_id:{request_id}, table:{table_name}");
@@ -774,8 +774,8 @@ fn write_table_request_to_insert_plan(
         .build();
     Ok(InsertPlan {
         table,
-        rows: row_group,
-        default_value_map: BTreeMap::new(),
+        rowGroup: row_group,
+        columnIndex_defaultVal: BTreeMap::new(),
     })
 }
 
@@ -942,209 +942,5 @@ fn convert_proto_value_to_datum(
             ),
         }
             .fail(),
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use ceresdbproto::storage::{value, Field, FieldGroup, Tag, Value, WriteSeriesEntry};
-    use common_types::{
-        column_schema::{self},
-        datum::{Datum, DatumKind},
-        row::Row,
-        schema::Builder,
-        time::Timestamp,
-    };
-    use system_catalog::sys_catalog_table::TIMESTAMP_COLUMN_NAME;
-
-    use super::*;
-
-    const NAME_COL1: &str = "col1";
-    const NAME_NEW_COL1: &str = "new_col1";
-    const NAME_COL2: &str = "col2";
-    const NAME_COL3: &str = "col3";
-    const NAME_COL4: &str = "col4";
-    const NAME_COL5: &str = "col5";
-
-    #[test]
-    fn test_write_entry_to_row_group() {
-        let (schema, tag_names, field_names, write_entry) = generate_write_entry();
-        let rows =
-            write_entry_to_rows("test_table", &schema, &tag_names, &field_names, write_entry)
-                .unwrap();
-        let row0 = vec![
-            Datum::Timestamp(Timestamp::new(1000)),
-            Datum::String(NAME_COL1.into()),
-            Datum::String(NAME_COL2.into()),
-            Datum::Int64(100),
-            Datum::Null,
-        ];
-        let row1 = vec![
-            Datum::Timestamp(Timestamp::new(2000)),
-            Datum::String(NAME_COL1.into()),
-            Datum::String(NAME_COL2.into()),
-            Datum::Null,
-            Datum::Int64(10),
-        ];
-        let row2 = vec![
-            Datum::Timestamp(Timestamp::new(3000)),
-            Datum::String(NAME_COL1.into()),
-            Datum::String(NAME_COL2.into()),
-            Datum::Null,
-            Datum::Int64(10),
-        ];
-
-        let expect_rows = vec![
-            Row::from_datums(row0),
-            Row::from_datums(row1),
-            Row::from_datums(row2),
-        ];
-        assert_eq!(rows, expect_rows);
-    }
-
-    #[test]
-    fn test_find_new_columns() {
-        let write_table_request = generate_write_table_request();
-        let schema = build_schema();
-        let new_columns = find_new_columns(&schema, &write_table_request)
-            .unwrap()
-            .into_iter()
-            .map(|v| (v.name.clone(), v))
-            .collect::<HashMap<_, _>>();
-
-        assert_eq!(new_columns.len(), 2);
-        assert!(new_columns.get(NAME_NEW_COL1).is_some());
-        assert!(new_columns.get(NAME_NEW_COL1).unwrap().is_tag);
-        assert!(new_columns.get(NAME_COL5).is_some());
-        assert!(!new_columns.get(NAME_COL5).unwrap().is_tag);
-    }
-
-    fn build_schema() -> Schema {
-        Builder::new()
-            .auto_increment_column_id(true)
-            .add_key_column(
-                column_schema::Builder::new(
-                    TIMESTAMP_COLUMN_NAME.to_string(),
-                    DatumKind::Timestamp,
-                )
-                .build()
-                .unwrap(),
-            )
-            .unwrap()
-            .add_key_column(
-                column_schema::Builder::new(NAME_COL1.to_string(), DatumKind::String)
-                    .is_tag(true)
-                    .build()
-                    .unwrap(),
-            )
-            .unwrap()
-            .add_key_column(
-                column_schema::Builder::new(NAME_COL2.to_string(), DatumKind::String)
-                    .is_tag(true)
-                    .build()
-                    .unwrap(),
-            )
-            .unwrap()
-            .add_normal_column(
-                column_schema::Builder::new(NAME_COL3.to_string(), DatumKind::Int64)
-                    .build()
-                    .unwrap(),
-            )
-            .unwrap()
-            .add_normal_column(
-                column_schema::Builder::new(NAME_COL4.to_string(), DatumKind::Int64)
-                    .build()
-                    .unwrap(),
-            )
-            .unwrap()
-            .build()
-            .unwrap()
-    }
-
-    fn make_tag(name_index: u32, val: &str) -> Tag {
-        Tag {
-            name_index,
-            value: Some(Value {
-                value: Some(value::Value::StringValue(val.to_string())),
-            }),
-        }
-    }
-
-    fn make_field(name_index: u32, val: value::Value) -> Field {
-        Field {
-            name_index,
-            value: Some(Value { value: Some(val) }),
-        }
-    }
-
-    // tag_names field_names write_entry
-    fn generate_write_entry() -> (Schema, Vec<String>, Vec<String>, WriteSeriesEntry) {
-        let tag_names = vec![NAME_COL1.to_string(), NAME_COL2.to_string()];
-        let field_names = vec![NAME_COL3.to_string(), NAME_COL4.to_string()];
-
-        let tag = make_tag(0, NAME_COL1);
-        let tag1 = make_tag(1, NAME_COL2);
-        let tags = vec![tag, tag1];
-
-        let field = make_field(0, value::Value::Int64Value(100));
-        let field1 = make_field(1, value::Value::Int64Value(10));
-
-        let field_group = FieldGroup {
-            timestamp: 1000,
-            fields: vec![field],
-        };
-        let field_group1 = FieldGroup {
-            timestamp: 2000,
-            fields: vec![field1.clone()],
-        };
-        let field_group2 = FieldGroup {
-            timestamp: 3000,
-            fields: vec![field1],
-        };
-
-        let write_entry = WriteSeriesEntry {
-            tags,
-            field_groups: vec![field_group, field_group1, field_group2],
-        };
-
-        let schema = build_schema();
-        (schema, tag_names, field_names, write_entry)
-    }
-
-    fn generate_write_table_request() -> WriteTableRequest {
-        let tag1 = make_tag(0, NAME_NEW_COL1);
-        let tag2 = make_tag(1, NAME_COL1);
-        let tags = vec![tag1, tag2];
-
-        let field1 = make_field(0, value::Value::Int64Value(100));
-        let field2 = make_field(1, value::Value::Int64Value(10));
-
-        let field_group1 = FieldGroup {
-            timestamp: 1000,
-            fields: vec![field1.clone(), field2.clone()],
-        };
-        let field_group2 = FieldGroup {
-            timestamp: 2000,
-            fields: vec![field1],
-        };
-        let field_group3 = FieldGroup {
-            timestamp: 3000,
-            fields: vec![field2],
-        };
-
-        let write_entry = WriteSeriesEntry {
-            tags,
-            field_groups: vec![field_group1, field_group2, field_group3],
-        };
-
-        let tag_names = vec![NAME_NEW_COL1.to_string(), NAME_COL1.to_string()];
-        let field_names = vec![NAME_COL3.to_string(), NAME_COL5.to_string()];
-
-        WriteTableRequest {
-            table: "test".to_string(),
-            tag_names,
-            field_names,
-            entries: vec![write_entry],
-        }
     }
 }

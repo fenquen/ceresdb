@@ -95,27 +95,3 @@ pub trait SstReader {
         &mut self,
     ) -> Result<Box<dyn PrefetchableStream<Item = Result<RecordBatchWithKey>>>>;
 }
-
-#[cfg(test)]
-pub mod tests {
-    use common_types::row::Row;
-
-    use super::*;
-    use crate::prefetchable_stream::PrefetchableStream;
-
-    pub async fn check_stream<S>(stream: &mut S, expected_rows: Vec<Row>)
-    where
-        S: PrefetchableStream<Item = Result<RecordBatchWithKey>> + Unpin,
-    {
-        let mut visited_rows = 0;
-        while let Some(batch) = stream.fetch_next().await {
-            let batch = batch.unwrap();
-            for row_idx in 0..batch.num_rows() {
-                assert_eq!(batch.clone_row_at(row_idx), expected_rows[visited_rows]);
-                visited_rows += 1;
-            }
-        }
-
-        assert_eq!(visited_rows, expected_rows.len());
-    }
-}

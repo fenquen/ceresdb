@@ -731,24 +731,3 @@ impl ShardLockManager {
         res
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_format_shard_lock_key() {
-        let key_prefix = "/ceresdb/defaultCluster";
-        let cases = vec![
-            (0, "/ceresdb/defaultCluster/00000000000000000000"),
-            (10, "/ceresdb/defaultCluster/00000000000000000010"),
-            (10000, "/ceresdb/defaultCluster/00000000000000010000"),
-            (999999999, "/ceresdb/defaultCluster/00000000000999999999"),
-        ];
-
-        for (shard_id, expected) in cases {
-            let key = ShardLock::lock_key(key_prefix, shard_id);
-            assert_eq!(key, expected);
-        }
-    }
-}

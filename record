@@ -1,0 +1,26 @@
+expect_keyword(&mut self, expected: Keyword) -> Result<(), ParserError>
+
+parse_keyword(&mut self, expected: Keyword) -> bool
+
+parse_keywords(&mut self, keywords: &[Keyword]) -> bool
+
+expect_token(&mut self, expected: &Token) -> Result<(), ParserError>
+
+consume_token(&mut self, expected: &Token) -> bool
+
+自研的
+fn consume_token(&mut self, expected: &str) -> bool {
+        if self.dfSqlParser.peek_token().to_string().to_uppercase() == *expected.to_uppercase() {
+            self.dfSqlParser.next_token();
+            true
+        } else {
+            false
+        }
+    }
+
+通过在http的请求头中指定名字是CATALOG_HEADER的头来明确要用哪个的catalog
+
+objectstore 默认使用 ObjectStoreOptions::Local
+       使用的是本地文件系统 默认的总的目录是在 用户目录/ceresdb 其中有子文件夹 data(对应了变量 STORE_DIR_NAME)
+
+sysCatalogTable 对应的表名是 system.public.sys_catalog

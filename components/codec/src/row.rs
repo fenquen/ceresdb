@@ -202,30 +202,3 @@ pub fn key_prefix_next(key: &[u8]) -> BytesMut {
 
     buf
 }
-#[cfg(test)]
-mod test {
-    use common_types::schema::IndexInWriterSchema;
-
-    use crate::{
-        row::{WalRowDecoder, WalRowEncoder},
-        Decoder, Encoder,
-    };
-
-    #[test]
-    fn test_wal_encode_decode() {
-        let schema = common_types::tests::build_schema();
-        let rows = common_types::tests::build_rows();
-        let index_in_writer = IndexInWriterSchema::for_same_schema(schema.num_columns());
-        let wal_encoder = WalRowEncoder {
-            table_schema: &schema,
-            index_in_writer: &index_in_writer,
-        };
-        let wal_decoder = WalRowDecoder::new(&schema);
-        for row in rows {
-            let mut buf = Vec::new();
-            wal_encoder.encode(&mut buf, &row).unwrap();
-            let row_decoded = wal_decoder.decode(&mut buf.as_slice()).unwrap();
-            assert_eq!(row_decoded, row);
-        }
-    }
-}

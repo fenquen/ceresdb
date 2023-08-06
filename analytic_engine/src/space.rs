@@ -88,8 +88,7 @@ pub struct Space {
 
     /// Data of tables in this space
     ///
-    /// Adding table into it should acquire the space lock first, then the write
-    /// lock
+    /// Adding table into it should acquire the space lock first, then the write lock
     table_datas: RwLock<TableDataSet>,
 
     /// If table open failed, request of this table is not allowed, otherwise
@@ -104,12 +103,10 @@ pub struct Space {
 }
 
 impl Space {
-    pub fn new(
-        id: SpaceId,
-        context: SpaceContext,
-        write_buffer_size: usize,
-        engine_mem_collector: CollectorRef,
-    ) -> Self {
+    pub fn new(id: SpaceId,
+               context: SpaceContext,
+               write_buffer_size: usize,
+               engine_mem_collector: CollectorRef) -> Self {
         Self {
             id,
             context,
@@ -147,11 +144,7 @@ impl Space {
     ///
     /// Panic if the table has already existed.
     pub(crate) fn insert_table(&self, table_data: TableDataRef) {
-        let success = self
-            .table_datas
-            .write()
-            .unwrap()
-            .insert_if_absent(table_data);
+        let success = self.table_datas.write().unwrap().insert_if_absent(table_data);
         assert!(success);
     }
 

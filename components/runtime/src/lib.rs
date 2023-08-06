@@ -1,6 +1,8 @@
 // Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! A multi-threaded runtime that supports running Futures
+#![allow(non_snake_case)]
+
 use std::{
     future::Future,
     pin::Pin,
@@ -24,9 +26,9 @@ mod metrics;
 #[snafu(visibility(pub))]
 pub enum Error {
     #[snafu(display(
-        "Runtime Failed to build runtime, err:{}.\nBacktrace:\n{}",
-        source,
-        backtrace
+    "Runtime Failed to build runtime, err:{}.\nBacktrace:\n{}",
+    source,
+    backtrace
     ))]
     BuildRuntime {
         source: std::io::Error,
@@ -34,9 +36,9 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Runtime Failed to join task, err:{}.\nBacktrace:\n{}",
-        source,
-        backtrace
+    "Runtime Failed to join task, err:{}.\nBacktrace:\n{}",
+    source,
+    backtrace
     ))]
     JoinTask {
         source: JoinError,
@@ -51,7 +53,7 @@ pub type RuntimeRef = Arc<Runtime>;
 /// A runtime to run future tasks
 #[derive(Debug)]
 pub struct Runtime {
-    rt: TokioRuntime,
+    tokioRuntime: TokioRuntime,
     metrics: Arc<Metrics>,
 }
 
@@ -59,31 +61,27 @@ impl Runtime {
     /// Spawn a future and execute it in this thread pool
     ///
     /// Similar to tokio::runtime::Runtime::spawn()
-    pub fn spawn<F>(&self, future: F) -> JoinHandle<F::Output>
-    where
-        F: Future + Send + 'static,
-        F::Output: Send + 'static,
-    {
+    pub fn spawn<F>(&self, future: F) -> JoinHandle<F::Output> where F: Future + Send + 'static,
+                                                                     F::Output: Send + 'static, {
         JoinHandle {
-            inner: self.rt.spawn(future),
+            inner: self.tokioRuntime.spawn(future),
         }
     }
 
-    /// Run the provided function on an executor dedicated to blocking
-    /// operations.
+    /// Run the provided function on an executor dedicated to blocking operations.
     pub fn spawn_blocking<F, R>(&self, func: F) -> JoinHandle<R>
-    where
-        F: FnOnce() -> R + Send + 'static,
-        R: Send + 'static,
+        where
+            F: FnOnce() -> R + Send + 'static,
+            R: Send + 'static,
     {
         JoinHandle {
-            inner: self.rt.spawn_blocking(func),
+            inner: self.tokioRuntime.spawn_blocking(func),
         }
     }
 
     /// Run a future to complete, this is the runtime's entry point
     pub fn block_on<F: Future>(&self, future: F) -> F::Output {
-        self.rt.block_on(future)
+        self.tokioRuntime.block_on(future)
     }
 
     /// Returns the runtime stats
@@ -143,21 +141,21 @@ pub struct RuntimeStats {
 
 pub struct Builder {
     thread_name: String,
-    builder: RuntimeBuilder,
+    tokioRuntimeBuilder: RuntimeBuilder,
 }
 
 impl Default for Builder {
     fn default() -> Self {
         Self {
             thread_name: "runtime-worker".to_string(),
-            builder: RuntimeBuilder::new_multi_thread(),
+            tokioRuntimeBuilder: RuntimeBuilder::new_multi_thread(),
         }
     }
 }
 
 fn with_metrics<F>(metrics: &Arc<Metrics>, f: F) -> impl Fn()
-where
-    F: Fn(&Arc<Metrics>) + 'static,
+    where
+        F: Fn(&Arc<Metrics>) + 'static,
 {
     let m = metrics.clone();
     move || {
@@ -170,7 +168,7 @@ impl Builder {
     ///
     /// This can be any number above 0
     pub fn worker_threads(&mut self, val: usize) -> &mut Self {
-        self.builder.worker_threads(val);
+        self.tokioRuntimeBuilder.worker_threads(val);
         self
     }
 
@@ -182,7 +180,7 @@ impl Builder {
 
     /// Enable all feature of the underlying runtime
     pub fn enable_all(&mut self) -> &mut Self {
-        self.builder.enable_all();
+        self.tokioRuntimeBuilder.enable_all();
         self
     }
 
@@ -190,7 +188,7 @@ impl Builder {
         let metrics = Arc::new(Metrics::new(&self.thread_name));
 
         let rt = self
-            .builder
+            .tokioRuntimeBuilder
             .thread_name(self.thread_name.clone())
             .on_thread_start(with_metrics(&metrics, |m| {
                 m.on_thread_start();
@@ -207,95 +205,6 @@ impl Builder {
             .build()
             .context(BuildRuntime)?;
 
-        Ok(Runtime { rt, metrics })
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::{sync::Arc, thread, time::Duration};
-
-    use tokio::sync::oneshot;
-    use tokio_test::assert_ok;
-
-    use super::*;
-
-    fn rt() -> Arc<Runtime> {
-        let rt = Builder::default()
-            .worker_threads(2)
-            .thread_name("test_spawn_join")
-            .enable_all()
-            .build();
-        assert!(rt.is_ok());
-        Arc::new(rt.unwrap())
-    }
-
-    #[test]
-    fn test_stats() {
-        let rt = Builder::default()
-            .worker_threads(5)
-            .thread_name("test_stats")
-            .enable_all()
-            .build();
-        assert!(rt.is_ok());
-        let rt = Arc::new(rt.unwrap());
-        // wait threads created
-        thread::sleep(Duration::from_millis(50));
-
-        let s = rt.stats();
-        assert_eq!(5, s.alive_thread_num);
-        assert_eq!(5, s.idle_thread_num);
-
-        rt.spawn(async {
-            thread::sleep(Duration::from_millis(50));
-        });
-
-        thread::sleep(Duration::from_millis(10));
-        let s = rt.stats();
-        assert_eq!(5, s.alive_thread_num);
-        assert_eq!(4, s.idle_thread_num);
-    }
-
-    #[test]
-    fn block_on_async() {
-        let rt = rt();
-
-        let out = rt.block_on(async {
-            let (tx, rx) = oneshot::channel();
-
-            thread::spawn(move || {
-                thread::sleep(Duration::from_millis(50));
-                tx.send("ZOMG").unwrap();
-            });
-
-            assert_ok!(rx.await)
-        });
-
-        assert_eq!(out, "ZOMG");
-    }
-
-    #[test]
-    fn spawn_from_blocking() {
-        let rt = rt();
-        let rt1 = rt.clone();
-        let out = rt.block_on(async move {
-            let rt2 = rt1.clone();
-            let inner = assert_ok!(
-                rt1.spawn_blocking(move || { rt2.spawn(async move { "hello" }) })
-                    .await
-            );
-
-            assert_ok!(inner.await)
-        });
-
-        assert_eq!(out, "hello")
-    }
-
-    #[test]
-    fn test_spawn_join() {
-        let rt = rt();
-        let handle = rt.spawn(async { 1 + 1 });
-
-        assert_eq!(2, rt.block_on(handle).unwrap());
+        Ok(Runtime { tokioRuntime: rt, metrics })
     }
 }

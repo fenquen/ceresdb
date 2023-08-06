@@ -66,10 +66,10 @@ define_result!(Error);
 const DEFAULT_TIMEZONE_OFFSET_SECS: i32 = 8 * 3600;
 
 pub fn register_to_registry(registry: &mut dyn FunctionRegistry) -> registry::Result<()> {
-    registry.register_udf(new_udf())
+    registry.register_udf(newTimeBucketUdf())
 }
 
-fn new_udf() -> ScalarUdf {
+fn newTimeBucketUdf() -> ScalarUdf {
     // args:
     // - timestamp column.
     // - period.

@@ -1,7 +1,6 @@
 // Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
-//! A volatile catalog implementation used for storing information about table
-//! and schema in memory.
+//! A volatile catalog manager implementation used for storing information about table and schema in memory.
 
 use std::{
     collections::HashMap,
@@ -12,7 +11,7 @@ use std::{
 use async_trait::async_trait;
 use catalog::{
     self, consts,
-    manager::{self, Manager},
+    manager::{self, CatalogManager},
     schema::{
         self, CatalogMismatch, CreateOptions, CreateTableRequest, CreateTableWithCause,
         DropOptions, DropTableRequest, DropTableWithCause, NameRef, Schema, SchemaMismatch,
@@ -29,16 +28,16 @@ use snafu::{ensure, OptionExt, ResultExt};
 use table_engine::table::{SchemaId, TableRef};
 use tokio::sync::Mutex;
 
-/// ManagerImpl manages multiple volatile catalogs.
-pub struct ManagerImpl {
+/// ManagerImpl manages multiple volatile catalogs. 用在了meta体系(分布式的)
+pub struct CatalogManagerMemoryBased {
     catalogs: HashMap<String, Arc<CatalogImpl>>,
     shard_set: ShardSet,
     meta_client: MetaClientRef,
 }
 
-impl ManagerImpl {
+impl CatalogManagerMemoryBased {
     pub fn new(shard_set: ShardSet, meta_client: MetaClientRef) -> Self {
-        let mut manager = ManagerImpl {
+        let mut manager = CatalogManagerMemoryBased {
             catalogs: HashMap::new(),
             shard_set,
             meta_client,
@@ -50,7 +49,7 @@ impl ManagerImpl {
     }
 }
 
-impl Manager for ManagerImpl {
+impl CatalogManager for CatalogManagerMemoryBased {
     fn default_catalog_name(&self) -> NameRef {
         consts::DEFAULT_CATALOG
     }
@@ -73,7 +72,7 @@ impl Manager for ManagerImpl {
     }
 }
 
-impl ManagerImpl {
+impl CatalogManagerMemoryBased {
     fn maybe_create_default_catalog(&mut self) {
         // TODO: we should delegate this operation to the [TableManager].
         // Try to get default catalog, create it if not exists.

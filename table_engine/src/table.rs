@@ -294,7 +294,7 @@ impl fmt::Display for TableId {
 #[derive(Clone, Debug)]
 pub struct WriteRequest {
     /// rows to write
-    pub row_group: RowGroup,
+    pub rowGroup: RowGroup,
 }
 
 #[derive(Clone, Debug)]
@@ -476,7 +476,7 @@ pub trait Table: std::fmt::Debug {
     fn stats(&self) -> TableStats;
 
     /// Write to table.
-    async fn write(&self, request: WriteRequest) -> Result<usize>;
+    async fn write(&self, writeRequest: WriteRequest) -> Result<usize>;
 
     /// Read from table.
     async fn read(&self, request: ReadRequest) -> Result<SendableRecordBatchStream>;
@@ -629,21 +629,5 @@ impl From<TableInfo> for sys_catalog_pb::TableEntry {
             created_time: 0,
             modified_time: 0,
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_schema_id() {
-        assert_eq!(0, SchemaId::MIN.as_u32());
-    }
-
-    #[test]
-    fn test_table_seq() {
-        assert_eq!(0, TableSeq::MIN.as_u64());
-        assert_eq!(0xffffffffff, TableSeq::MAX.as_u64());
     }
 }

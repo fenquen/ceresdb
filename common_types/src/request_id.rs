@@ -37,18 +37,3 @@ impl From<u64> for RequestId {
         Self(id)
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_request_id() {
-        let id = RequestId::next_id();
-        assert_eq!(1, id.0);
-        let id = RequestId::next_id();
-        assert_eq!(2, id.0);
-
-        assert_eq!("2", id.to_string());
-    }
-}

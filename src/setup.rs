@@ -1,20 +1,20 @@
 // Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
-//! Setup server
 
 use std::sync::Arc;
 
 use analytic_engine::{
     self,
-    setup::{EngineBuilder, KafkaWalsOpener, ObkvWalsOpener, RocksDBWalsOpener, WalsOpener},
+    setup::{AnalyticTableEngineBuilder, KafkaWalsOpener, ObkvWalsOpener, RocksDBWalsOpener, WalsOpener},
     WalStorageConfig,
 };
 use catalog::{manager::ManagerRef, schema::OpenOptions, table_operator::TableOperator};
-use catalog_impls::{table_based::TableBasedManager, volatile, CatalogManagerImpl};
+use catalog_impls::{table_based::CatalogManagerTableBased, volatile, CatalogManagerDelegate};
 use cluster::{cluster_impl::ClusterImpl, config::ClusterConfig, shard_set::ShardSet};
 use df_operator::registry::FunctionRegistryImpl;
 use interpreters::table_manipulator::{catalog_based, meta_based};
 use log::info;
+use interpreters::table_manipulator::catalog_based::TableManipulatorCatalogBased;
 use logger::RuntimeLevel;
 use meta_client::{meta_impl, types::NodeMetaInfo};
 use proxy::{
@@ -23,7 +23,7 @@ use proxy::{
         cluster_based::ClusterBasedProvider, config_based::ConfigBasedProvider,
     },
 };
-use query_engine::executor::{Executor, ExecutorImpl};
+use query_engine::executor::{QueryExecutor, QueryExecutorImpl};
 use router::{rule_based::ClusterView, ClusterBasedRouter, RuleBasedRouter};
 use server::{
     config::{StaticRouteConfig, StaticTopologyConfig},
@@ -72,92 +72,74 @@ fn build_engine_runtimes(config: &RuntimeConfig) -> EngineRuntimes {
 }
 
 /// Run a server, returns when the server is shutdown by user
-pub fn run_server(config: Config, log_runtime: RuntimeLevel) {
+pub fn run_server(config: Config, logLevel: RuntimeLevel) {
     let runtimes = Arc::new(build_engine_runtimes(&config.runtime));
     let engine_runtimes = runtimes.clone();
-    let log_runtime = Arc::new(log_runtime);
+    let logLevel = Arc::new(logLevel);
 
     info!("Server starts up, config:{:#?}", config);
 
     runtimes.default_runtime.block_on(async {
-        match config.analytic.wal {
-            WalStorageConfig::RocksDB(_) => {
-                run_server_with_runtimes::<RocksDBWalsOpener>(config, engine_runtimes, log_runtime)
-                    .await
-            }
-
-            WalStorageConfig::Obkv(_) => {
-                run_server_with_runtimes::<ObkvWalsOpener>(config, engine_runtimes, log_runtime)
-                    .await;
-            }
-
-            WalStorageConfig::Kafka(_) => {
-                run_server_with_runtimes::<KafkaWalsOpener>(config, engine_runtimes, log_runtime)
-                    .await;
-            }
+        match config.analytic.walStorageConfig {
+            WalStorageConfig::RocksDB(_) => run_server_with_runtimes::<RocksDBWalsOpener>(config, engine_runtimes, logLevel).await,
+            WalStorageConfig::Obkv(_) => run_server_with_runtimes::<ObkvWalsOpener>(config, engine_runtimes, logLevel).await,
+            WalStorageConfig::Kafka(_) => run_server_with_runtimes::<KafkaWalsOpener>(config, engine_runtimes, logLevel).await,
         }
     });
 }
 
-async fn run_server_with_runtimes<T>(
-    config: Config,
-    engine_runtimes: Arc<EngineRuntimes>,
-    log_runtime: Arc<RuntimeLevel>,
-) where
-    T: WalsOpener,
-{
+async fn run_server_with_runtimes<T>(config: Config,
+                                     engine_runtimes: Arc<EngineRuntimes>,
+                                     logLevel: Arc<RuntimeLevel>) where T: WalsOpener {
     // Init function registry.
     let mut function_registry = FunctionRegistryImpl::new();
-    function_registry
-        .load_functions()
-        .expect("Failed to create function registry");
+    function_registry.load_functions().expect("Failed to create function registry");
     let function_registry = Arc::new(function_registry);
 
     // Create query executor
-    let query_executor = ExecutorImpl::new(config.query_engine.clone());
+    let query_executor = QueryExecutorImpl::new(config.query_engine.clone());
 
     // Config limiter
     let limiter = Limiter::new(config.limiter.clone());
     let config_content = toml::to_string(&config).expect("Fail to serialize config");
 
-    let builder = Builder::new(config.server.clone())
-        .node_addr(config.node.addr.clone())
-        .config_content(config_content)
-        .engine_runtimes(engine_runtimes.clone())
-        .log_runtime(log_runtime.clone())
-        .query_executor(query_executor)
-        .function_registry(function_registry)
-        .limiter(limiter);
+    let serverBuilder =
+        Builder::new(config.server.clone())
+            .node_addr(config.node.addr.clone())
+            .config_content(config_content)
+            .engine_runtimes(engine_runtimes.clone())
+            .log_runtime(logLevel.clone())
+            .query_executor(query_executor)
+            .function_registry(function_registry)
+            .limiter(limiter);
 
-    let wal_builder = T::default();
-    let builder = match &config.cluster_deployment {
+    let walsOpener = T::default();
+    let serverBuilder = match &config.cluster_deployment {
         None => {
-            build_without_meta(
-                &config,
-                &StaticRouteConfig::default(),
-                builder,
-                engine_runtimes.clone(),
-                wal_builder,
-            )
-            .await
+            build_without_meta(&config,
+                               &StaticRouteConfig::default(),
+                               serverBuilder,
+                               engine_runtimes.clone(),
+                               walsOpener).await
         }
         Some(ClusterDeployment::NoMeta(v)) => {
-            build_without_meta(&config, v, builder, engine_runtimes.clone(), wal_builder).await
+            build_without_meta(&config,
+                               v,
+                               serverBuilder,
+                               engine_runtimes.clone(),
+                               walsOpener).await
         }
         Some(ClusterDeployment::WithMeta(cluster_config)) => {
-            build_with_meta(
-                &config,
-                cluster_config,
-                builder,
-                engine_runtimes.clone(),
-                wal_builder,
-            )
-            .await
+            build_with_meta(&config,
+                            cluster_config,
+                            serverBuilder,
+                            engine_runtimes.clone(),
+                            walsOpener).await
         }
     };
 
     // Build and start server
-    let mut server = builder.build().expect("Failed to create server");
+    let mut server = serverBuilder.build().expect("Failed to create server");
     server.start().await.expect("Failed to start server");
 
     // Wait for signal
@@ -167,31 +149,19 @@ async fn run_server_with_runtimes<T>(
     server.stop().await;
 }
 
-// Build proxy for all table engines.
-async fn build_table_engine_proxy(engine_builder: EngineBuilder<'_>) -> Arc<TableEngineProxy> {
-    // Create memory engine
-    let memory = MemoryTableEngine;
-    // Create analytic engine
-    let analytic = engine_builder
-        .build()
-        .await
-        .expect("Failed to setup analytic engine");
-
-    // Create table engine proxy
+async fn build_table_engine_proxy(analyticTableEngineBuilder: AnalyticTableEngineBuilder<'_>) -> Arc<TableEngineProxy> {
     Arc::new(TableEngineProxy {
-        memory,
-        analytic: analytic.clone(),
+        memoryTableEngine: MemoryTableEngine,
+        analyticTableEngine: analyticTableEngineBuilder.build().await.expect("failed to setup analytic engine"),
     })
 }
 
-async fn build_with_meta<Q: Executor + 'static, T: WalsOpener>(
-    config: &Config,
-    cluster_config: &ClusterConfig,
-    builder: Builder<Q>,
-    runtimes: Arc<EngineRuntimes>,
-    wal_opener: T,
-) -> Builder<Q> {
-    // Build meta related modules.
+async fn build_with_meta<Q: QueryExecutor + 'static, T: WalsOpener>(config: &Config,
+                                                                    cluster_config: &ClusterConfig,
+                                                                    builder: Builder<Q>,
+                                                                    runtimes: Arc<EngineRuntimes>,
+                                                                    wal_opener: T) -> Builder<Q> {
+    // build meta related modules.
     let node_meta_info = NodeMetaInfo {
         addr: config.node.addr.clone(),
         port: config.server.grpc_port,
@@ -200,7 +170,7 @@ async fn build_with_meta<Q: Executor + 'static, T: WalsOpener>(
         binary_version: config.node.binary_version.clone(),
     };
 
-    info!("Build ceresdb with node meta info:{node_meta_info:?}");
+    info!("build ceresdb with node meta info:{node_meta_info:?}");
 
     let endpoint = node_meta_info.endpoint();
     let meta_client =
@@ -217,8 +187,8 @@ async fn build_with_meta<Q: Executor + 'static, T: WalsOpener>(
             cluster_config.clone(),
             runtimes.meta_runtime.clone(),
         )
-        .await
-        .unwrap();
+            .await
+            .unwrap();
         Arc::new(cluster_impl)
     };
     let router = Arc::new(ClusterBasedRouter::new(
@@ -227,23 +197,23 @@ async fn build_with_meta<Q: Executor + 'static, T: WalsOpener>(
     ));
 
     let opened_wals = wal_opener
-        .open_wals(&config.analytic.wal, runtimes.clone())
+        .open_wals(&config.analytic.walStorageConfig, runtimes.clone())
         .await
         .expect("Failed to setup analytic engine");
-    let engine_builder = EngineBuilder {
-        config: &config.analytic,
+    let engine_builder = AnalyticTableEngineBuilder {
+        analyticConfig: &config.analytic,
         engine_runtimes: runtimes.clone(),
         opened_wals: opened_wals.clone(),
     };
     let engine_proxy = build_table_engine_proxy(engine_builder).await;
 
     let meta_based_manager_ref =
-        Arc::new(volatile::ManagerImpl::new(shard_set, meta_client.clone()));
+        Arc::new(volatile::CatalogManagerMemoryBased::new(shard_set, meta_client.clone()));
 
     // Build catalog manager.
-    let catalog_manager = Arc::new(CatalogManagerImpl::new(meta_based_manager_ref));
+    let catalog_manager = Arc::new(CatalogManagerDelegate::new(meta_based_manager_ref));
 
-    let table_manipulator = Arc::new(meta_based::TableManipulatorImpl::new(meta_client));
+    let table_manipulator = Arc::new(meta_based::TableManipulatorMetaBased::new(meta_client));
 
     let schema_config_provider = Arc::new(ClusterBasedProvider::new(cluster.clone()));
     builder
@@ -256,56 +226,45 @@ async fn build_with_meta<Q: Executor + 'static, T: WalsOpener>(
         .schema_config_provider(schema_config_provider)
 }
 
-async fn build_without_meta<Q: Executor + 'static, T: WalsOpener>(
-    config: &Config,
-    static_route_config: &StaticRouteConfig,
-    builder: Builder<Q>,
-    runtimes: Arc<EngineRuntimes>,
-    wal_builder: T,
-) -> Builder<Q> {
-    let opened_wals = wal_builder
-        .open_wals(&config.analytic.wal, runtimes.clone())
-        .await
-        .expect("Failed to setup analytic engine");
-    let engine_builder = EngineBuilder {
-        config: &config.analytic,
-        engine_runtimes: runtimes.clone(),
+async fn build_without_meta<Executor: QueryExecutor + 'static, T: WalsOpener>(config: &Config,
+                                                                              static_route_config: &StaticRouteConfig,
+                                                                              serverBuilder: Builder<Executor>,
+                                                                              engineRuntimes: Arc<EngineRuntimes>,
+                                                                              walsOpener: T) -> Builder<Executor> {
+    let opened_wals =
+        walsOpener.open_wals(&config.analytic.walStorageConfig,
+                             engineRuntimes.clone()).await.expect("Failed to setup analytic engine");
+
+    let analyticTableEngineBuilder = AnalyticTableEngineBuilder {
+        analyticConfig: &config.analytic,
+        engine_runtimes: engineRuntimes.clone(),
         opened_wals: opened_wals.clone(),
     };
-    let engine_proxy = build_table_engine_proxy(engine_builder).await;
+
+    let tableEngineProxy = build_table_engine_proxy(analyticTableEngineBuilder).await;
 
     // Create catalog manager, use analytic engine as backend.
-    let analytic = engine_proxy.analytic.clone();
-    let mut table_based_manager = TableBasedManager::new(analytic)
-        .await
-        .expect("Failed to create catalog manager");
+    let mut catalogManagerTableBased =
+        CatalogManagerTableBased::new(tableEngineProxy.analyticTableEngine.clone()).await.expect("Failed to create catalog manager");
 
     // Get collected table infos.
-    let table_infos = table_based_manager
-        .fetch_table_infos()
-        .await
-        .expect("Failed to fetch table infos for opening");
+    let table_infos = catalogManagerTableBased.fetch_table_infos().await.expect("Failed to fetch table infos for opening");
 
-    let catalog_manager = Arc::new(CatalogManagerImpl::new(Arc::new(table_based_manager)));
-    let table_operator = TableOperator::new(catalog_manager.clone());
-    let table_manipulator = Arc::new(catalog_based::TableManipulatorImpl::new(
-        table_operator.clone(),
-    ));
+    let catalogManagerDelegate = Arc::new(CatalogManagerDelegate::new(Arc::new(catalogManagerTableBased)));
+    let table_operator = TableOperator::new(catalogManagerDelegate.clone());
+    let table_manipulator = Arc::new(TableManipulatorCatalogBased::new(table_operator.clone()));
 
     // Iterate the table infos to recover.
     let open_opts = OpenOptions {
-        table_engine: engine_proxy.clone(),
+        table_engine: tableEngineProxy.clone(),
     };
 
     // Create local tables recoverer.
     let local_tables_recoverer = LocalTablesRecoverer::new(table_infos, table_operator, open_opts);
 
     // Create schema in default catalog.
-    create_static_topology_schema(
-        catalog_manager.clone(),
-        static_route_config.topology.clone(),
-    )
-    .await;
+    create_static_topology_schema(catalogManagerDelegate.clone(),
+                                  static_route_config.topology.clone()).await;
 
     // Build static router and schema config provider
     let cluster_view = ClusterView::from(&static_route_config.topology);
@@ -319,9 +278,9 @@ async fn build_without_meta<Q: Executor + 'static, T: WalsOpener>(
         config.server.default_schema_config.clone(),
     ));
 
-    builder
-        .table_engine(engine_proxy)
-        .catalog_manager(catalog_manager)
+    serverBuilder
+        .table_engine(tableEngineProxy)
+        .catalog_manager(catalogManagerDelegate)
         .table_manipulator(table_manipulator)
         .router(router)
         .opened_wals(opened_wals)

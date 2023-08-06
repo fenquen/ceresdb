@@ -30,7 +30,7 @@ pub trait Manifest: Send + Sync + fmt::Debug {
     async fn apply_edit(&self, request: MetaEditRequest) -> GenericResult<()>;
 
     /// Recover table metas from storage.
-    async fn recover(&self, load_request: &LoadRequest) -> GenericResult<()>;
+    async fn recover(&self, loadRequest: &LoadRequest) -> GenericResult<()>;
 
     async fn do_snapshot(&self, request: SnapshotRequest) -> GenericResult<()>;
 }

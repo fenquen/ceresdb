@@ -9,7 +9,7 @@ use snafu::{ResultExt, Snafu};
 use table_engine::engine::TableEngineRef;
 
 use crate::{
-    context::Context,
+    context::InterpreterContext,
     interpreter::{Drop, Interpreter, InterpreterPtr, Output, Result as InterpreterResult},
     table_manipulator::{self, TableManipulatorRef},
 };
@@ -25,7 +25,7 @@ define_result!(Error);
 
 /// Drop interpreter
 pub struct DropInterpreter {
-    ctx: Context,
+    ctx: InterpreterContext,
     plan: DropTablePlan,
     table_engine: TableEngineRef,
     table_manipulator: TableManipulatorRef,
@@ -33,7 +33,7 @@ pub struct DropInterpreter {
 
 impl DropInterpreter {
     pub fn create(
-        ctx: Context,
+        ctx: InterpreterContext,
         plan: DropTablePlan,
         table_engine: TableEngineRef,
         table_manipulator: TableManipulatorRef,

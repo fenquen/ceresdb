@@ -2,6 +2,7 @@
 
 //! Table engine logic of instance
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use common_types::schema::Version;
@@ -17,19 +18,14 @@ use wal::manager::WalLocation;
 use super::open::{TableContext, TablesOfShardContext};
 use crate::{
     engine::build_space_id,
-    instance::{close::Closer, drop::Dropper, open::OpenTablesOfShardResult, Instance},
+    instance::{close::Closer, drop::Dropper, open::OpenTablesOfShardResult, TableEngineInstance},
     space::{Space, SpaceAndTable, SpaceContext, SpaceId, SpaceRef},
 };
 
 #[derive(Debug, Snafu)]
-#[snafu(visibility(pub(crate)))]
+#[snafu(visibility(pub (crate)))]
 pub enum Error {
-    #[snafu(display(
-        "The space of the table does not exist, space_id:{}, table:{}.\nBacktrace:\n{}",
-        space_id,
-        table,
-        backtrace,
-    ))]
+    #[snafu(display("The space of the table does not exist, space_id:{}, table:{}.\nBacktrace:\n{}", space_id, table, backtrace, ))]
     SpaceNotExist {
         space_id: SpaceId,
         table: String,
@@ -42,12 +38,7 @@ pub enum Error {
         source: GenericError,
     },
 
-    #[snafu(display(
-        "Failed to recover table data, space_id:{}, table:{}, err:{}",
-        space_id,
-        table,
-        source
-    ))]
+    #[snafu(display("Failed to recover table data, space_id:{}, table:{}, err:{}", space_id, table, source))]
     RecoverTableData {
         space_id: SpaceId,
         table: String,
@@ -57,12 +48,7 @@ pub enum Error {
     #[snafu(display("Failed to read wal, err:{}", source))]
     ReadWal { source: wal::manager::Error },
 
-    #[snafu(display(
-        "Failed to apply log entry to memtable, table:{}, table_id:{}, err:{}",
-        table,
-        table_id,
-        source
-    ))]
+    #[snafu(display("Failed to apply log entry to memtable, table:{}, table_id:{}, err:{}", table, table_id, source))]
     ApplyMemTable {
         space_id: SpaceId,
         table: String,
@@ -70,13 +56,7 @@ pub enum Error {
         source: crate::instance::write::Error,
     },
 
-    #[snafu(display(
-        "Flush failed, space_id:{}, table:{}, table_id:{}, err:{}",
-        space_id,
-        table,
-        table_id,
-        source
-    ))]
+    #[snafu(display("Flush failed, space_id:{}, table:{}, table_id:{}, err:{}", space_id, table, table_id, source))]
     FlushTable {
         space_id: SpaceId,
         table: String,
@@ -85,11 +65,11 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to persist meta update to manifest, space_id:{}, table:{}, table_id:{}, err:{}",
-        space_id,
-        table,
-        table_id,
-        source
+    "Failed to persist meta update to manifest, space_id:{}, table:{}, table_id:{}, err:{}",
+    space_id,
+    table,
+    table_id,
+    source
     ))]
     WriteManifest {
         space_id: SpaceId,
@@ -99,11 +79,11 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to persist meta update to WAL, space_id:{}, table:{}, table_id:{}, err:{}",
-        space_id,
-        table,
-        table_id,
-        source
+    "Failed to persist meta update to WAL, space_id:{}, table:{}, table_id:{}, err:{}",
+    space_id,
+    table,
+    table_id,
+    source
     ))]
     WriteWal {
         space_id: SpaceId,
@@ -113,11 +93,11 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Invalid options, space_id:{}, table:{}, table_id:{}, err:{}",
-        space_id,
-        table,
-        table_id,
-        source
+    "Invalid options, space_id:{}, table:{}, table_id:{}, err:{}",
+    space_id,
+    table,
+    table_id,
+    source
     ))]
     InvalidOptions {
         space_id: SpaceId,
@@ -127,11 +107,11 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to create table data, space_id:{}, table:{}, table_id:{}, err:{}",
-        space_id,
-        table,
-        table_id,
-        source
+    "Failed to create table data, space_id:{}, table:{}, table_id:{}, err:{}",
+    space_id,
+    table,
+    table_id,
+    source
     ))]
     CreateTableData {
         space_id: SpaceId,
@@ -169,9 +149,9 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Alter schema of a dropped table:{}.\nBacktrace:\n{}",
-        table,
-        backtrace
+    "Alter schema of a dropped table:{}.\nBacktrace:\n{}",
+    table,
+    backtrace
     ))]
     AlterDroppedTable { table: String, backtrace: Backtrace },
 
@@ -179,10 +159,10 @@ pub enum Error {
     StoreVersionEdit { source: GenericError },
 
     #[snafu(display(
-        "Failed to encode payloads, table:{}, wal_location:{:?}, err:{}",
-        table,
-        wal_location,
-        source
+    "Failed to encode payloads, table:{}, wal_location:{:?}, err:{}",
+    table,
+    wal_location,
+    source
     ))]
     EncodePayloads {
         table: String,
@@ -191,10 +171,10 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to do manifest snapshot for table, space_id:{}, table:{}, err:{}",
-        space_id,
-        table,
-        source
+    "Failed to do manifest snapshot for table, space_id:{}, table:{}, err:{}",
+    space_id,
+    table,
+    source
     ))]
     DoManifestSnapshot {
         space_id: SpaceId,
@@ -203,9 +183,9 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Table open failed and can not be created again, table:{}.\nBacktrace:\n{}",
-        table,
-        backtrace,
+    "Table open failed and can not be created again, table:{}.\nBacktrace:\n{}",
+    table,
+    backtrace,
     ))]
     CreateOpenFailedTable { table: String, backtrace: Backtrace },
 
@@ -272,13 +252,11 @@ impl From<Error> for table_engine::engine::Error {
     }
 }
 
-impl Instance {
+impl TableEngineInstance {
     /// Find space by name, create if the space is not exists
-    pub async fn find_or_create_space(
-        self: &Arc<Self>,
-        space_id: SpaceId,
-        context: SpaceContext,
-    ) -> Result<SpaceRef> {
+    pub async fn find_or_create_space(self: &Arc<Self>,
+                                      space_id: SpaceId,
+                                      context: SpaceContext) -> Result<Arc<Space>> {
         // Find space first
         if let Some(space) = self.get_space_by_read_lock(space_id) {
             return Ok(space);
@@ -388,47 +366,32 @@ impl Instance {
 
     /// Open tables of same shard together
     // TODO: just return `TableRef` rather than `SpaceAndTable`.
-    pub async fn open_tables_of_shard(
-        self: &Arc<Self>,
-        request: OpenShardRequest,
-    ) -> Result<OpenTablesOfShardResult> {
+    pub async fn open_tables_of_same_shard(self: &Arc<Self>, request: OpenShardRequest) -> Result<HashMap<TableId, Result<Option<SpaceAndTable>>>> {
         let shard_id = request.shard_id;
         let mut table_ctxs = Vec::with_capacity(request.table_defs.len());
 
-        // Open tables.
-        struct TableInfo {
-            name: String,
-            id: TableId,
-        }
-
-        let mut spaces_of_tables = Vec::with_capacity(request.table_defs.len());
-        for table_def in request.table_defs {
-            let context = SpaceContext {
-                catalog_name: table_def.catalog_name.clone(),
-                schema_name: table_def.schema_name.clone(),
+        let mut tableName_tableId_space = Vec::with_capacity(request.table_defs.len());
+        for tableDef in request.table_defs {
+            let space_id = build_space_id(tableDef.schema_id);
+            let spaceContext = SpaceContext {
+                catalog_name: tableDef.catalog_name.clone(),
+                schema_name: tableDef.schema_name.clone(),
             };
+            let space = self.find_or_create_space(space_id, spaceContext).await?;
 
-            let space_id = build_space_id(table_def.schema_id);
-            let space = self.find_or_create_space(space_id, context).await?;
-            spaces_of_tables.push(((table_def.name.clone(), table_def.id), space.clone()));
-            table_ctxs.push(TableContext { table_def, space });
+            tableName_tableId_space.push(((tableDef.name.clone(), tableDef.id), space.clone()));
+
+            table_ctxs.push(TableContext { tableDef, space });
         }
-        let shard_ctx = TablesOfShardContext {
-            shard_id,
-            table_ctxs,
-        };
 
+        let shard_ctx = TablesOfShardContext { shard_id, table_ctxs };
         let shard_result = self.do_open_tables_of_shard(shard_ctx).await?;
 
         // Insert opened tables to spaces.
-        for ((table_name, table_id), space) in spaces_of_tables {
-            let table_result = shard_result
-                .get(&table_id)
+        for ((table_name, table_id), space) in tableName_tableId_space {
+            let table_result = shard_result.get(&table_id)
                 .with_context(|| OpenTablesOfShard {
-                    msg: format!(
-                        "table not exist in result, table_id:{}, space_id:{shard_id}, shard_id:{}",
-                        table_id, space.id
-                    ),
+                    msg: format!("table not exist in result, table_id:{}, shard_id:{}, space_id:{}", table_id, shard_id, space.id),
                 })?;
 
             // TODO: should not modify space here, maybe should place it into manifest.

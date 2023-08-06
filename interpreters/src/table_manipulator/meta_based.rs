@@ -16,26 +16,26 @@ use table_engine::{
 };
 
 use crate::{
-    context::Context,
+    context::InterpreterContext,
     interpreter::Output,
     table_manipulator::{CreateWithCause, DropWithCause, Result, TableManipulator},
 };
 
-pub struct TableManipulatorImpl {
+pub struct TableManipulatorMetaBased {
     meta_client: MetaClientRef,
 }
 
-impl TableManipulatorImpl {
+impl TableManipulatorMetaBased {
     pub fn new(meta_client: MetaClientRef) -> Self {
         Self { meta_client }
     }
 }
 
 #[async_trait]
-impl TableManipulator for TableManipulatorImpl {
+impl TableManipulator for TableManipulatorMetaBased {
     async fn create_table(
         &self,
-        ctx: Context,
+        ctx: InterpreterContext,
         plan: CreateTablePlan,
         _table_engine: TableEngineRef,
     ) -> Result<Output> {
@@ -77,7 +77,7 @@ impl TableManipulator for TableManipulatorImpl {
 
     async fn drop_table(
         &self,
-        ctx: Context,
+        ctx: InterpreterContext,
         plan: DropTablePlan,
         _table_engine: TableEngineRef,
     ) -> Result<Output> {

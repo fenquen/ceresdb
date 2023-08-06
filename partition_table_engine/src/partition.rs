@@ -136,14 +136,14 @@ impl Table for PartitionTableImpl {
                 .with_label_values(&["locate"])
                 .start_timer();
             df_partition_rule
-                .locate_partitions_for_write(&request.row_group)
+                .locate_partitions_for_write(&request.rowGroup)
                 .box_err()
                 .context(LocatePartitions)?
         };
 
         let mut split_rows = HashMap::new();
-        let schema = request.row_group.schema().clone();
-        for (partition, row) in partitions.into_iter().zip(request.row_group.into_iter()) {
+        let schema = request.rowGroup.schema().clone();
+        for (partition, row) in partitions.into_iter().zip(request.rowGroup.into_iter()) {
             split_rows
                 .entry(partition)
                 .or_insert_with(Vec::new)
@@ -163,7 +163,7 @@ impl Table for PartitionTableImpl {
 
             let request = RemoteWriteRequest {
                 table: sub_table_ident,
-                write_request: WriteRequest { row_group },
+                write_request: WriteRequest { rowGroup: row_group },
             };
             request_batch.push(request);
         }

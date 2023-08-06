@@ -16,7 +16,7 @@ use generic_error::BoxError;
 use http::StatusCode;
 use interpreters::interpreter::Output;
 use log::{debug, info};
-use query_engine::executor::Executor as QueryExecutor;
+use query_engine::executor::QueryExecutor as QueryExecutor;
 use query_frontend::{
     frontend::{Context as SqlContext, Frontend},
     provider::CatalogMetaProvider,
@@ -89,7 +89,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                         code: StatusCode::INTERNAL_SERVER_ERROR,
                         msg: format!("fail to write storage, failed rows:{:?}", result.failed),
                     }
-                    .fail()?;
+                        .fail()?;
                 }
 
                 debug!(
@@ -175,7 +175,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 msg: "Query is blocked",
             })?;
         let output = self
-            .execute_plan(request_id, &ctx.catalog, &ctx.schema, plan, deadline)
+            .execute_plan(request_id, &ctx.catalog, &ctx.schema, plan, deadline, false)
             .await?;
 
         info!(

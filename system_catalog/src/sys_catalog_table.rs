@@ -3,6 +3,7 @@
 //! Table to store system catalog
 
 use std::{collections::HashMap, mem};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use bytes_ext::{BufMut, Bytes, BytesMut, SafeBuf, SafeBufMut};
@@ -37,6 +38,7 @@ use table_engine::{
     },
 };
 use tokio::sync::Mutex;
+use table_engine::engine::TableEngine;
 use trace_metric::MetricsCollector;
 
 use crate::{SYSTEM_SCHEMA_ID, SYS_CATALOG_TABLE_ID, SYS_CATALOG_TABLE_NAME};
@@ -47,9 +49,9 @@ pub enum Error {
     BuildSchema { source: common_types::schema::Error },
 
     #[snafu(display(
-        "Failed to get column index for sys_catalog, name:{}.\nBacktrace:\n{}",
-        name,
-        backtrace
+    "Failed to get column index for sys_catalog, name:{}.\nBacktrace:\n{}",
+    name,
+    backtrace
     ))]
     GetColumnIndex { name: String, backtrace: Backtrace },
 
@@ -78,9 +80,9 @@ pub enum Error {
     ReadStream { source: table_engine::stream::Error },
 
     #[snafu(display(
-        "Visitor catalog not found, catalog:{}.\nBacktrace:\n{}",
-        catalog,
-        backtrace
+    "Visitor catalog not found, catalog:{}.\nBacktrace:\n{}",
+    catalog,
+    backtrace
     ))]
     #[snafu(visibility(pub))]
     VisitorCatalogNotFound {
@@ -89,10 +91,10 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Visitor schema not found, catalog:{}, schema:{}.\nBacktrace:\n{}",
-        catalog,
-        schema,
-        backtrace
+    "Visitor schema not found, catalog:{}, schema:{}.\nBacktrace:\n{}",
+    catalog,
+    schema,
+    backtrace
     ))]
     #[snafu(visibility(pub))]
     VisitorSchemaNotFound {
@@ -121,9 +123,9 @@ pub enum Error {
     ReadTableKeyHeader { source: bytes_ext::Error },
 
     #[snafu(display(
-        "Invalid entry key header, value:{}.\nBacktrace:\n{}",
-        value,
-        backtrace
+    "Invalid entry key header, value:{}.\nBacktrace:\n{}",
+    value,
+    backtrace
     ))]
     InvalidKeyHeader { value: u8, backtrace: Backtrace },
 
@@ -131,9 +133,9 @@ pub enum Error {
     InvalidTableKeyType { value: u8, backtrace: Backtrace },
 
     #[snafu(display(
-        "Failed to encode protobuf for entry, err:{}.\nBacktrace:\n{}",
-        source,
-        backtrace
+    "Failed to encode protobuf for entry, err:{}.\nBacktrace:\n{}",
+    source,
+    backtrace
     ))]
     EncodeEntryPb {
         source: prost::EncodeError,
@@ -144,9 +146,9 @@ pub enum Error {
     BuildRow { source: common_types::row::Error },
 
     #[snafu(display(
-        "Failed to decode protobuf for entry, err:{}.\nBacktrace:\n{}",
-        source,
-        backtrace
+    "Failed to decode protobuf for entry, err:{}.\nBacktrace:\n{}",
+    source,
+    backtrace
     ))]
     DecodeEntryPb {
         source: prost::DecodeError,
@@ -154,9 +156,9 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to decode schema for table alter entry, table:{}, err:{}",
-        table,
-        source
+    "Failed to decode schema for table alter entry, table:{}, err:{}",
+    table,
+    source
     ))]
     DecodeSchema {
         table: String,
@@ -167,17 +169,17 @@ pub enum Error {
     EmptyTableKeyType { backtrace: Backtrace },
 
     #[snafu(display(
-        "The row in the sys_catalog_table is invalid, row:{:?}.\nBacktrace:\n{}",
-        row,
-        backtrace
+    "The row in the sys_catalog_table is invalid, row:{:?}.\nBacktrace:\n{}",
+    row,
+    backtrace
     ))]
     InvalidTableRow { row: Row, backtrace: Backtrace },
 
     #[snafu(display(
-        "The fetched table is mismatched, expect:{}, given:{}.\nBacktrace:\n{}",
-        expect_table,
-        given_table,
-        backtrace
+    "The fetched table is mismatched, expect:{}, given:{}.\nBacktrace:\n{}",
+    expect_table,
+    given_table,
+    backtrace
     ))]
     TableKeyMismatch {
         expect_table: String,
@@ -217,19 +219,19 @@ pub const VALUE_COLUMN_NAME: &str = "value";
 /// Default enable ttl is false
 pub const DEFAULT_ENABLE_TTL: &str = "false";
 
-// TODO(yingwen): Add a type column once support int8 type and maybe split key
-// into multiple columns.
-/// SysCatalogTable is a special table to keep tracks of the system infomations
+// TODO(yingwen): Add a type column once support int8 type and maybe split key into multiple columns.
+/// 表的全名是  system.public.sys_catalog
+/// SysCatalogTable is a special table to keep tracks of the system information
 ///
 /// Similar to kudu's SysCatalogTable
 /// - see <https://github.com/apache/kudu/blob/76cb0dd808aaef548ef80682e13a00711e7dd6a4/src/kudu/master/sys_catalog.h#L133>
 /// - schema: (key, timestamp) -> metadata
 ///
-/// The timestamp is used to support metadata ttl in the future, now it can set
-/// to 0.
+/// The timestamp is used to support metadata ttl in the future, now it can set to 0.
 #[derive(Debug)]
 pub struct SysCatalogTable {
     // TODO(yingwen): Table id
+
     /// Underlying Table to actually store data
     table: TableRef,
     /// Index of the key column
@@ -237,46 +239,33 @@ pub struct SysCatalogTable {
     /// Index of the value column
     value_column_index: usize,
     /// Protects table create/alter/drop
-    // TODO(xikai): A better way is to use a specific struct with the lock that takes
-    //  responsibilities to update table.
+    // TODO(xikai): A better way is to use a specific struct with the lock that takes responsibilities to update table.
     update_table_lock: Mutex<()>,
 }
 
 impl SysCatalogTable {
     /// Create a new [SysCatalogTable]
-    pub async fn new(table_engine: TableEngineRef) -> Result<Self> {
+    pub async fn new(tableEngine: Arc<dyn TableEngine>) -> Result<Self> {
+        // 生成的tableSchema有3 column "key" "timestamp" "value"
         let table_schema = new_sys_catalog_schema().context(BuildSchema)?;
-        let key_column_index = table_schema
-            .index_of(KEY_COLUMN_NAME)
-            .context(GetColumnIndex {
-                name: KEY_COLUMN_NAME,
-            })?;
-        let value_column_index =
-            table_schema
-                .index_of(VALUE_COLUMN_NAME)
-                .context(GetColumnIndex {
-                    name: VALUE_COLUMN_NAME,
-                })?;
 
-        let open_request = OpenTableRequest {
-            catalog_name: consts::SYSTEM_CATALOG.to_string(),
-            schema_name: consts::SYSTEM_CATALOG_SCHEMA.to_string(),
-            schema_id: SYSTEM_SCHEMA_ID,
+        let key_column_index = table_schema.index_of(KEY_COLUMN_NAME).context(GetColumnIndex { name: KEY_COLUMN_NAME })?;
+        let value_column_index = table_schema.index_of(VALUE_COLUMN_NAME).context(GetColumnIndex { name: VALUE_COLUMN_NAME })?;
+
+        let openTableRequest = OpenTableRequest {
+            catalog_name: consts::SYSTEM_CATALOG.to_string(),// system
+            schema_name: consts::SYSTEM_CATALOG_SCHEMA.to_string(), // public
+            schema_id: SYSTEM_SCHEMA_ID, // 1
             table_name: SYS_CATALOG_TABLE_NAME.to_string(),
             table_id: SYS_CATALOG_TABLE_ID,
-            engine: table_engine.engine_type().to_string(),
+            engineType: tableEngine.engine_type().to_string(),
             shard_id: DEFAULT_SHARD_ID,
         };
 
-        let table_opt = table_engine
-            .open_table(open_request)
-            .await
-            .context(OpenTable)?;
-        match table_opt {
+        //let table_opt = tableEngine.open_table(open_request).await.context(OpenTable)?;
+        match tableEngine.open_table(openTableRequest).await.context(OpenTable)? {
             Some(table) => {
                 info!("Sys catalog table open existing table");
-
-                // The sys_catalog table is already created
                 return Ok(Self {
                     table,
                     key_column_index,
@@ -284,16 +273,12 @@ impl SysCatalogTable {
                     update_table_lock: Mutex::new(()),
                 });
             }
-            None => {
-                info!("Sys catalog table is not exists, try to create a new table");
-            }
+            None => info!("sys catalog table is not exists, try to create a new table"),
         }
 
         let mut options = HashMap::new();
-        options.insert(
-            common_types::OPTION_KEY_ENABLE_TTL.to_string(),
-            DEFAULT_ENABLE_TTL.to_string(),
-        );
+        options.insert(common_types::OPTION_KEY_ENABLE_TTL.to_string(), DEFAULT_ENABLE_TTL.to_string());
+
         let create_request = CreateTableRequest {
             catalog_name: consts::SYSTEM_CATALOG.to_string(),
             schema_name: consts::SYSTEM_CATALOG_SCHEMA.to_string(),
@@ -302,16 +287,13 @@ impl SysCatalogTable {
             table_id: SYS_CATALOG_TABLE_ID,
             table_schema,
             partition_info: None,
-            engine: table_engine.engine_type().to_string(),
+            engine: tableEngine.engine_type().to_string(),
             options,
             state: TableState::Stable,
             shard_id: DEFAULT_SHARD_ID,
         };
 
-        let table = table_engine
-            .create_table(create_request)
-            .await
-            .context(BuildTable)?;
+        let table = tableEngine.create_table(create_request).await.context(BuildTable)?;
 
         Ok(Self {
             table,
@@ -321,7 +303,6 @@ impl SysCatalogTable {
         })
     }
 
-    /// Returns the table id of the sys catalog table.
     #[inline]
     pub fn table_id(&self) -> TableId {
         SYS_CATALOG_TABLE_ID
@@ -333,7 +314,7 @@ impl SysCatalogTable {
 
         let row_group = request.into_row_group(self.table.schema())?;
 
-        let write_req = WriteRequest { row_group };
+        let write_req = WriteRequest { rowGroup: row_group };
         self.table.write(write_req).await.context(PersistCatalog)?;
 
         Ok(())
@@ -345,7 +326,7 @@ impl SysCatalogTable {
 
         let row_group = request.into_row_group(self.table.schema())?;
 
-        let write_req = WriteRequest { row_group };
+        let write_req = WriteRequest { rowGroup: row_group };
         self.table.write(write_req).await.context(PersistSchema)?;
 
         Ok(())
@@ -681,40 +662,30 @@ impl<'a> Visitor<'a> {
 
 /// Build a new table schema for sys catalog
 fn new_sys_catalog_schema() -> schema::Result<Schema> {
-    // NOTICE: Both key and value must be non-nullable, the visit function takes
-    // this assumption
+    // NOTICE: Both key and value must be non-nullable, the visit function takes this assumption
     schema::Builder::with_capacity(3)
         .auto_increment_column_id(true)
-        // key
-        .add_key_column(
-            column_schema::Builder::new(KEY_COLUMN_NAME.to_string(), DatumKind::Varbinary)
-                .is_nullable(false)
-                .is_tag(false)
-                .build()
-                .expect("Should succeed to build column schema of catalog"),
-        )?
-        // timestamp
-        .add_key_column(
-            column_schema::Builder::new(TIMESTAMP_COLUMN_NAME.to_string(), DatumKind::Timestamp)
-                .is_nullable(false)
-                .is_tag(false)
-                .build()
-                .expect("Should succeed to build column schema of catalog"),
-        )?
-        // value
-        .add_normal_column(
-            column_schema::Builder::new(VALUE_COLUMN_NAME.to_string(), DatumKind::Varbinary)
-                .is_nullable(false)
-                .is_tag(false)
-                .build()
-                .expect("Should succeed to build column schema of catalog"),
-        )?
-        .build()
+        .add_key_column(// key
+                        column_schema::Builder::new(KEY_COLUMN_NAME.to_string(), DatumKind::Varbinary)
+                            .is_nullable(false)
+                            .is_tag(false)
+                            .build()
+                            .expect("Should succeed to build column schema of catalog"), )?
+        .add_key_column(// timestamp
+                        column_schema::Builder::new(TIMESTAMP_COLUMN_NAME.to_string(), DatumKind::Timestamp)
+                            .is_nullable(false)
+                            .is_tag(false)
+                            .build()
+                            .expect("Should succeed to build column schema of catalog"), )?
+        .add_normal_column(// value
+                           column_schema::Builder::new(VALUE_COLUMN_NAME.to_string(), DatumKind::Varbinary)
+                               .is_nullable(false)
+                               .is_tag(false)
+                               .build()
+                               .expect("Should succeed to build column schema of catalog"), )?.build()
 }
 
-/// Request type, used as key header
-///
-/// 0 is reserved
+/// Request type, used as key header,0 is reserved
 #[derive(Debug, Clone, Copy)]
 enum KeyType {
     CreateCatalog = 1,
@@ -982,7 +953,7 @@ pub struct TableWriter {
 impl TableWriter {
     async fn write(&self) -> Result<()> {
         let row_group = self.convert_table_info_to_row_group()?;
-        let write_req = WriteRequest { row_group };
+        let write_req = WriteRequest { rowGroup: row_group };
         self.catalog_table
             .write(write_req)
             .await

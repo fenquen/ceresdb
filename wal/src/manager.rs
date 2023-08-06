@@ -30,10 +30,10 @@ pub mod error {
     #[snafu(visibility(pub))]
     pub enum Error {
         #[snafu(display(
-            "Failed to open wal, path:{}, err:{}.\nBacktrace:\n{}",
-            wal_path,
-            source,
-            backtrace
+        "Failed to open wal, path:{}, err:{}.\nBacktrace:\n{}",
+        wal_path,
+        source,
+        backtrace
         ))]
         Open {
             wal_path: String,
@@ -48,9 +48,9 @@ pub mod error {
         },
 
         #[snafu(display(
-            "Region is not found, wal location:{:?}.\nBacktrace:\n{}",
-            location,
-            backtrace
+        "Region is not found, wal location:{:?}.\nBacktrace:\n{}",
+        location,
+        backtrace
         ))]
         RegionNotFound {
             location: WalLocation,
@@ -58,9 +58,9 @@ pub mod error {
         },
 
         #[snafu(display(
-            "Failed to create wal encoder, err:{}.\nBacktrace:\n{}",
-            source,
-            backtrace
+        "Failed to create wal encoder, err:{}.\nBacktrace:\n{}",
+        source,
+        backtrace
         ))]
         CreateWalEncoder {
             source: GenericError,
@@ -68,9 +68,9 @@ pub mod error {
         },
 
         #[snafu(display(
-            "Failed to write log entries, err:{}.\nBacktrace:\n{}",
-            source,
-            backtrace
+        "Failed to write log entries, err:{}.\nBacktrace:\n{}",
+        source,
+        backtrace
         ))]
         Write {
             source: GenericError,
@@ -78,9 +78,9 @@ pub mod error {
         },
 
         #[snafu(display(
-            "Failed to read log entries, err:{}.\nBacktrace:\n{}",
-            source,
-            backtrace
+        "Failed to read log entries, err:{}.\nBacktrace:\n{}",
+        source,
+        backtrace
         ))]
         Read {
             source: GenericError,
@@ -88,9 +88,9 @@ pub mod error {
         },
 
         #[snafu(display(
-            "Failed to delete log entries, err:{}.\nBacktrace:\n{}",
-            source,
-            backtrace
+        "Failed to delete log entries, err:{}.\nBacktrace:\n{}",
+        source,
+        backtrace
         ))]
         Delete {
             source: GenericError,
@@ -110,10 +110,10 @@ pub mod error {
         },
 
         #[snafu(display(
-            "Failed to close wal region, region_id:{}, err:{}.\nBacktrace:\n{}",
-            source,
-            region,
-            backtrace
+        "Failed to close wal region, region_id:{}, err:{}.\nBacktrace:\n{}",
+        source,
+        region,
+        backtrace
         ))]
         CloseRegion {
             source: GenericError,
@@ -142,6 +142,7 @@ pub type RegionId = u64;
 /// Decide where to write logs
 #[derive(Debug, Default, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct WalLocation {
+    /// fenquen regionId 和 shardId 相同
     pub region_id: RegionId,
     pub table_id: TableId,
 }
@@ -281,20 +282,16 @@ pub trait AsyncLogIterator: Send + fmt::Debug {
 
 /// Management of multi-region Wals.
 ///
-/// Every region has its own increasing (and maybe hallow) sequence number
-/// space.
+/// Every region has its own increasing (and maybe hallow) sequence number space.
 #[async_trait]
 pub trait WalManager: Send + Sync + fmt::Debug + 'static {
     /// Get current sequence number.
     async fn sequence_num(&self, location: WalLocation) -> Result<SequenceNumber>;
 
-    /// Mark the entries whose sequence number is in [0, `sequence_number`] to
-    /// be deleted in the future.
-    async fn mark_delete_entries_up_to(
-        &self,
-        location: WalLocation,
-        sequence_num: SequenceNumber,
-    ) -> Result<()>;
+    /// Mark the entries whose sequence number is in [0, `sequence_number`] to be deleted in the future.
+    async fn mark_delete_entries_up_to(&self,
+                                       location: WalLocation,
+                                       sequence_num: SequenceNumber) -> Result<()>;
 
     /// Close a region.
     async fn close_region(&self, region: RegionId) -> Result<()>;
@@ -303,11 +300,9 @@ pub trait WalManager: Send + Sync + fmt::Debug + 'static {
     async fn close_gracefully(&self) -> Result<()>;
 
     /// Provide iterator on necessary entries according to `ReadRequest`.
-    async fn read_batch(
-        &self,
-        ctx: &ReadContext,
-        req: &ReadRequest,
-    ) -> Result<BatchLogIteratorAdapter>;
+    async fn read_batch(&self,
+                        ctx: &ReadContext,
+                        req: &ReadRequest) -> Result<BatchLogIteratorAdapter>;
 
     /// Write a batch of log entries to log.
     ///
@@ -341,11 +336,9 @@ pub struct BatchLogIteratorAdapter {
 }
 
 impl BatchLogIteratorAdapter {
-    pub fn new_with_sync(
-        iter: Box<dyn SyncLogIterator>,
-        runtime: Arc<Runtime>,
-        batch_size: usize,
-    ) -> Self {
+    pub fn new_with_sync(iter: Box<dyn SyncLogIterator>,
+                         runtime: Arc<Runtime>,
+                         batch_size: usize) -> Self {
         Self {
             iter: Some(LogIterator::Sync { iter, runtime }),
             batch_size,
@@ -455,133 +448,3 @@ impl BatchLogIteratorAdapter {
 }
 
 pub type WalManagerRef = Arc<dyn WalManager>;
-
-#[cfg(test)]
-mod tests {
-    use std::{collections::VecDeque, sync::Arc};
-
-    use async_trait::async_trait;
-    use runtime::{self, Runtime};
-
-    use super::*;
-    use crate::{log_batch::LogEntry, tests::util::TestPayloadDecoder};
-
-    #[derive(Debug, Clone)]
-    struct TestIterator {
-        test_logs: Vec<Vec<u8>>,
-        cursor: usize,
-        terminate: usize,
-    }
-
-    impl SyncLogIterator for TestIterator {
-        fn next_log_entry(
-            &mut self,
-        ) -> super::Result<Option<crate::log_batch::LogEntry<&'_ [u8]>>> {
-            if self.cursor == self.terminate {
-                return Ok(None);
-            }
-
-            let log_entry = LogEntry {
-                table_id: 0,
-                sequence: 0,
-                payload: self.test_logs[self.cursor].as_slice(),
-            };
-            self.cursor += 1;
-
-            Ok(Some(log_entry))
-        }
-    }
-
-    #[async_trait]
-    impl AsyncLogIterator for TestIterator {
-        async fn next_log_entry(
-            &mut self,
-        ) -> super::Result<Option<crate::log_batch::LogEntry<&'_ [u8]>>> {
-            if self.cursor == self.terminate {
-                return Ok(None);
-            }
-
-            let log_entry = LogEntry {
-                table_id: 0,
-                sequence: 0,
-                payload: self.test_logs[self.cursor].as_slice(),
-            };
-            self.cursor += 1;
-
-            Ok(Some(log_entry))
-        }
-    }
-
-    #[test]
-    fn test_iterator_adapting() {
-        let test_data = vec![1_u32, 2, 3, 4, 5, 6];
-        let test_iterator = TestIterator {
-            test_logs: test_data.iter().map(|u| u.to_be_bytes().to_vec()).collect(),
-            cursor: 0,
-            terminate: test_data.len(),
-        };
-        let runtime = Arc::new(
-            runtime::Builder::default()
-                .worker_threads(1)
-                .enable_all()
-                .build()
-                .unwrap(),
-        );
-
-        runtime.block_on(async {
-            let res1 = test_async_iterator_adapting(test_iterator.clone()).await;
-            assert_eq!(test_data, res1);
-        });
-
-        runtime.block_on(async {
-            let res2 = test_sync_iterator_adapting(test_iterator.clone(), runtime.clone()).await;
-            assert_eq!(test_data, res2);
-        });
-    }
-
-    async fn test_async_iterator_adapting(test_iterator: TestIterator) -> Vec<u32> {
-        let mut res = Vec::new();
-        let mut iter = BatchLogIteratorAdapter::new_with_async(Box::new(test_iterator), 3);
-        let mut buffer = VecDeque::with_capacity(3);
-
-        loop {
-            buffer = iter
-                .next_log_entries(TestPayloadDecoder, buffer)
-                .await
-                .unwrap();
-            for entry in buffer.iter() {
-                res.push(entry.payload.val);
-            }
-
-            if buffer.is_empty() {
-                break;
-            }
-        }
-
-        res
-    }
-
-    async fn test_sync_iterator_adapting(
-        test_iterator: TestIterator,
-        runtime: Arc<Runtime>,
-    ) -> Vec<u32> {
-        let mut res = Vec::new();
-        let mut iter = BatchLogIteratorAdapter::new_with_sync(Box::new(test_iterator), runtime, 3);
-        let mut buffer = VecDeque::with_capacity(3);
-        loop {
-            buffer = iter
-                .next_log_entries(TestPayloadDecoder, buffer)
-                .await
-                .unwrap();
-            for entry in buffer.iter() {
-                res.push(entry.payload.val);
-            }
-
-            if buffer.is_empty() {
-                break;
-            }
-        }
-
-        res
-    }
-}

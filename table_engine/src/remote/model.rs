@@ -210,7 +210,7 @@ impl TryFrom<ceresdbproto::remote_engine::WriteRequest> for WriteRequest {
 
         Ok(Self {
             table: table_identifier.into(),
-            write_request: TableWriteRequest { row_group },
+            write_request: TableWriteRequest { rowGroup: row_group },
         })
     }
 }
@@ -221,7 +221,7 @@ impl WriteRequest {
         compress_options: CompressOptions,
     ) -> std::result::Result<ceresdbproto::remote_engine::WriteRequest, Error> {
         // Row group to pb.
-        let row_group = request.write_request.row_group;
+        let row_group = request.write_request.rowGroup;
         let table_schema = row_group.schema();
         let min_timestamp = row_group.min_timestamp().as_i64();
         let max_timestamp = row_group.max_timestamp().as_i64();

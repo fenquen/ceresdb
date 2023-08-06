@@ -84,16 +84,16 @@ impl<M: MessageQueue> WalManager for MessageQueueImpl<M> {
         ))
     }
 
+    async fn write(&self, ctx: &WriteContext, batch: &LogWriteBatch) -> Result<SequenceNumber> {
+        self.0.write(ctx, batch).await.box_err().context(Write)
+    }
+
     async fn scan(&self, ctx: &ScanContext, req: &ScanRequest) -> Result<BatchLogIteratorAdapter> {
         let iter = self.0.scan(ctx, req).await.box_err().context(Read)?;
         Ok(BatchLogIteratorAdapter::new_with_async(
             Box::new(iter),
             ctx.batch_size,
         ))
-    }
-
-    async fn write(&self, ctx: &WriteContext, batch: &LogWriteBatch) -> Result<SequenceNumber> {
-        self.0.write(ctx, batch).await.box_err().context(Write)
     }
 
     async fn get_statistics(&self) -> Option<String> {

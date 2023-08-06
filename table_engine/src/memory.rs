@@ -109,8 +109,8 @@ impl Table for MemoryTable {
     async fn write(&self, request: WriteRequest) -> Result<usize> {
         // TODO(yingwen) Maybe check schema?
         let mut row_groups = self.row_groups.write().unwrap();
-        let n = request.row_group.num_rows();
-        row_groups.push(request.row_group);
+        let n = request.rowGroup.num_rows();
+        row_groups.push(request.rowGroup);
 
         Ok(n)
     }
@@ -258,8 +258,7 @@ fn build_column_block<'a, I: Iterator<Item = &'a Datum>>(
     Ok(builder.build())
 }
 
-/// Memory table engine implementation
-// Mainly for test purpose now
+/// Memory table engine implementation, mainly for test purpose now
 pub struct MemoryTableEngine;
 
 #[async_trait]

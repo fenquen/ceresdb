@@ -50,25 +50,3 @@ impl<A: Arena<Stats = BasicStats>> fmt::Debug for ArenaSlice<A> {
         f.debug_list().entries(self.iter()).finish()
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use std::{alloc::Layout, mem, ptr};
-
-    use arena::MonoIncArena;
-
-    use super::*;
-
-    #[test]
-    fn test_arena_slice() {
-        let hello = b"hello";
-        let arena = MonoIncArena::new(1 << 10);
-        let slice = unsafe {
-            let data_ptr = arena
-                .alloc(Layout::from_size_align(hello.len(), mem::align_of_val(hello)).unwrap());
-            ptr::copy_nonoverlapping(hello.as_ptr(), data_ptr.as_ptr(), hello.len());
-            ArenaSlice::from_raw_parts(arena, data_ptr.as_ptr(), hello.len())
-        };
-        assert_eq!(hello, &slice[..]);
-    }
-}

@@ -6,24 +6,24 @@ use std::{fmt, sync::Arc};
 
 use table_engine::engine::EngineRuntimes;
 
-use crate::{sst::meta_data::cache::MetaCacheRef, Config};
+use crate::{sst::meta_data::cache::MetaCacheRef, AnalyticEngineConfig};
 
 /// Context for instance open
-pub struct OpenContext {
+pub struct OpenedTableEngineInstanceContext {
     /// Engine config
-    pub config: Config,
+    pub analyticEngineConfig: AnalyticEngineConfig,
 
     /// Background job runtime
-    pub runtimes: Arc<EngineRuntimes>,
+    pub engineRuntimes: Arc<EngineRuntimes>,
 
     /// Sst meta data cache.
     pub meta_cache: Option<MetaCacheRef>,
 }
 
-impl fmt::Debug for OpenContext {
+impl fmt::Debug for OpenedTableEngineInstanceContext {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("OpenContext")
-            .field("config", &self.config)
+            .field("config", &self.analyticEngineConfig)
             .finish()
     }
 }

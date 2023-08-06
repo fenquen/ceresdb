@@ -63,7 +63,7 @@ impl PhysicalOptimizer for PhysicalOptimizerImpl {
         let exec_plan = self
             .ctx
             .state()
-            .create_physical_plan(&logical_plan.df_plan)
+            .create_physical_plan(&logical_plan.dataFusionLogicalPlan)
             .await
             .context(DataFusionOptimize)?;
         let physical_plan = DataFusionPhysicalPlan::with_plan(self.ctx.clone(), exec_plan);

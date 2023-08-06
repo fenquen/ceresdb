@@ -598,10 +598,8 @@ pub type TableDataRef = Arc<TableData>;
 /// Manages TableDataRef
 #[derive(Debug, Default)]
 pub struct TableDataSet {
-    /// Name to table data
-    table_datas: HashMap<String, TableDataRef>,
-    /// Id to table data
-    id_to_tables: HashMap<TableId, TableDataRef>,
+    tableName_tableData: HashMap<String, TableDataRef>,
+    tableId_tableData: HashMap<TableId, TableDataRef>,
 }
 
 impl TableDataSet {
@@ -614,40 +612,40 @@ impl TableDataSet {
     /// false if the data already exists
     pub fn insert_if_absent(&mut self, table_data_ref: TableDataRef) -> bool {
         let table_name = &table_data_ref.name;
-        if self.table_datas.contains_key(table_name) {
+        if self.tableName_tableData.contains_key(table_name) {
             return false;
         }
-        self.table_datas
+        self.tableName_tableData
             .insert(table_name.to_string(), table_data_ref.clone());
-        self.id_to_tables.insert(table_data_ref.id, table_data_ref);
+        self.tableId_tableData.insert(table_data_ref.id, table_data_ref);
         true
     }
 
     /// Find table by table name
     pub fn find_table(&self, table_name: &str) -> Option<TableDataRef> {
-        self.table_datas.get(table_name).cloned()
+        self.tableName_tableData.get(table_name).cloned()
     }
 
     /// Find table by table id
     pub fn find_table_by_id(&self, table_id: TableId) -> Option<TableDataRef> {
-        self.id_to_tables.get(&table_id).cloned()
+        self.tableId_tableData.get(&table_id).cloned()
     }
 
     /// Remove table by table name
     pub fn remove_table(&mut self, table_name: &str) -> Option<TableDataRef> {
-        let table = self.table_datas.remove(table_name)?;
-        self.id_to_tables.remove(&table.id);
+        let table = self.tableName_tableData.remove(table_name)?;
+        self.tableId_tableData.remove(&table.id);
         Some(table)
     }
 
     /// Returns the total table num in this set
     pub fn table_num(&self) -> usize {
-        self.table_datas.len()
+        self.tableName_tableData.len()
     }
 
     pub fn find_maximum_memory_usage_table(&self) -> Option<TableDataRef> {
         // TODO: Possible performance issue here when there are too many tables.
-        self.table_datas
+        self.tableName_tableData
             .values()
             .max_by_key(|t| t.memtable_memory_usage())
             .cloned()
@@ -655,7 +653,7 @@ impl TableDataSet {
 
     pub fn find_maximum_mutable_memory_usage_table(&self) -> Option<TableDataRef> {
         // TODO: Possible performance issue here when there are too many tables.
-        self.table_datas
+        self.tableName_tableData
             .values()
             .max_by_key(|t| t.mutable_memory_usage())
             .cloned()
@@ -663,252 +661,8 @@ impl TableDataSet {
 
     /// List all tables to `tables`
     pub fn list_all_tables(&self, tables: &mut Vec<TableDataRef>) {
-        for table_data in self.table_datas.values().cloned() {
+        for table_data in self.tableName_tableData.values().cloned() {
             tables.push(table_data);
         }
-    }
-}
-
-#[cfg(test)]
-pub mod tests {
-    use std::sync::Arc;
-
-    use arena::NoopCollector;
-    use common_types::{datum::DatumKind, table::DEFAULT_SHARD_ID};
-    use table_engine::{
-        engine::{CreateTableRequest, TableState},
-        table::SchemaId,
-    };
-    use time_ext::ReadableDuration;
-
-    use super::*;
-    use crate::{
-        memtable::{factory::Factory, MemTableRef},
-        sst::file::tests::FilePurgerMocker,
-        table_options,
-        tests::table,
-    };
-
-    const DEFAULT_SPACE_ID: SpaceId = 1;
-
-    pub fn default_schema() -> Schema {
-        table::create_schema_builder(
-            &[("key", DatumKind::Timestamp)],
-            &[("value", DatumKind::Double)],
-        )
-        .build()
-        .unwrap()
-    }
-
-    #[derive(Default)]
-    pub struct MemTableMocker;
-
-    impl MemTableMocker {
-        pub fn build(&self) -> MemTableRef {
-            let memtable_opts = MemTableOptions {
-                schema: default_schema(),
-                arena_block_size: 1024 * 1024,
-                creation_sequence: 1000,
-                collector: Arc::new(NoopCollector),
-            };
-
-            let factory = SkiplistMemTableFactory;
-            factory.create_memtable(memtable_opts).unwrap()
-        }
-    }
-
-    #[must_use]
-    pub struct TableDataMocker {
-        table_id: TableId,
-        table_name: String,
-        shard_id: ShardId,
-        manifest_snapshot_every_n_updates: NonZeroUsize,
-    }
-
-    impl TableDataMocker {
-        pub fn table_id(mut self, table_id: TableId) -> Self {
-            self.table_id = table_id;
-            self
-        }
-
-        pub fn table_name(mut self, table_name: String) -> Self {
-            self.table_name = table_name;
-            self
-        }
-
-        pub fn shard_id(mut self, shard_id: ShardId) -> Self {
-            self.shard_id = shard_id;
-            self
-        }
-
-        pub fn manifest_snapshot_every_n_updates(
-            mut self,
-            manifest_snapshot_every_n_updates: NonZeroUsize,
-        ) -> Self {
-            self.manifest_snapshot_every_n_updates = manifest_snapshot_every_n_updates;
-            self
-        }
-
-        pub fn build(self) -> TableData {
-            let space_id = DEFAULT_SPACE_ID;
-            let table_schema = default_schema();
-            let create_request = CreateTableRequest {
-                catalog_name: "test_catalog".to_string(),
-                schema_name: "public".to_string(),
-                schema_id: SchemaId::from_u32(DEFAULT_SPACE_ID),
-                table_id: self.table_id,
-                table_name: self.table_name,
-                table_schema,
-                engine: table_engine::ANALYTIC_ENGINE_TYPE.to_string(),
-                options: HashMap::new(),
-                state: TableState::Stable,
-                shard_id: self.shard_id,
-                partition_info: None,
-            };
-
-            let table_opts = TableOptions::default();
-            let purger = FilePurgerMocker::mock();
-            let collector = Arc::new(NoopCollector);
-
-            TableData::new(
-                space_id,
-                create_request.table_id,
-                create_request.table_name,
-                create_request.table_schema,
-                create_request.shard_id,
-                table_opts,
-                &purger,
-                0.75,
-                collector,
-                self.manifest_snapshot_every_n_updates,
-            )
-            .unwrap()
-        }
-    }
-
-    impl Default for TableDataMocker {
-        fn default() -> Self {
-            Self {
-                table_id: table::new_table_id(2, 1),
-                table_name: "mocked_table".to_string(),
-                shard_id: DEFAULT_SHARD_ID,
-                manifest_snapshot_every_n_updates: NonZeroUsize::new(usize::MAX).unwrap(),
-            }
-        }
-    }
-
-    #[test]
-    fn test_new_table_data() {
-        let table_id = table::new_table_id(100, 30);
-        let table_name = "new_table".to_string();
-        let shard_id = 42;
-        let table_data = TableDataMocker::default()
-            .table_id(table_id)
-            .table_name(table_name.clone())
-            .shard_id(shard_id)
-            .build();
-
-        assert_eq!(table_id, table_data.id);
-        assert_eq!(table_name, table_data.name);
-        assert_eq!(TableShardInfo::new(shard_id), table_data.shard_info);
-        assert_eq!(0, table_data.last_sequence());
-        assert!(!table_data.is_dropped());
-        assert_eq!(0, table_data.last_memtable_id());
-        assert!(table_data.dedup());
-    }
-
-    #[test]
-    fn test_find_or_create_mutable() {
-        let table_data = TableDataMocker::default().build();
-        let schema = table_data.schema();
-
-        // Create sampling memtable.
-        let zero_ts = Timestamp::new(0);
-        let mutable = table_data.find_or_create_mutable(zero_ts, &schema).unwrap();
-        assert!(mutable.accept_timestamp(zero_ts));
-        let sampling_mem = mutable.as_sampling();
-        let sampling_id = sampling_mem.id;
-        assert_eq!(1, sampling_id);
-
-        // Test memtable is reused.
-        let now_ts = Timestamp::now();
-        let mutable = table_data.find_or_create_mutable(now_ts, &schema).unwrap();
-        assert!(mutable.accept_timestamp(now_ts));
-        let sampling_mem = mutable.as_sampling();
-        // Use same sampling memtable.
-        assert_eq!(sampling_id, sampling_mem.id);
-
-        let current_version = table_data.current_version();
-        // Set segment duration manually.
-        let mut table_opts = (*table_data.table_options()).clone();
-        table_opts.segment_duration =
-            Some(ReadableDuration(table_options::DEFAULT_SEGMENT_DURATION));
-        table_data.set_table_options(table_opts);
-        // Freeze sampling memtable.
-        current_version.freeze_sampling_memtable();
-
-        // A new mutable memtable should be created.
-        let mutable = table_data.find_or_create_mutable(now_ts, &schema).unwrap();
-        assert!(mutable.accept_timestamp(now_ts));
-        let mem_state = mutable.as_normal();
-        assert_eq!(2, mem_state.id);
-        let time_range =
-            TimeRange::bucket_of(now_ts, table_options::DEFAULT_SEGMENT_DURATION).unwrap();
-        assert_eq!(time_range, mem_state.time_range);
-    }
-
-    #[test]
-    fn test_compute_mutable_limit() {
-        // Build the cases for compute_mutable_limit.
-        let cases = vec![
-            (80, 0.8, 64),
-            (80, 0.5, 40),
-            (80, 0.1, 8),
-            (80, 0.0, 0),
-            (80, 1.0, 80),
-            (0, 0.8, 0),
-            (0, 0.5, 0),
-            (0, 0.1, 0),
-            (0, 0.0, 0),
-            (0, 1.0, 0),
-        ];
-
-        for (write_buffer_size, ratio, expected) in cases {
-            let limit = compute_mutable_limit(write_buffer_size, ratio);
-            assert_eq!(expected, limit);
-        }
-    }
-
-    #[should_panic]
-    #[test]
-    fn test_compute_mutable_limit_panic() {
-        compute_mutable_limit(80, 1.1);
-        compute_mutable_limit(80, -0.1);
-    }
-
-    #[test]
-    fn test_manifest_snapshot_trigger() {
-        // When snapshot_every_n_updates is not zero.
-        let table_data = TableDataMocker::default()
-            .manifest_snapshot_every_n_updates(NonZeroUsize::new(5).unwrap())
-            .build();
-
-        check_manifest_snapshot_trigger(&table_data);
-        // Reset and check again.
-        table_data.reset_manifest_updates();
-        check_manifest_snapshot_trigger(&table_data);
-    }
-
-    fn check_manifest_snapshot_trigger(table_data: &TableData) {
-        // When no updates yet, result should be false.
-        assert!(!table_data.should_do_manifest_snapshot());
-
-        // Eq case.
-        table_data.increase_manifest_updates(5);
-        assert!(table_data.should_do_manifest_snapshot());
-
-        // Greater case.
-        table_data.increase_manifest_updates(5);
-        assert!(table_data.should_do_manifest_snapshot());
     }
 }

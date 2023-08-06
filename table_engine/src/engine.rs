@@ -232,7 +232,7 @@ pub struct OpenTableRequest {
     /// Table id
     pub table_id: TableId,
     /// Table engine type
-    pub engine: String,
+    pub engineType: String,
     /// Shard id, shard is the table set about scheduling from nodes
     pub shard_id: ShardId,
 }
@@ -248,7 +248,7 @@ impl From<TableInfo> for OpenTableRequest {
             schema_id: table_info.schema_id,
             table_name: table_info.table_name,
             table_id: table_info.table_id,
-            engine: table_info.engine,
+            engineType: table_info.engine,
             shard_id: DEFAULT_SHARD_ID,
         }
     }
@@ -272,14 +272,9 @@ pub struct CloseTableRequest {
 
 #[derive(Debug, Clone)]
 pub struct OpenShardRequest {
-    /// Shard id
     pub shard_id: ShardId,
-
-    /// Table infos
     pub table_defs: Vec<TableDef>,
-
-    /// Table engine type
-    pub engine: String,
+    pub engineType: String,
 }
 
 #[derive(Clone, Debug)]
@@ -310,7 +305,7 @@ pub trait TableEngine: Send + Sync {
     async fn drop_table(&self, request: DropTableRequest) -> Result<bool>;
 
     /// Open table, return None if table not exists
-    async fn open_table(&self, request: OpenTableRequest) -> Result<Option<TableRef>>;
+    async fn open_table(&self, openTableRequest: OpenTableRequest) -> Result<Option<TableRef>>;
 
     /// Close table
     async fn close_table(&self, request: CloseTableRequest) -> Result<()>;

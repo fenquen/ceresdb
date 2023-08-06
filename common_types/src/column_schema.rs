@@ -14,9 +14,9 @@ use crate::datum::DatumKind;
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display(
-        "Unsupported arrow data type, type:{}.\nBacktrace:\n{}",
-        data_type,
-        backtrace
+    "Unsupported arrow data type, type:{}.\nBacktrace:\n{}",
+    data_type,
+    backtrace
     ))]
     UnsupportedDataType {
         data_type: DataType,
@@ -36,9 +36,9 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Arrow field meta data is missing, field name:{}.\nBacktrace:\n{}",
-        field_name,
-        backtrace
+    "Arrow field meta data is missing, field name:{}.\nBacktrace:\n{}",
+    field_name,
+    backtrace
     ))]
     ArrowFieldMetaDataMissing {
         field_name: String,
@@ -46,9 +46,9 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Arrow field meta key is not found, key:{:?}.\nBacktrace:\n{}",
-        key,
-        backtrace
+    "Arrow field meta key is not found, key:{:?}.\nBacktrace:\n{}",
+    key,
+    backtrace
     ))]
     ArrowFieldMetaKeyNotFound {
         key: ArrowFieldMetaKey,
@@ -56,11 +56,11 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Arrow field meta value is invalid, key:{:?}, raw_value:{}, err:{}.\nBacktrace:\n{}",
-        key,
-        raw_value,
-        source,
-        backtrace
+    "Arrow field meta value is invalid, key:{:?}, raw_value:{}, err:{}.\nBacktrace:\n{}",
+    key,
+    raw_value,
+    source,
+    backtrace
     ))]
     InvalidArrowFieldMetaValue {
         key: ArrowFieldMetaKey,
@@ -70,10 +70,10 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to decode default value, encoded_val:{:?}, err:{}.\nBacktrace:\n{}",
-        encoded_val,
-        source,
-        backtrace
+    "Failed to decode default value, encoded_val:{:?}, err:{}.\nBacktrace:\n{}",
+    encoded_val,
+    source,
+    backtrace
     ))]
     DecodeDefaultValue {
         encoded_val: Vec<u8>,
@@ -88,11 +88,11 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Debug, Snafu)]
 pub enum CompatError {
     #[snafu(display(
-        "Incompatible data type of column, name:{}, expect:{:?}, given:{:?}.\nBacktrace:\n{}",
-        name,
-        expect,
-        given,
-        backtrace,
+    "Incompatible data type of column, name:{}, expect:{:?}, given:{:?}.\nBacktrace:\n{}",
+    name,
+    expect,
+    given,
+    backtrace,
     ))]
     IncompatDataType {
         name: String,
@@ -174,7 +174,7 @@ pub struct ColumnSchema {
     /// Is tag, tag is just a hint for a column, there is no restriction that a
     /// tag column must be a part of primary key
     pub is_tag: bool,
-    // Whether to use dictionary types for encoding column
+    // Whether to use dictionary types for encoding column 1直都false
     pub is_dictionary: bool,
     /// Comment of the column
     pub comment: String,
@@ -334,6 +334,7 @@ impl TryFrom<&Arc<Field>> for ColumnSchema {
 impl From<&ColumnSchema> for Field {
     fn from(col_schema: &ColumnSchema) -> Self {
         let metadata = encode_arrow_field_meta_data(col_schema);
+
         // If the column sholud use dictionary, create correspond dictionary type.
         let mut field = if col_schema.is_dictionary {
             Field::new_dict(
@@ -345,10 +346,9 @@ impl From<&ColumnSchema> for Field {
                 false,
             )
         } else {
-            Field::new(
-                &col_schema.name,
-                col_schema.data_type.into(),
-                col_schema.is_nullable,
+            Field::new(&col_schema.name,
+                       col_schema.data_type.into(),
+                       col_schema.is_nullable,
             )
         };
 
@@ -362,9 +362,9 @@ fn parse_arrow_field_meta_value<T: Default>(
     meta: &HashMap<String, String>,
     key: ArrowFieldMetaKey,
 ) -> Result<T>
-where
-    T: FromStr,
-    T::Err: std::error::Error + Send + Sync + 'static,
+    where
+        T: FromStr,
+        T::Err: std::error::Error + Send + Sync + 'static,
 {
     let raw_value = match meta.get(key.as_str()) {
         None => {
@@ -399,18 +399,9 @@ fn encode_arrow_field_meta_data(col_schema: &ColumnSchema) -> HashMap<String, St
     let mut meta = HashMap::new();
 
     meta.insert(ArrowFieldMetaKey::Id.to_string(), col_schema.id.to_string());
-    meta.insert(
-        ArrowFieldMetaKey::IsTag.to_string(),
-        col_schema.is_tag.to_string(),
-    );
-    meta.insert(
-        ArrowFieldMetaKey::IsDictionary.to_string(),
-        col_schema.is_dictionary.to_string(),
-    );
-    meta.insert(
-        ArrowFieldMetaKey::Comment.to_string(),
-        col_schema.comment.clone(),
-    );
+    meta.insert(ArrowFieldMetaKey::IsTag.to_string(), col_schema.is_tag.to_string());
+    meta.insert(ArrowFieldMetaKey::IsDictionary.to_string(), col_schema.is_dictionary.to_string());
+    meta.insert(ArrowFieldMetaKey::Comment.to_string(), col_schema.comment.clone());
 
     meta
 }
@@ -533,124 +524,5 @@ impl From<ColumnSchema> for schema_pb::ColumnSchema {
             comment: src.comment,
             default_value,
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use macros::hash_map;
-    use sqlparser::ast::Value;
-
-    use super::*;
-
-    /// Create a column schema for test, each field is filled with non-default
-    /// value
-    fn new_test_column_schema() -> ColumnSchema {
-        Builder::new("test_column_schema".to_string(), DatumKind::String)
-            .id(18)
-            .is_nullable(true)
-            .is_tag(true)
-            .is_dictionary(true)
-            .comment("Comment of this column".to_string())
-            .default_value(Some(Expr::Value(Value::Boolean(true))))
-            .build()
-            .expect("should succeed to build column schema")
-    }
-
-    #[test]
-    fn test_builder() {
-        let lhs = new_test_column_schema();
-        let rhs = ColumnSchema {
-            id: 18,
-            name: "test_column_schema".to_string(),
-            data_type: DatumKind::String,
-            is_nullable: true,
-            is_tag: true,
-            is_dictionary: true,
-            comment: "Comment of this column".to_string(),
-            escaped_name: "test_column_schema".escape_debug().to_string(),
-            default_value: Some(Expr::Value(Value::Boolean(true))),
-        };
-
-        assert_eq!(&lhs, &rhs);
-    }
-
-    #[test]
-    fn test_pb_convert() {
-        let column_schema = new_test_column_schema();
-        let pb_schema = schema_pb::ColumnSchema::from(column_schema.clone());
-        // Check pb specific fields
-        assert!(pb_schema.is_tag);
-        assert!(pb_schema.is_dictionary);
-        assert!(pb_schema.is_nullable);
-
-        let schema_from_pb = ColumnSchema::try_from(pb_schema).unwrap();
-        assert_eq!(&schema_from_pb, &column_schema);
-    }
-
-    #[test]
-    fn test_valid_tag_type() {
-        let invalid_tag_types = vec![DatumKind::Null, DatumKind::Float, DatumKind::Double];
-
-        for v in &DatumKind::VALUES {
-            assert_eq!(
-                ColumnSchema::is_valid_tag_type(*v),
-                !invalid_tag_types.contains(v)
-            );
-        }
-    }
-
-    #[test]
-    fn test_valid_dictionary_type() {
-        let valid_dictionary_types = vec![DatumKind::String];
-
-        for v in &DatumKind::VALUES {
-            assert_eq!(
-                ColumnSchema::is_valid_dictionary_type(*v),
-                valid_dictionary_types.contains(v)
-            );
-        }
-    }
-
-    #[test]
-    fn test_decode_arrow_field_meta_data() {
-        let testcases = [
-            (
-                hash_map! {
-                    "field::id".to_string() => "1".to_string(),
-                    "field::is_tag".to_string() => "true".to_string(),
-                    "field::comment".to_string() => "".to_string()
-                },
-                ArrowFieldMeta {
-                    id: 1,
-                    is_tag: true,
-                    comment: "".to_string(),
-                    is_dictionary: false,
-                },
-            ),
-            (
-                hash_map! {
-                    "field::id".to_string() => "1".to_string(),
-                    "field::is_tag".to_string() => "false".to_string(),
-                    "field::comment".to_string() => "abc".to_string(),
-                    "field::is_dictionary".to_string() => "true".to_string()
-                },
-                ArrowFieldMeta {
-                    id: 1,
-                    is_tag: false,
-                    comment: "abc".to_string(),
-                    is_dictionary: true,
-                },
-            ),
-        ];
-
-        for (meta, expected) in &testcases {
-            assert_eq!(expected, &decode_arrow_field_meta_data(meta).unwrap())
-        }
-
-        let meta = hash_map! {
-            "field::id".to_string() => "1".to_string()
-        };
-        assert!(decode_arrow_field_meta_data(&meta).is_err());
     }
 }

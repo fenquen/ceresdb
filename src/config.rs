@@ -48,7 +48,7 @@ pub struct Config {
     pub tracing: tracing_util::Config,
 
     /// Analytic engine config.
-    pub analytic: analytic_engine::Config,
+    pub analytic: analytic_engine::AnalyticEngineConfig,
 
     /// Query engine config.
     pub query_engine: query_engine::Config,

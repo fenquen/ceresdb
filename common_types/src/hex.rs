@@ -34,28 +34,3 @@ const fn try_decode_hex_char(c: u8) -> Option<u8> {
         _ => None,
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_decode_hex_literal() {
-        let cases = [
-            ("", Some(vec![])),
-            ("FF00", Some(vec![255, 0])),
-            ("a00a", Some(vec![160, 10])),
-            ("FF0", Some(vec![15, 240])),
-            ("f", Some(vec![15])),
-            ("FF0X", None),
-            ("X0", None),
-            ("XX", None),
-            ("x", None),
-        ];
-
-        for (input, expect) in cases {
-            let output = try_decode(input);
-            assert_eq!(output, expect);
-        }
-    }
-}

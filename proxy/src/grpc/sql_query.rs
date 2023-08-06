@@ -18,7 +18,7 @@ use generic_error::BoxError;
 use http::StatusCode;
 use interpreters::interpreter::Output;
 use log::{error, warn};
-use query_engine::executor::Executor as QueryExecutor;
+use query_engine::executor::QueryExecutor as QueryExecutor;
 use router::endpoint::Endpoint;
 use snafu::ResultExt;
 use tokio::sync::mpsc;

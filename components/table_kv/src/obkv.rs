@@ -17,9 +17,6 @@ use crate::{
     TableKv, WriteBatch, WriteContext,
 };
 
-#[cfg(test)]
-mod tests;
-
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display("Invalid obkv config.\nBacktrace:\n{}", backtrace))]

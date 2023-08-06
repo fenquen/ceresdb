@@ -18,7 +18,7 @@ define_result!(Error);
 ///
 /// Contains information that all interpreters need
 #[derive(Debug, Clone)]
-pub struct Context {
+pub struct InterpreterContext {
     request_id: RequestId,
     deadline: Option<Instant>,
     default_catalog: String,
@@ -26,7 +26,7 @@ pub struct Context {
     enable_partition_table_access: bool,
 }
 
-impl Context {
+impl InterpreterContext {
     pub fn builder(request_id: RequestId, deadline: Option<Instant>) -> Builder {
         Builder {
             request_id,
@@ -90,8 +90,8 @@ impl Builder {
         self
     }
 
-    pub fn build(self) -> Context {
-        Context {
+    pub fn build(self) -> InterpreterContext {
+        InterpreterContext {
             request_id: self.request_id,
             deadline: self.deadline,
             default_catalog: self.default_catalog,

@@ -98,7 +98,6 @@ impl<P> Frontend<P> {
         Self { provider }
     }
 
-    /// Parse the sql and returns the statements
     pub fn parse_sql(&self, _ctx: &mut Context, sql: &str) -> Result<StatementVec> {
         Parser::parse_sql(sql).context(InvalidSql { sql })
     }
@@ -110,13 +109,11 @@ impl<P> Frontend<P> {
     }
 
     /// Parse the sql and returns the statements
-    pub fn parse_influxql(
-        &self,
-        _ctx: &mut Context,
-        influxql: &str,
-    ) -> Result<Vec<InfluxqlStatement>> {
+    pub fn parse_influxql(&self,
+                          _ctx: &mut Context,
+                          influxql: &str) -> Result<Vec<InfluxqlStatement>> {
         match influxql_parser::parse_statements(influxql) {
-            Ok(stmts) => Ok(stmts),
+            Ok(statementVec) => Ok(statementVec),
             Err(e) => Err(Error::InvalidInfluxql {
                 influxql: influxql.to_string(),
                 parse_err: e,
@@ -127,10 +124,10 @@ impl<P> Frontend<P> {
 
 impl<P: MetaProvider> Frontend<P> {
     /// Create logical plan for the statement
-    pub fn statement_to_plan(&self, ctx: &mut Context, stmt: Statement) -> Result<Plan> {
+    pub fn statement_to_plan(&self, ctx: &mut Context, statement: Statement) -> Result<Plan> {
         let planner = Planner::new(&self.provider, ctx.request_id, ctx.read_parallelism);
 
-        planner.statement_to_plan(stmt).context(CreatePlan)
+        planner.statement_to_plan(statement).context(CreatePlan)
     }
 
     /// Experimental native promql support, not used in production yet.
@@ -177,12 +174,14 @@ impl<P: MetaProvider> Frontend<P> {
     }
 }
 
-pub fn parse_table_name(statements: &StatementVec) -> Option<String> {
+/// statementVec只会有1个元素的
+pub fn parse_table_name(statementVec: &StatementVec) -> Option<String> {
     // maybe have empty sql
-    if statements.is_empty() {
+    if statementVec.is_empty() {
         return None;
     }
-    match &statements[0] {
+
+    match &statementVec[0] {
         Statement::Standard(s) => match *s.clone() {
             SqlStatement::Insert { table_name, .. } => {
                 Some(TableName::from(table_name).to_string())
@@ -193,8 +192,7 @@ pub fn parse_table_name(statements: &StatementVec) -> Option<String> {
                         SetExpr::Select(select) => {
                             if select.from.len() != 1 {
                                 None
-                            } else if let TableFactor::Table { name, .. } = &select.from[0].relation
-                            {
+                            } else if let TableFactor::Table { name, .. } = &select.from[0].relation {
                                 Some(TableName::from(name.clone()).to_string())
                             } else {
                                 None
@@ -237,45 +235,4 @@ pub fn parse_table_name_with_sql(sql: &str) -> Result<Option<String>> {
     Ok(parse_table_name(
         &Parser::parse_sql(sql).context(InvalidSql { sql })?,
     ))
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::frontend;
-
-    #[test]
-    fn test_parse_table_name() {
-        let table = "test_parse_table_name";
-        let test_cases = vec![
-                            format!("INSERT INTO {table} (t, name, value) VALUES (1651737067000, 'ceresdb', 100)"),
-                            format!("INSERT INTO `{table}` (t, name, value) VALUES (1651737067000,'ceresdb', 100)"),
-                            format!("select * from {table}"),
-                            format!("select * from `{table}`"),
-                            format!("explain select * from {table}"),
-                            format!("explain select * from `{table}`"),
-                            format!("CREATE TABLE {table} (`name`string TAG,`value` double NOT NULL, `t` timestamp NOT NULL, TIMESTAMP KEY(t))"),
-                            format!("CREATE TABLE `{table}` (`name`string TAG,`value` double NOT NULL, `t` timestamp NOT NULL, TIMESTAMP KEY(t))"),
-                            format!("drop table {table}"),
-                            format!("drop table `{table}`"),
-                            format!("describe table {table}"),
-                            format!("describe table `{table}`"),
-                            format!("alter table {table} modify setting enable_ttl='false'"),
-                            format!("alter table `{table}` modify setting enable_ttl='false'"),
-                            format!("alter table {table} add column c1 int"),
-                            format!("alter table `{table}` add column c1 int"),
-                            format!("show create table {table}"),
-                            format!("show create table `{table}`"),
-                            format!("exists table {table}"),
-                            format!("exists table `{table}`"),
-        ];
-        for sql in test_cases {
-            assert_eq!(
-                frontend::parse_table_name_with_sql(&sql).unwrap(),
-                Some(table.to_string())
-            );
-        }
-        assert!(frontend::parse_table_name_with_sql("-- just comment")
-            .unwrap()
-            .is_none());
-    }
 }

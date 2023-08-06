@@ -71,11 +71,9 @@ impl TryFrom<Output> for RecordBatchVec {
     }
 }
 
-/// Interpreter executes the plan it holds
 #[async_trait]
 pub trait Interpreter {
     async fn execute(self: Box<Self>) -> Result<Output>;
 }
 
-/// A pointer to Interpreter
 pub type InterpreterPtr = Box<dyn Interpreter + Send>;

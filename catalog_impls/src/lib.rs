@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use catalog::{
     consts::SYSTEM_CATALOG,
-    manager::{Manager, ManagerRef},
+    manager::{CatalogManager},
     schema::NameRef,
     CatalogRef,
 };
@@ -18,16 +18,15 @@ pub mod volatile;
 
 /// CatalogManagerImpl is a wrapper for system and user tables
 #[derive(Clone)]
-pub struct CatalogManagerImpl {
+pub struct CatalogManagerDelegate {
     system_tables: SystemTables,
-    user_catalog_manager: ManagerRef,
+    user_catalog_manager: Arc<dyn CatalogManager>,
 }
 
-impl CatalogManagerImpl {
-    pub fn new(manager: ManagerRef) -> Self {
+impl CatalogManagerDelegate {
+    pub fn new(manager: Arc<dyn CatalogManager>) -> Self {
         let mut system_tables_builder = SystemTablesBuilder::new();
-        system_tables_builder = system_tables_builder
-            .insert_table(SystemTableAdapter::new(Tables::new(manager.clone())));
+        system_tables_builder = system_tables_builder.insert_table(SystemTableAdapter::new(Tables::new(manager.clone())));
         Self {
             system_tables: system_tables_builder.build(),
             user_catalog_manager: manager,
@@ -35,7 +34,7 @@ impl CatalogManagerImpl {
     }
 }
 
-impl Manager for CatalogManagerImpl {
+impl CatalogManager for CatalogManagerDelegate {
     fn default_catalog_name(&self) -> NameRef {
         self.user_catalog_manager.default_catalog_name()
     }

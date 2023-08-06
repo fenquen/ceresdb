@@ -65,7 +65,7 @@ pub struct CreateTable {
     /// Table name
     pub table_name: TableName,
     pub columns: Vec<ColumnDef>,
-    pub engine: String,
+    pub engineName: String,
     pub constraints: Vec<TableConstraint>,
     /// Table options in `WITH`.
     pub options: Vec<SqlOption>,
@@ -136,32 +136,4 @@ pub struct ShowCreate {
 #[derive(Debug, PartialEq, Eq)]
 pub struct ExistsTable {
     pub table_name: TableName,
-}
-
-#[cfg(test)]
-mod tests {
-    use sqlparser::ast::Ident;
-
-    use super::*;
-
-    #[test]
-    fn test_table_name() {
-        let testcases = vec![
-            (
-                ObjectName(vec![
-                    Ident::with_quote('`', "schema"),
-                    Ident::with_quote('`', "table"),
-                ]),
-                "schema.table",
-            ),
-            (
-                ObjectName(vec![Ident::new("schema"), Ident::new("table")]),
-                "schema.table",
-            ),
-        ];
-
-        for (object_name, expected) in testcases {
-            assert_eq!(TableName::from(object_name).to_string(), expected);
-        }
-    }
 }

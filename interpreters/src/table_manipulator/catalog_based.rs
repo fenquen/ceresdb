@@ -11,28 +11,28 @@ use snafu::{ensure, ResultExt};
 use table_engine::engine::{TableEngineRef, TableState};
 
 use crate::{
-    context::Context,
+    context::InterpreterContext,
     interpreter::Output,
     table_manipulator::{
         PartitionTableNotSupported, Result, TableManipulator, TableOperator as TableOperatorErr,
     },
 };
 
-pub struct TableManipulatorImpl {
+pub struct TableManipulatorCatalogBased {
     table_operator: TableOperator,
 }
 
-impl TableManipulatorImpl {
+impl TableManipulatorCatalogBased {
     pub fn new(table_operator: TableOperator) -> Self {
         Self { table_operator }
     }
 }
 
 #[async_trait]
-impl TableManipulator for TableManipulatorImpl {
+impl TableManipulator for TableManipulatorCatalogBased {
     async fn create_table(
         &self,
-        ctx: Context,
+        ctx: InterpreterContext,
         plan: CreateTablePlan,
         table_engine: TableEngineRef,
     ) -> Result<Output> {
@@ -81,7 +81,7 @@ impl TableManipulator for TableManipulatorImpl {
 
     async fn drop_table(
         &self,
-        ctx: Context,
+        ctx: InterpreterContext,
         plan: DropTablePlan,
         table_engine: TableEngineRef,
     ) -> Result<Output> {

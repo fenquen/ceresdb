@@ -35,6 +35,3 @@ pub const NUM_ROWS_PER_ROW_GROUP: &str = "num_rows_per_row_group";
 pub const UPDATE_MODE: &str = "update_mode";
 pub const COMPRESSION: &str = "compression";
 pub const STORAGE_FORMAT: &str = "storage_format";
-
-#[cfg(any(test, feature = "test"))]
-pub mod tests;

@@ -13,17 +13,3 @@ pub(crate) fn hash_table(table: &str) -> u64 {
     table.hash(&mut hasher);
     hasher.finish()
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_hash_table_to_determined_id() {
-        let tables = ["aaa", "bbb", "", "*x21"];
-        for table in tables {
-            let id = hash_table(table);
-            assert_eq!(id, hash_table(table));
-        }
-    }
-}

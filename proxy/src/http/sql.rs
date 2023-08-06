@@ -13,7 +13,7 @@ use common_types::{
 };
 use generic_error::BoxError;
 use interpreters::interpreter::Output;
-use query_engine::executor::{Executor as QueryExecutor, RecordBatchVec};
+use query_engine::executor::{QueryExecutor as QueryExecutor, RecordBatchVec};
 use serde::{
     ser::{SerializeMap, SerializeSeq},
     Deserialize, Serialize,
@@ -28,24 +28,23 @@ use crate::{
 };
 
 impl<Q: QueryExecutor + 'static> Proxy<Q> {
-    pub async fn handle_http_sql_query(
-        &self,
-        ctx: &RequestContext,
-        req: Request,
-    ) -> Result<Output> {
+    pub async fn handle_http_sql_query(&self,
+                                       requestContext: &RequestContext,
+                                       request: Request) -> Result<Output> {
         let context = Context {
-            timeout: ctx.timeout,
+            timeout: requestContext.timeout,
             runtime: self.engine_runtimes.read_runtime.clone(),
             enable_partition_table_access: true,
             forwarded_from: None,
         };
 
-        match self.handle_sql(context, &ctx.schema, &req.query).await? {
+        match self.handle_sql(context, &requestContext.schema, &request.query).await? {
             SqlResponse::Forwarded(resp) => convert_sql_response_to_output(resp),
             SqlResponse::Local(output) => Ok(output),
         }
     }
 }
+
 #[derive(Debug, Deserialize)]
 pub struct Request {
     pub query: String,
@@ -73,8 +72,8 @@ struct Row<'a>(Vec<(&'a String, &'a Datum)>);
 
 impl<'a> Serialize for Row<'a> {
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
+        where
+            S: serde::Serializer,
     {
         let rows = &self.0;
         let mut map = serializer.serialize_map(Some(rows.len()))?;
@@ -87,8 +86,8 @@ impl<'a> Serialize for Row<'a> {
 
 impl Serialize for ResponseRows {
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
+        where
+            S: serde::Serializer,
     {
         let total_count = self.data.len();
         let mut seq = serializer.serialize_seq(Some(total_count))?;

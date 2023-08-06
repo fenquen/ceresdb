@@ -262,8 +262,7 @@ impl<'a> RowGroupSlicer<'a> {
 /// rows is not specific.
 #[derive(Clone, Debug)]
 pub struct RowGroup {
-    /// Schema of the row group, all rows in the row group should have same
-    /// schema
+    /// Schema of the row group, all rows in the row group should have same schema
     schema: Schema,
     /// Rows in the row group
     rows: Vec<Row>,

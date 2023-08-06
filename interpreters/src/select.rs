@@ -5,12 +5,12 @@
 use async_trait::async_trait;
 use log::debug;
 use macros::define_result;
-use query_engine::executor::{Executor, Query};
+use query_engine::executor::{QueryExecutor, Query};
 use query_frontend::plan::QueryPlan;
 use snafu::{ResultExt, Snafu};
 
 use crate::{
-    context::Context,
+    context::InterpreterContext,
     interpreter::{Interpreter, InterpreterPtr, Output, Result as InterpreterResult, Select},
 };
 
@@ -29,47 +29,43 @@ define_result!(Error);
 
 /// Select interpreter
 pub struct SelectInterpreter<T> {
-    ctx: Context,
-    plan: QueryPlan,
-    executor: T,
+    ctx: InterpreterContext,
+    queryPlan: QueryPlan,
+    queryExecutor: T,
 }
 
-impl<T: Executor + 'static> SelectInterpreter<T> {
-    pub fn create(ctx: Context, plan: QueryPlan, executor: T) -> InterpreterPtr {
+impl<T: QueryExecutor + 'static> SelectInterpreter<T> {
+    pub fn create(ctx: InterpreterContext, queryPlan: QueryPlan, queryExecutor: T) -> InterpreterPtr {
         Box::new(Self {
             ctx,
-            plan,
-            executor,
+            queryPlan,
+            queryExecutor,
         })
     }
 }
 
 #[async_trait]
-impl<T: Executor> Interpreter for SelectInterpreter<T> {
+impl<T: QueryExecutor> Interpreter for SelectInterpreter<T> {
     async fn execute(self: Box<Self>) -> InterpreterResult<Output> {
         let request_id = self.ctx.request_id();
-        debug!(
-            "Interpreter execute select begin, request_id:{}, plan:{:?}",
-            request_id, self.plan
-        );
+
+        debug!("Interpreter execute select begin, request_id:{}, plan:{:?}",request_id, self.queryPlan);
 
         let query_ctx = self
             .ctx
-            .new_query_context()
+            .new_query_context() // 毫无意义的平移转换
             .context(CreateQueryContext)
             .context(Select)?;
-        let query = Query::new(self.plan);
+
+        let query = Query::new(self.queryPlan);
         let record_batches = self
-            .executor
+            .queryExecutor
             .execute_logical_plan(query_ctx, query)
             .await
             .context(ExecutePlan)
             .context(Select)?;
 
-        debug!(
-            "Interpreter execute select finish, request_id:{}",
-            request_id
-        );
+        debug!("Interpreter execute select finish, request_id:{}",request_id);
 
         Ok(Output::Records(record_batches))
     }

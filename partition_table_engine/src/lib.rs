@@ -21,16 +21,17 @@ use table_engine::{
     table::TableRef,
     PARTITION_TABLE_ENGINE_TYPE,
 };
+use table_engine::remote::RemoteEngine;
 
 use crate::partition::{PartitionTableImpl, TableData};
 
 /// Partition table engine implementation.
 pub struct PartitionTableEngine {
-    remote_engine_ref: RemoteEngineRef,
+    remote_engine_ref: Arc<dyn RemoteEngine>,
 }
 
 impl PartitionTableEngine {
-    pub fn new(remote_engine_ref: RemoteEngineRef) -> Self {
+    pub fn new(remote_engine_ref: Arc<dyn RemoteEngine>) -> Self {
         Self { remote_engine_ref }
     }
 }

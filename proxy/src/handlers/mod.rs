@@ -6,8 +6,8 @@ pub mod admin;
 mod error;
 
 mod prelude {
-    pub use catalog::manager::Manager as CatalogManager;
-    pub use query_engine::executor::Executor as QueryExecutor;
+    pub use catalog::manager::CatalogManager as CatalogManager;
+    pub use query_engine::executor::QueryExecutor as QueryExecutor;
     pub use serde::{Deserialize, Serialize};
     pub use snafu::ResultExt;
     pub use warp::Filter;

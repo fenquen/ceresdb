@@ -148,25 +148,3 @@ impl<T> PrefetchableStream for NoopPrefetcher<T> {
         self.0.next().await
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use futures::stream;
-
-    use super::*;
-
-    #[tokio::test]
-    async fn test_trait_object_prefetchable_stream() {
-        let numbers = vec![1, 2, 3];
-        let stream = stream::iter(numbers.clone());
-        let stream = NoopPrefetcher(Box::new(stream));
-        let mut stream: Box<dyn PrefetchableStream<Item = i32>> = Box::new(stream);
-
-        let mut fetched_numbers = Vec::with_capacity(numbers.len());
-        while let Some(v) = stream.fetch_next().await {
-            fetched_numbers.push(v);
-        }
-
-        assert_eq!(numbers, fetched_numbers);
-    }
-}

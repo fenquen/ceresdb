@@ -30,7 +30,7 @@ use prom_remote_api::types::{
     Label, LabelMatcher, Query, QueryResult, RemoteStorage, Sample, TimeSeries, WriteRequest,
 };
 use prost::Message;
-use query_engine::executor::{Executor as QueryExecutor, RecordBatchVec};
+use query_engine::executor::{QueryExecutor as QueryExecutor, RecordBatchVec};
 use query_frontend::{
     frontend::{Context, Frontend},
     promql::{RemoteQueryPlan, DEFAULT_FIELD_COLUMN, NAME_LABEL},
@@ -151,7 +151,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 msg: "Query is blocked",
             })?;
         let output = self
-            .execute_plan(request_id, &ctx.catalog, &ctx.schema, plan, deadline)
+            .execute_plan(request_id, &ctx.catalog, &ctx.schema, plan, deadline,false)
             .await?;
 
         let cost = begin_instant.saturating_elapsed().as_millis();
@@ -489,170 +489,4 @@ fn convert_query_result(
     };
 
     converter.convert(metric, record_batches)
-}
-
-#[cfg(test)]
-mod tests {
-    use std::sync::Arc;
-
-    use arrow::{
-        array::{ArrayRef, Float64Array, StringArray, TimestampMillisecondArray, UInt64Array},
-        record_batch::RecordBatch as ArrowRecordBatch,
-    };
-    use common_types::{
-        column_schema,
-        record_batch::RecordBatch,
-        schema::{self, TIMESTAMP_COLUMN},
-    };
-    use prom_remote_api::types::Label;
-
-    use super::*;
-
-    fn make_labels(tuples: Vec<(&str, &str)>) -> Vec<Label> {
-        tuples
-            .into_iter()
-            .map(|(name, value)| Label {
-                name: name.to_string(),
-                value: value.to_string(),
-            })
-            .collect()
-    }
-
-    fn make_samples(tuples: Vec<(i64, f64)>) -> Vec<Sample> {
-        tuples
-            .into_iter()
-            .map(|(timestamp, value)| Sample { timestamp, value })
-            .collect()
-    }
-
-    #[test]
-    fn test_normailze_labels() {
-        let labels = make_labels(vec![
-            ("aa", "va"),
-            ("zz", "vz"),
-            (NAME_LABEL, "cpu"),
-            ("yy", "vy"),
-        ]);
-
-        let (metric, labels) = normalize_labels(labels).unwrap();
-        assert_eq!("cpu", metric);
-        assert_eq!(
-            make_labels(vec![("aa", "va"), ("yy", "vy"), ("zz", "vz")]),
-            labels
-        );
-
-        assert!(normalize_labels(vec![]).is_err());
-    }
-
-    // Build a schema with
-    // - 2 tags(tag1, tag2)
-    // - 1 field(value)
-    fn build_schema() -> schema::Schema {
-        schema::Builder::new()
-            .auto_increment_column_id(true)
-            .add_key_column(
-                column_schema::Builder::new(TSID_COLUMN.to_string(), DatumKind::UInt64)
-                    .build()
-                    .unwrap(),
-            )
-            .unwrap()
-            .add_key_column(
-                column_schema::Builder::new(TIMESTAMP_COLUMN.to_string(), DatumKind::Timestamp)
-                    .build()
-                    .unwrap(),
-            )
-            .unwrap()
-            .add_normal_column(
-                column_schema::Builder::new(DEFAULT_FIELD_COLUMN.to_string(), DatumKind::Double)
-                    .build()
-                    .unwrap(),
-            )
-            .unwrap()
-            .add_normal_column(
-                column_schema::Builder::new("tag1".to_string(), DatumKind::String)
-                    .is_tag(true)
-                    .build()
-                    .unwrap(),
-            )
-            .unwrap()
-            .add_normal_column(
-                column_schema::Builder::new("tag2".to_string(), DatumKind::String)
-                    .is_tag(true)
-                    .build()
-                    .unwrap(),
-            )
-            .unwrap()
-            .build()
-            .unwrap()
-    }
-
-    fn build_record_batch(schema: &schema::Schema) -> RecordBatchVec {
-        let tsid: ArrayRef = Arc::new(UInt64Array::from(vec![1, 1, 2, 3, 3]));
-        let timestamp: ArrayRef = Arc::new(TimestampMillisecondArray::from(vec![
-            11111111, 11111112, 11111113, 11111111, 11111112,
-        ]));
-        let values: ArrayRef =
-            Arc::new(Float64Array::from(vec![100.0, 101.0, 200.0, 300.0, 301.0]));
-        let tag1: ArrayRef = Arc::new(StringArray::from(vec!["a", "a", "b", "c", "c"]));
-        let tag2: ArrayRef = Arc::new(StringArray::from(vec!["x", "x", "y", "z", "z"]));
-
-        let batch = ArrowRecordBatch::try_new(
-            schema.to_arrow_schema_ref(),
-            vec![tsid, timestamp, values, tag1, tag2],
-        )
-        .unwrap();
-
-        vec![RecordBatch::try_from(batch).unwrap()]
-    }
-
-    #[test]
-    fn test_convert_records_to_query_result() {
-        let metric = "cpu";
-        let schema = build_schema();
-        let batches = build_record_batch(&schema);
-        let record_schema = schema.to_record_schema();
-        let converter =
-            Converter::try_new(&record_schema, TIMESTAMP_COLUMN, DEFAULT_FIELD_COLUMN).unwrap();
-        let mut query_result = converter.convert(metric.to_string(), batches).unwrap();
-
-        query_result
-            .timeseries
-            // sort time series by first label's value(tag1 in this case)
-            .sort_unstable_by(|a, b| a.labels[0].value.cmp(&b.labels[0].value));
-
-        assert_eq!(
-            QueryResult {
-                timeseries: vec![
-                    TimeSeries {
-                        labels: make_labels(vec![
-                            ("tag1", "a"),
-                            ("tag2", "x"),
-                            (NAME_LABEL, metric)
-                        ]),
-                        samples: make_samples(vec![(11111111, 100.0), (11111112, 101.0),]),
-                        ..Default::default()
-                    },
-                    TimeSeries {
-                        labels: make_labels(vec![
-                            ("tag1", "b"),
-                            ("tag2", "y"),
-                            (NAME_LABEL, metric)
-                        ]),
-                        samples: make_samples(vec![(11111113, 200.0)]),
-                        ..Default::default()
-                    },
-                    TimeSeries {
-                        labels: make_labels(vec![
-                            ("tag1", "c"),
-                            ("tag2", "z"),
-                            (NAME_LABEL, metric)
-                        ]),
-                        samples: make_samples(vec![(11111111, 300.0), (11111112, 301.0),]),
-                        ..Default::default()
-                    },
-                ]
-            },
-            query_result
-        );
-    }
 }

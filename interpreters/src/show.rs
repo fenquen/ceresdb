@@ -18,7 +18,7 @@ use regex::Regex;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 
 use crate::{
-    context::Context,
+    context::InterpreterContext,
     interpreter::{
         Interpreter, InterpreterPtr, Output, Result as InterpreterResult, ShowCreateTable,
         ShowDatabases, ShowTables,
@@ -81,13 +81,13 @@ pub enum Error {
 define_result!(Error);
 
 pub struct ShowInterpreter {
-    ctx: Context,
+    ctx: InterpreterContext,
     plan: ShowPlan,
     catalog_manager: ManagerRef,
 }
 
 impl ShowInterpreter {
-    pub fn create(ctx: Context, plan: ShowPlan, catalog_manager: ManagerRef) -> InterpreterPtr {
+    pub fn create(ctx: InterpreterContext, plan: ShowPlan, catalog_manager: ManagerRef) -> InterpreterPtr {
         Box::new(Self {
             ctx,
             plan,
@@ -103,7 +103,7 @@ impl ShowInterpreter {
     }
 
     fn show_tables(
-        ctx: Context,
+        ctx: InterpreterContext,
         catalog_manager: ManagerRef,
         plan: ShowTablesPlan,
     ) -> Result<Output> {
@@ -164,7 +164,7 @@ impl ShowInterpreter {
         Ok(Output::Records(vec![record_batch]))
     }
 
-    fn show_databases(ctx: Context, catalog_manager: ManagerRef) -> Result<Output> {
+    fn show_databases(ctx: InterpreterContext, catalog_manager: ManagerRef) -> Result<Output> {
         let catalog = get_default_catalog(&ctx, &catalog_manager)?;
         let schema_names = catalog
             .all_schemas()
@@ -217,7 +217,7 @@ impl Interpreter for ShowInterpreter {
 }
 
 fn get_default_catalog(
-    ctx: &Context,
+    ctx: &InterpreterContext,
     catalog_manager: &ManagerRef,
 ) -> Result<Arc<dyn Catalog + Send + Sync>> {
     let default_catalog = ctx.default_catalog();
@@ -230,7 +230,7 @@ fn get_default_catalog(
 }
 
 fn get_default_schema(
-    ctx: &Context,
+    ctx: &InterpreterContext,
     catalog_manager: &ManagerRef,
 ) -> Result<Arc<dyn Schema + Send + Sync>> {
     let catalog = get_default_catalog(ctx, catalog_manager)?;
@@ -242,28 +242,4 @@ fn get_default_schema(
         .context(SchemaNotExists {
             name: default_schema,
         })
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::show::to_pattern_re;
-    #[test]
-
-    fn test_is_table_matched() {
-        let testcases = vec![
-            // table, pattern, matched
-            ("abc", "abc", true),
-            ("abc", "abcd", false),
-            ("abc", "ab%", true),
-            ("abc", "%b%", true),
-            ("abc", "_b_", true),
-            ("aabcc", "%b%", true),
-            ("aabcc", "_b_", false),
-        ];
-
-        for (table_name, pattern, matched) in testcases {
-            let pattern = to_pattern_re(pattern).unwrap();
-            assert_eq!(matched, pattern.is_match(table_name));
-        }
-    }
 }

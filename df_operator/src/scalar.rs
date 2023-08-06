@@ -16,10 +16,11 @@ pub struct ScalarUdf {
 }
 
 impl ScalarUdf {
-    pub fn create(name: &str, func: ScalarFunction) -> Self {
-        let signature = func.signature().to_datafusion_signature();
-        let return_type = func.return_type().to_datafusion_return_type();
-        let scalar_fn = func.to_datafusion_function();
+    pub fn create(name: &str, scalarFunction: ScalarFunction) -> Self {
+        // 转换到datafusion体系
+        let signature = scalarFunction.signature().to_datafusion_signature();
+        let return_type = scalarFunction.return_type().to_datafusion_return_type();
+        let scalar_fn = scalarFunction.to_datafusion_function();
 
         let df_udf = Arc::new(ScalarUDF::new(name, &signature, &return_type, &scalar_fn));
 

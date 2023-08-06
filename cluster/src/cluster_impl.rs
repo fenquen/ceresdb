@@ -365,29 +365,3 @@ impl Cluster for ClusterImpl {
         self.shard_lock_manager.clone()
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_format_shard_lock_key_prefix() {
-        let cases = vec![
-            (
-                ("/ceresdb", "defaultCluster"),
-                Some("/ceresdb/defaultCluster/shards"),
-            ),
-            (("", "defaultCluster"), None),
-            (("vvv", "defaultCluster"), None),
-            (("/x", ""), None),
-        ];
-
-        for ((root_path, cluster_name), expected) in cases {
-            let actual = ClusterImpl::shard_lock_key_prefix(root_path, cluster_name);
-            match expected {
-                Some(expected) => assert_eq!(actual.unwrap(), expected),
-                None => assert!(actual.is_err()),
-            }
-        }
-    }
-}

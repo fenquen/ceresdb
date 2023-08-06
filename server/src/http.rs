@@ -25,7 +25,7 @@ use proxy::{
     opentsdb::types::{PutParams, PutRequest},
     Proxy,
 };
-use query_engine::executor::Executor as QueryExecutor;
+use query_engine::executor::QueryExecutor as QueryExecutor;
 use router::endpoint::Endpoint;
 use runtime::{Runtime, RuntimeRef};
 use serde::Serialize;
@@ -72,9 +72,9 @@ pub enum Error {
     MissingProxy { backtrace: Backtrace },
 
     #[snafu(display(
-        "Fail to do heap profiling, err:{}.\nBacktrace:\n{}",
-        source,
-        backtrace
+    "Fail to do heap profiling, err:{}.\nBacktrace:\n{}",
+    source,
+    backtrace
     ))]
     ProfileHeap {
         source: profile::Error,
@@ -91,10 +91,10 @@ pub enum Error {
     JoinAsyncTask { source: runtime::Error },
 
     #[snafu(display(
-        "Failed to parse ip addr, ip:{}, err:{}.\nBacktrace:\n{}",
-        ip,
-        source,
-        backtrace
+    "Failed to parse ip addr, ip:{}, err:{}.\nBacktrace:\n{}",
+    ip,
+    source,
+    backtrace
     ))]
     ParseIpAddr {
         ip: String,
@@ -184,9 +184,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
 }
 
 impl<Q: QueryExecutor + 'static> Service<Q> {
-    fn routes(
-        &self,
-    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+    fn routes(&self) -> impl Filter<Extract=(impl Reply), Error=Rejection> + Clone {
         self.home()
             // public APIs
             .or(self.metrics())
@@ -219,11 +217,8 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             }))
     }
 
-    /// Expose `/prom/v1/read` and `/prom/v1/write` to serve Prometheus remote
-    /// storage request
-    fn prom_api(
-        &self,
-    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+    /// Expose `/prom/v1/read` and `/prom/v1/write` to serve Prometheus remote storage request
+    fn prom_api(&self) -> impl Filter<Extract=(impl warp::Reply, ), Error=warp::Rejection> + Clone {
         let write_api = warp::path!("write")
             .and(web::warp::with_remote_storage(self.proxy.clone()))
             .and(self.with_context())
@@ -242,7 +237,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
     }
 
     // GET /
-    fn home(&self) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+    fn home(&self) -> impl Filter<Extract=(impl warp::Reply, ), Error=warp::Rejection> + Clone {
         warp::path::end().and(warp::get()).map(|| {
             let mut resp = HashMap::new();
             resp.insert("status", "ok");
@@ -251,13 +246,12 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
     }
 
     // POST /sql
-    fn sql(&self) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
-        // accept json or plain text
+    fn sql(&self) -> impl Filter<Extract=(impl Reply), Error=Rejection> + Clone {
+        // 要是请求体的内容是json文本那么映射程Request 如果是纯文本那么落地到Request的query
         let extract_request = warp::body::json()
             .or(warp::body::bytes().map(|v: Bytes| Request {
                 query: String::from_utf8_lossy(&v).to_string(),
-            }))
-            .unify();
+            })).unify();
 
         warp::path!("sql")
             .and(warp::post())
@@ -266,36 +260,33 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .and(self.with_context())
             .and(self.with_proxy())
             .and(self.with_read_runtime())
-            .and_then(
-                |req, ctx, proxy: Arc<Proxy<Q>>, runtime: RuntimeRef| async move {
-                    let result = runtime
-                        .spawn(async move {
-                            proxy
-                                .handle_http_sql_query(&ctx, req)
-                                .await
-                                .map(convert_output)
-                        })
-                        .await
-                        .box_err()
-                        .context(HandleRequest);
-                    match result {
-                        Ok(Ok(res)) => Ok(reply::json(&res)),
-                        Ok(Err(e)) => {
-                            if let proxy::error::Error::QueryMaybeExceedTTL { msg } = e {
-                                return Err(reject::custom(Error::QueryMaybeExceedTTL { msg }));
-                            }
-                            Err(reject::custom(Error::Internal {
-                                source: Box::new(e),
-                            }))
+            .and_then(|request, requestContext, proxy: Arc<Proxy<Q>>, runtime: RuntimeRef| async move {
+                let result = runtime
+                    .spawn(async move {
+                        proxy.handle_http_sql_query(&requestContext, request).await.map(convert_output)
+                    })
+                    .await
+                    .box_err()
+                    .context(HandleRequest);
+
+                match result {
+                    Ok(Ok(res)) => Ok(reply::json(&res)),
+                    Ok(Err(e)) => {
+                        if let proxy::error::Error::QueryMaybeExceedTTL { msg } = e {
+                            return Err(reject::custom(Error::QueryMaybeExceedTTL { msg }));
                         }
-                        Err(e) => Err(reject::custom(e)),
+                        Err(reject::custom(Error::Internal {
+                            source: Box::new(e),
+                        }))
                     }
-                },
+                    Err(e) => Err(reject::custom(e)),
+                }
+            },
             )
     }
 
     // GET /route
-    fn route(&self) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+    fn route(&self) -> impl Filter<Extract=(impl warp::Reply, ), Error=warp::Rejection> + Clone {
         warp::path!("route" / String)
             .and(warp::get())
             .and(self.with_context())
@@ -323,7 +314,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
     ///     https://docs.influxdata.com/influxdb/v1.8/tools/api/#query-http-endpoint
     fn influxdb_api(
         &self,
-    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+    ) -> impl Filter<Extract=(impl warp::Reply, ), Error=warp::Rejection> + Clone {
         let body_limit = warp::body::content_length_limit(self.config.max_body_size);
 
         let write_api = warp::path!("write")
@@ -373,7 +364,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
     // POST /opentsdb/api/put
     fn opentsdb_api(
         &self,
-    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+    ) -> impl Filter<Extract=(impl warp::Reply, ), Error=warp::Rejection> + Clone {
         let body_limit = warp::body::content_length_limit(self.config.max_body_size);
 
         let put_api = warp::path!("put")
@@ -398,7 +389,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
     // POST /debug/flush_memtable
     fn flush_memtable(
         &self,
-    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+    ) -> impl Filter<Extract=(impl warp::Reply, ), Error=warp::Rejection> + Clone {
         warp::path!("debug" / "flush_memtable")
             .and(warp::post())
             .and(self.with_instance())
@@ -446,14 +437,14 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
     // GET /metrics
     fn metrics(
         &self,
-    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+    ) -> impl Filter<Extract=(impl warp::Reply, ), Error=warp::Rejection> + Clone {
         warp::path!("metrics").and(warp::get()).map(metrics::dump)
     }
 
     // GET /debug/profile/cpu/{seconds}
     fn profile_cpu(
         &self,
-    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+    ) -> impl Filter<Extract=(impl warp::Reply, ), Error=warp::Rejection> + Clone {
         warp::path!("debug" / "profile" / "cpu" / ..)
             .and(warp::path::param::<u64>())
             .and(warp::get())
@@ -476,7 +467,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
     // GET /debug/profile/heap/{seconds}
     fn profile_heap(
         &self,
-    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+    ) -> impl Filter<Extract=(impl warp::Reply, ), Error=warp::Rejection> + Clone {
         warp::path!("debug" / "profile" / "heap" / ..)
             .and(warp::path::param::<u64>())
             .and(warp::get())
@@ -500,7 +491,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
     // GET /debug/config
     fn server_config(
         &self,
-    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+    ) -> impl Filter<Extract=(impl warp::Reply, ), Error=warp::Rejection> + Clone {
         let server_config_content = self.config_content.clone();
         warp::path!("debug" / "config")
             .and(warp::get())
@@ -510,7 +501,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
     // GET /debug/shards
     fn shards(
         &self,
-    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+    ) -> impl Filter<Extract=(impl warp::Reply, ), Error=warp::Rejection> + Clone {
         warp::path!("debug" / "shards")
             .and(warp::get())
             .and(self.with_cluster())
@@ -527,19 +518,19 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
     // GET /debug/stats
     fn wal_stats(
         &self,
-    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+    ) -> impl Filter<Extract=(impl warp::Reply, ), Error=warp::Rejection> + Clone {
         warp::path!("debug" / "wal_stats")
             .and(warp::get())
             .and(self.with_opened_wals())
             .and_then(|wals: OpenedWals| async move {
                 let wal_stats = wals
-                    .data_wal
+                    .dataWalManager
                     .get_statistics()
                     .await
                     .unwrap_or_else(|| "Unknown".to_string());
 
                 let manifest_wal_stats = wals
-                    .manifest_wal
+                    .manifestWalManager
                     .get_statistics()
                     .await
                     .unwrap_or_else(|| "Unknown".to_string());
@@ -557,7 +548,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
     // PUT /debug/log_level/{level}
     fn update_log_level(
         &self,
-    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+    ) -> impl Filter<Extract=(impl warp::Reply, ), Error=warp::Rejection> + Clone {
         warp::path!("debug" / "log_level" / String)
             .and(warp::put())
             .and(self.with_log_runtime())
@@ -577,7 +568,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
     // POST /admin/block
     fn admin_block(
         &self,
-    ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+    ) -> impl Filter<Extract=(impl warp::Reply, ), Error=warp::Rejection> + Clone {
         warp::path!("admin" / "block")
             .and(warp::post())
             .and(warp::body::json())
@@ -596,9 +587,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             })
     }
 
-    fn with_context(
-        &self,
-    ) -> impl Filter<Extract = (RequestContext,), Error = warp::Rejection> + Clone {
+    fn with_context(&self) -> impl Filter<Extract=(RequestContext,), Error=Rejection> + Clone {
         let default_catalog = self
             .proxy
             .instance()
@@ -635,52 +624,50 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             )
     }
 
-    fn with_profiler(&self) -> impl Filter<Extract = (Arc<Profiler>,), Error = Infallible> + Clone {
+    fn with_profiler(&self) -> impl Filter<Extract=(Arc<Profiler>, ), Error=Infallible> + Clone {
         let profiler = self.profiler.clone();
         warp::any().map(move || profiler.clone())
     }
 
-    fn with_proxy(&self) -> impl Filter<Extract = (Arc<Proxy<Q>>,), Error = Infallible> + Clone {
+    fn with_proxy(&self) -> impl Filter<Extract=(Arc<Proxy<Q>>, ), Error=Infallible> + Clone {
         let proxy = self.proxy.clone();
         warp::any().map(move || proxy.clone())
     }
 
     fn with_cluster(
         &self,
-    ) -> impl Filter<Extract = (Option<ClusterRef>,), Error = Infallible> + Clone {
+    ) -> impl Filter<Extract=(Option<ClusterRef>, ), Error=Infallible> + Clone {
         let cluster = self.cluster.clone();
         warp::any().map(move || cluster.clone())
     }
 
-    fn with_runtime(&self) -> impl Filter<Extract = (Arc<Runtime>,), Error = Infallible> + Clone {
+    fn with_runtime(&self) -> impl Filter<Extract=(Arc<Runtime>, ), Error=Infallible> + Clone {
         let runtime = self.engine_runtimes.default_runtime.clone();
         warp::any().map(move || runtime.clone())
     }
 
     fn with_instance(
         &self,
-    ) -> impl Filter<Extract = (InstanceRef<Q>,), Error = Infallible> + Clone {
+    ) -> impl Filter<Extract=(InstanceRef<Q>, ), Error=Infallible> + Clone {
         let instance = self.proxy.instance();
         warp::any().map(move || instance.clone())
     }
 
     fn with_log_runtime(
         &self,
-    ) -> impl Filter<Extract = (Arc<RuntimeLevel>,), Error = Infallible> + Clone {
+    ) -> impl Filter<Extract=(Arc<RuntimeLevel>, ), Error=Infallible> + Clone {
         let log_runtime = self.log_runtime.clone();
         warp::any().map(move || log_runtime.clone())
     }
 
-    fn with_opened_wals(&self) -> impl Filter<Extract = (OpenedWals,), Error = Infallible> + Clone {
+    fn with_opened_wals(&self) -> impl Filter<Extract=(OpenedWals, ), Error=Infallible> + Clone {
         let wals = self.opened_wals.clone();
         warp::any().map(move || wals.clone())
     }
 
-    fn with_read_runtime(
-        &self,
-    ) -> impl Filter<Extract = (Arc<Runtime>,), Error = Infallible> + Clone {
-        let runtime = self.engine_runtimes.read_runtime.clone();
-        warp::any().map(move || runtime.clone())
+    fn with_read_runtime(&self) -> impl Filter<Extract=(Arc<Runtime>,), Error=Infallible> + Clone {
+        let readRuntime = self.engine_runtimes.read_runtime.clone();
+        warp::any().map(move || readRuntime.clone())
     }
 }
 
@@ -808,7 +795,7 @@ fn error_to_status_code(err: &Error) -> StatusCode {
 
 async fn handle_rejection(
     rejection: warp::Rejection,
-) -> std::result::Result<(impl warp::Reply,), Infallible> {
+) -> std::result::Result<(impl warp::Reply, ), Infallible> {
     let code;
     let message;
 
@@ -833,5 +820,5 @@ async fn handle_rejection(
         message,
     });
 
-    Ok((reply::with_status(json, code),))
+    Ok((reply::with_status(json, code), ))
 }

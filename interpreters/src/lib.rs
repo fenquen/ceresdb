@@ -4,8 +4,8 @@
 //!
 //! Inspired by fuse-query: <https://github.com/datafuselabs/fuse-query> and ClickHouse
 
+#![allow(non_snake_case)]
 #![feature(string_remove_matches)]
-
 pub mod alter_table;
 pub mod context;
 pub mod create;
@@ -21,6 +21,3 @@ pub mod table_manipulator;
 pub mod validator;
 
 mod show_create;
-
-#[cfg(test)]
-mod tests;

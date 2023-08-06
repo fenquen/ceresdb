@@ -300,7 +300,7 @@ impl OpenTableRequest {
             schema_id,
             table_name: self.table_name,
             table_id: self.table_id,
-            engine: self.engine,
+            engineType: self.engine,
             shard_id: self.shard_id,
         }
     }

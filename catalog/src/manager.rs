@@ -20,7 +20,7 @@ define_result!(Error);
 // TODO(yingwen): Maybe use async trait?
 // TODO(yingwen): Provide a context
 
-pub trait Manager: Send + Sync {
+pub trait CatalogManager: Send + Sync {
     /// Get the default catalog name
     ///
     /// Default catalog is ensured created because no method to create catalog
@@ -40,4 +40,4 @@ pub trait Manager: Send + Sync {
     fn all_catalogs(&self) -> Result<Vec<CatalogRef>>;
 }
 
-pub type ManagerRef = Arc<dyn Manager>;
+pub type ManagerRef = Arc<dyn CatalogManager>;

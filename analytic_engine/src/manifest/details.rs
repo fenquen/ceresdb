@@ -33,6 +33,7 @@ use wal::{
         WalLocation, WalManagerRef, WriteContext,
     },
 };
+use wal::manager::WalManager;
 
 use crate::{
     manifest::{
@@ -47,12 +48,12 @@ use crate::{
 };
 
 #[derive(Debug, Snafu)]
-#[snafu(visibility(pub(crate)))]
+#[snafu(visibility(pub (crate)))]
 pub enum Error {
     #[snafu(display(
-        "Failed to encode payloads, wal_location:{:?}, err:{}",
-        wal_location,
-        source
+    "Failed to encode payloads, wal_location:{:?}, err:{}",
+    wal_location,
+    source
     ))]
     EncodePayloads {
         wal_location: WalLocation,
@@ -77,9 +78,9 @@ pub enum Error {
     CleanWal { source: wal::manager::Error },
 
     #[snafu(display(
-        "Failed to store snapshot, err:{}.\nBacktrace:\n{:?}",
-        source,
-        backtrace
+    "Failed to store snapshot, err:{}.\nBacktrace:\n{:?}",
+    source,
+    backtrace
     ))]
     StoreSnapshot {
         source: object_store::ObjectStoreError,
@@ -87,9 +88,9 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to fetch snapshot, err:{}.\nBacktrace:\n{:?}",
-        source,
-        backtrace
+    "Failed to fetch snapshot, err:{}.\nBacktrace:\n{:?}",
+    source,
+    backtrace
     ))]
     FetchSnapshot {
         source: object_store::ObjectStoreError,
@@ -97,9 +98,9 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to decode snapshot, err:{}.\nBacktrace:\n{:?}",
-        source,
-        backtrace
+    "Failed to decode snapshot, err:{}.\nBacktrace:\n{:?}",
+    source,
+    backtrace
     ))]
     DecodeSnapshot {
         source: prost::DecodeError,
@@ -113,9 +114,9 @@ pub enum Error {
     BuildSnapshotWithCause { msg: String, source: GenericError },
 
     #[snafu(display(
-        "Failed to apply edit to table, msg:{}.\nBacktrace:\n{:?}",
-        msg,
-        backtrace
+    "Failed to apply edit to table, msg:{}.\nBacktrace:\n{:?}",
+    msg,
+    backtrace
     ))]
     ApplyUpdateToTableNoCause { msg: String, backtrace: Backtrace },
 
@@ -123,9 +124,9 @@ pub enum Error {
     ApplyUpdateToTableWithCause { msg: String, source: GenericError },
 
     #[snafu(display(
-        "Failed to apply snapshot to table, msg:{}.\nBacktrace:\n{:?}",
-        msg,
-        backtrace
+    "Failed to apply snapshot to table, msg:{}.\nBacktrace:\n{:?}",
+    msg,
+    backtrace
     ))]
     ApplySnapshotToTableNoCause { msg: String, backtrace: Backtrace },
 
@@ -146,7 +147,7 @@ trait MetaUpdateLogEntryIterator {
 /// Implementation of [`MetaUpdateLogEntryIterator`].
 #[derive(Debug)]
 pub struct MetaUpdateReaderImpl {
-    iter: BatchLogIteratorAdapter,
+    iterator: BatchLogIteratorAdapter,
     has_next: bool,
     buffer: VecDeque<LogEntry<MetaUpdate>>,
 }
@@ -161,15 +162,11 @@ impl MetaUpdateLogEntryIterator for MetaUpdateReaderImpl {
         if self.buffer.is_empty() {
             let decoder = MetaUpdateDecoder;
             let buffer = mem::take(&mut self.buffer);
-            self.buffer = self
-                .iter
-                .next_log_entries(decoder, buffer)
-                .await
-                .context(ReadEntry)?;
+            self.buffer = self.iterator.next_log_entries(decoder, buffer).await.context(ReadEntry)?;
         }
 
         match self.buffer.pop_front() {
-            Some(entry) => Ok(Some((entry.sequence, entry.payload))),
+            Some(logEntry) => Ok(Some((logEntry.sequence, logEntry.payload))),
             None => {
                 self.has_next = false;
                 Ok(None)
@@ -183,11 +180,9 @@ impl MetaUpdateLogEntryIterator for MetaUpdateReaderImpl {
 /// Get snapshot of or modify table's metadata through it.
 pub(crate) trait TableMetaSet: fmt::Debug + Send + Sync {
     // Get snapshot of `TableData`.
-    fn get_table_snapshot(
-        &self,
-        space_id: SpaceId,
-        table_id: TableId,
-    ) -> Result<Option<MetaSnapshot>>;
+    fn get_table_snapshot(&self,
+                          space_id: SpaceId,
+                          table_id: TableId) -> Result<Option<MetaSnapshot>>;
 
     // Apply update to `TableData` and return it.
     fn apply_edit_to_table(&self, update: MetaEditRequest) -> Result<TableDataRef>;
@@ -196,37 +191,31 @@ pub(crate) trait TableMetaSet: fmt::Debug + Send + Sync {
 /// Snapshot recoverer
 ///
 /// Usually, it will recover the snapshot from storage(like disk, oss, etc).
-// TODO: remove `LogStore` and related operations, it should be called directly but not in the
-// `SnapshotReoverer`.
+// TODO: remove `LogStore` and related operations, it should be called directly but not in the `SnapshotReoverer`.
 #[derive(Debug, Clone)]
-struct SnapshotRecoverer<LogStore, SnapshotStore> {
+struct SnapshotRecoverer<MetaUpdateLogStore_, MetaUpdateSnapshotStore_> {
     table_id: TableId,
     space_id: SpaceId,
-    log_store: LogStore,
-    snapshot_store: SnapshotStore,
+    metaUpdateLogStore: MetaUpdateLogStore_,
+    metaUpdateSnapshotStore: MetaUpdateSnapshotStore_,
 }
 
-impl<LogStore, SnapshotStore> SnapshotRecoverer<LogStore, SnapshotStore>
-where
-    LogStore: MetaUpdateLogStore + Send + Sync,
-    SnapshotStore: MetaUpdateSnapshotStore + Send + Sync,
-{
+impl<LogStore, SnapshotStore> SnapshotRecoverer<LogStore, SnapshotStore> where LogStore: MetaUpdateLogStore + Send + Sync,
+                                                                               SnapshotStore: MetaUpdateSnapshotStore + Send + Sync {
     async fn recover(&self) -> Result<Option<Snapshot>> {
         // Load the current snapshot first.
-        match self.snapshot_store.load().await? {
-            Some(v) => Ok(Some(self.create_latest_snapshot_with_prev(v).await?)),
-            None => self.create_latest_snapshot_without_prev().await,
+        match self.metaUpdateSnapshotStore.load().await? {
+            Some(snapshot) => Ok(Some(self.create_latest_snapshot_with_prev(snapshot).await?)),
+            None => self.createLatestSnapshotWithoutPrev().await,
         }
     }
 
     async fn create_latest_snapshot_with_prev(&self, prev_snapshot: Snapshot) -> Result<Snapshot> {
-        debug!(
-            "Manifest recover with prev snapshot, snapshot:{:?}, table_id:{}, space_id:{}",
-            prev_snapshot, self.table_id, self.space_id
-        );
+        debug!("manifest recover with prev snapshot, snapshot:{:?}, table_id:{}, space_id:{}",
+            prev_snapshot, self.table_id, self.space_id);
 
         let log_start_boundary = ReadBoundary::Excluded(prev_snapshot.end_seq);
-        let mut reader = self.log_store.scan(log_start_boundary).await?;
+        let mut reader = self.metaUpdateLogStore.scan(log_start_boundary).await?;
 
         let mut latest_seq = prev_snapshot.end_seq;
         let mut manifest_data_builder = if let Some(v) = prev_snapshot.data {
@@ -246,22 +235,18 @@ where
         })
     }
 
-    async fn create_latest_snapshot_without_prev(&self) -> Result<Option<Snapshot>> {
-        debug!(
-            "Manifest recover without prev snapshot, table_id:{}, space_id:{}",
-            self.table_id, self.space_id
-        );
+    async fn createLatestSnapshotWithoutPrev(&self) -> Result<Option<Snapshot>> {
+        debug!("manifest recover without prev snapshot, table_id:{}, space_id:{}",self.table_id, self.space_id);
 
-        let mut reader = self.log_store.scan(ReadBoundary::Min).await?;
+        let mut iter = self.metaUpdateLogStore.scan(ReadBoundary::Min).await?;
 
         let mut latest_seq = SequenceNumber::MIN;
         let mut manifest_data_builder = MetaSnapshotBuilder::default();
         let mut has_logs = false;
-        while let Some((seq, update)) = reader.next_update().await? {
+
+        while let Some((seq, update)) = iter.next_update().await? {
             latest_seq = seq;
-            manifest_data_builder
-                .apply_update(update)
-                .context(ApplyUpdate)?;
+            manifest_data_builder.apply_update(update).context(ApplyUpdate)?;
             has_logs = true;
         }
 
@@ -271,10 +256,7 @@ where
                 data: manifest_data_builder.build(),
             }))
         } else {
-            debug!(
-                "Manifest recover nothing, table_id:{}, space_id:{}",
-                self.table_id, self.space_id
-            );
+            debug!("Manifest recover nothing, table_id:{}, space_id:{}",self.table_id, self.space_id);
             Ok(None)
         }
     }
@@ -297,9 +279,9 @@ struct Snapshotter<LogStore, SnapshotStore> {
 }
 
 impl<LogStore, SnapshotStore> Snapshotter<LogStore, SnapshotStore>
-where
-    LogStore: MetaUpdateLogStore + Send + Sync,
-    SnapshotStore: MetaUpdateSnapshotStore + Send + Sync,
+    where
+        LogStore: MetaUpdateLogStore + Send + Sync,
+        SnapshotStore: MetaUpdateSnapshotStore + Send + Sync,
 {
     /// Create a latest snapshot of the current logs.
     async fn snapshot(&self) -> Result<Option<Snapshot>> {
@@ -396,7 +378,7 @@ impl ManifestImpl {
         meta_update: MetaUpdate,
         location: WalLocation,
     ) -> Result<SequenceNumber> {
-        let log_store = WalBasedLogStore {
+        let log_store = MetaUpdateLogStoreWalBased {
             opts: self.opts.clone(),
             location,
             wal_manager: self.wal_manager.clone(),
@@ -418,13 +400,13 @@ impl ManifestImpl {
         location: WalLocation,
     ) -> Result<Option<Snapshot>> {
         if let Ok(_guard) = self.snapshot_write_guard.try_lock() {
-            let log_store = WalBasedLogStore {
+            let log_store = MetaUpdateLogStoreWalBased {
                 opts: self.opts.clone(),
                 location,
                 wal_manager: self.wal_manager.clone(),
             };
             let snapshot_store =
-                ObjectStoreBasedSnapshotStore::new(space_id, table_id, self.store.clone());
+                MetaUpdateSnapshotStoreObjectStoreBased::new(space_id, table_id, self.store.clone());
             let end_seq = self.wal_manager.sequence_num(location).await.unwrap();
             let snapshotter = Snapshotter {
                 log_store,
@@ -482,25 +464,28 @@ impl Manifest for ManifestImpl {
         info!("Manifest recover begin, request:{load_req:?}");
 
         // Load table meta snapshot from storage.
-        let location = WalLocation::new(load_req.shard_id as u64, load_req.table_id.as_u64());
+        let walLocation = WalLocation::new(load_req.shard_id as u64, load_req.table_id.as_u64());
 
-        let log_store = WalBasedLogStore {
+        let log_store = MetaUpdateLogStoreWalBased {
             opts: self.opts.clone(),
-            location,
+            location: walLocation,
             wal_manager: self.wal_manager.clone(),
         };
-        let snapshot_store = ObjectStoreBasedSnapshotStore::new(
+
+        let snapshot_store = MetaUpdateSnapshotStoreObjectStoreBased::new(
             load_req.space_id,
             load_req.table_id,
             self.store.clone(),
         );
-        let reoverer = SnapshotRecoverer {
+
+        let snapshotRecoverer = SnapshotRecoverer {
             table_id: load_req.table_id,
             space_id: load_req.space_id,
-            log_store,
-            snapshot_store,
+            metaUpdateLogStore: log_store,
+            metaUpdateSnapshotStore: snapshot_store,
         };
-        let meta_snapshot_opt = reoverer.recover().await?.and_then(|v| v.data);
+
+        let meta_snapshot_opt = snapshotRecoverer.recover().await?.and_then(|v| v.data);
 
         // Apply it to table.
         if let Some(snapshot) = meta_snapshot_opt {
@@ -525,38 +510,34 @@ impl Manifest for ManifestImpl {
         let space_id = request.space_id;
         let table_id = request.table_id;
 
-        self.do_snapshot_internal(space_id, table_id, location)
-            .await
-            .box_err()?;
+        self.do_snapshot_internal(space_id, table_id, location).await.box_err()?;
 
         Ok(())
     }
 }
 
 #[async_trait]
-trait MetaUpdateLogStore: std::fmt::Debug {
+trait MetaUpdateLogStore: fmt::Debug {
     type Iter: MetaUpdateLogEntryIterator + Send;
+
     async fn scan(&self, start: ReadBoundary) -> Result<Self::Iter>;
-
     async fn append(&self, meta_update: MetaUpdate) -> Result<SequenceNumber>;
-
     async fn delete_up_to(&self, inclusive_end: SequenceNumber) -> Result<()>;
 }
 
 #[async_trait]
-trait MetaUpdateSnapshotStore: std::fmt::Debug {
+trait MetaUpdateSnapshotStore: fmt::Debug {
     async fn store(&self, snapshot: &Snapshot) -> Result<()>;
-
     async fn load(&self) -> Result<Option<Snapshot>>;
 }
 
 #[derive(Debug)]
-struct ObjectStoreBasedSnapshotStore {
+struct MetaUpdateSnapshotStoreObjectStoreBased {
     store: ObjectStoreRef,
     snapshot_path: Path,
 }
 
-impl ObjectStoreBasedSnapshotStore {
+impl MetaUpdateSnapshotStoreObjectStoreBased {
     const CURRENT_SNAPSHOT_NAME: &str = "current";
     const SNAPSHOT_PATH_PREFIX: &str = "manifest/snapshot";
 
@@ -576,14 +557,13 @@ impl ObjectStoreBasedSnapshotStore {
             table_id,
             Self::CURRENT_SNAPSHOT_NAME,
         )
-        .into()
+            .into()
     }
 }
 
 #[async_trait]
-impl MetaUpdateSnapshotStore for ObjectStoreBasedSnapshotStore {
-    /// Store the latest snapshot to the underlying store by overwriting the old
-    /// snapshot.
+impl MetaUpdateSnapshotStore for MetaUpdateSnapshotStoreObjectStoreBased {
+    /// Store the latest snapshot to the underlying store by overwriting the old snapshot.
     async fn store(&self, snapshot: &Snapshot) -> Result<()> {
         let snapshot_pb = manifest_pb::Snapshot::from(snapshot.clone());
         let payload = snapshot_pb.encode_to_vec();
@@ -634,14 +614,14 @@ impl MetaUpdateSnapshotStore for ObjectStoreBasedSnapshotStore {
 }
 
 #[derive(Debug, Clone)]
-struct WalBasedLogStore {
+struct MetaUpdateLogStoreWalBased {
     opts: Options,
     location: WalLocation,
-    wal_manager: WalManagerRef,
+    wal_manager: Arc<dyn WalManager>,
 }
 
 #[async_trait]
-impl MetaUpdateLogStore for WalBasedLogStore {
+impl MetaUpdateLogStore for MetaUpdateLogStoreWalBased {
     type Iter = MetaUpdateReaderImpl;
 
     async fn scan(&self, start: ReadBoundary) -> Result<Self::Iter> {
@@ -656,14 +636,10 @@ impl MetaUpdateLogStore for WalBasedLogStore {
             end: ReadBoundary::Max,
         };
 
-        let iter = self
-            .wal_manager
-            .read_batch(&ctx, &read_req)
-            .await
-            .context(ReadWal)?;
+        let iterator = self.wal_manager.read_batch(&ctx, &read_req).await.context(ReadWal)?;
 
         Ok(MetaUpdateReaderImpl {
-            iter,
+            iterator,
             has_next: true,
             buffer: VecDeque::with_capacity(ctx.batch_size),
         })
@@ -691,854 +667,5 @@ impl MetaUpdateLogStore for WalBasedLogStore {
             .mark_delete_entries_up_to(self.location, inclusive_end)
             .await
             .context(CleanWal)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::{num::NonZeroUsize, path::PathBuf, sync::Arc, vec};
-
-    use arena::NoopCollector;
-    use common_types::{
-        column_schema, datum::DatumKind, schema, schema::Schema, table::DEFAULT_SHARD_ID,
-    };
-    use futures::future::BoxFuture;
-    use object_store::LocalFileSystem;
-    use runtime::Runtime;
-    use table_engine::table::{SchemaId, TableId, TableSeqGenerator};
-    use wal::rocks_impl::manager::Builder as WalBuilder;
-
-    use super::*;
-    use crate::{
-        manifest::{
-            details::{MetaUpdateLogEntryIterator, MetaUpdateLogStore},
-            meta_edit::{
-                AddTableMeta, AlterOptionsMeta, AlterSchemaMeta, DropTableMeta, MetaEdit,
-                MetaUpdate, VersionEditMeta,
-            },
-            LoadRequest, Manifest,
-        },
-        sst::file::tests::FilePurgerMocker,
-        table::data::{tests::default_schema, TableData, TableShardInfo},
-        TableOptions,
-    };
-
-    fn build_altered_schema(schema: &Schema) -> Schema {
-        let mut builder = schema::Builder::new().auto_increment_column_id(true);
-        for column_schema in schema.key_columns() {
-            builder = builder
-                .add_key_column(column_schema.clone())
-                .expect("should succeed to add key column");
-        }
-        for column_schema in schema.normal_columns() {
-            builder = builder
-                .add_normal_column(column_schema.clone())
-                .expect("should succeed to add normal column");
-        }
-        builder
-            .add_normal_column(
-                column_schema::Builder::new("field5".to_string(), DatumKind::String)
-                    .build()
-                    .expect("should succeed build column schema"),
-            )
-            .unwrap()
-            .build()
-            .unwrap()
-    }
-
-    fn build_runtime(thread_num: usize) -> Arc<Runtime> {
-        Arc::new(
-            runtime::Builder::default()
-                .worker_threads(thread_num)
-                .enable_all()
-                .build()
-                .unwrap(),
-        )
-    }
-
-    #[derive(Debug, Default)]
-    struct MockProviderImpl {
-        builder: std::sync::Mutex<MetaSnapshotBuilder>,
-    }
-
-    impl TableMetaSet for MockProviderImpl {
-        fn get_table_snapshot(
-            &self,
-            _space_id: SpaceId,
-            _table_id: TableId,
-        ) -> Result<Option<MetaSnapshot>> {
-            let builder = self.builder.lock().unwrap();
-            Ok(builder.clone().build())
-        }
-
-        fn apply_edit_to_table(&self, request: MetaEditRequest) -> Result<TableDataRef> {
-            let mut builder = self.builder.lock().unwrap();
-            let MetaEditRequest {
-                shard_info: _,
-                meta_edit,
-            } = request;
-
-            match meta_edit {
-                MetaEdit::Update(update) => {
-                    builder.apply_update(update).unwrap();
-                }
-                MetaEdit::Snapshot(meta_snapshot) => {
-                    let MetaSnapshot {
-                        table_meta,
-                        version_meta,
-                    } = meta_snapshot;
-                    *builder = MetaSnapshotBuilder::new(Some(table_meta), version_meta);
-                }
-            }
-
-            let table_opts = TableOptions::default();
-            let purger = FilePurgerMocker::mock();
-            let collector = Arc::new(NoopCollector);
-            let test_data = TableData::new(
-                0,
-                TableId::new(0),
-                "test_table".to_string(),
-                default_schema(),
-                0,
-                table_opts,
-                &purger,
-                0.75,
-                collector,
-                NonZeroUsize::new(usize::MAX).unwrap(),
-            )
-            .unwrap();
-
-            Ok(Arc::new(test_data))
-        }
-    }
-
-    struct TestContext {
-        dir: PathBuf,
-        runtime: Arc<Runtime>,
-        options: Options,
-        schema_id: SchemaId,
-        table_seq_gen: TableSeqGenerator,
-        mock_provider: Arc<MockProviderImpl>,
-    }
-
-    impl TestContext {
-        fn new(prefix: &str, schema_id: SchemaId) -> Self {
-            test_util::init_log_for_test();
-            let dir = tempfile::Builder::new().prefix(prefix).tempdir().unwrap();
-            let runtime = build_runtime(2);
-
-            let options = Options {
-                snapshot_every_n_updates: NonZeroUsize::new(100).unwrap(),
-                ..Default::default()
-            };
-            Self {
-                dir: dir.into_path(),
-                runtime,
-                options,
-                schema_id,
-                table_seq_gen: TableSeqGenerator::default(),
-                mock_provider: Arc::new(MockProviderImpl::default()),
-            }
-        }
-
-        fn alloc_table_id(&self) -> TableId {
-            TableId::with_seq(
-                self.schema_id,
-                self.table_seq_gen.alloc_table_seq().unwrap(),
-            )
-            .unwrap()
-        }
-
-        fn table_name_from_id(table_id: TableId) -> String {
-            format!("table_{table_id:?}")
-        }
-
-        async fn open_manifest(&self) -> ManifestImpl {
-            let manifest_wal = WalBuilder::new(self.dir.clone(), self.runtime.clone())
-                .build()
-                .unwrap();
-
-            let object_store = LocalFileSystem::new_with_prefix(&self.dir).unwrap();
-            ManifestImpl::open(
-                self.options.clone(),
-                Arc::new(manifest_wal),
-                Arc::new(object_store),
-                self.mock_provider.clone(),
-            )
-            .await
-            .unwrap()
-        }
-
-        async fn check_table_manifest_data_with_manifest(
-            &self,
-            load_req: &LoadRequest,
-            expected: &Option<MetaSnapshot>,
-            manifest: &ManifestImpl,
-        ) {
-            manifest.recover(load_req).await.unwrap();
-            let data = self.mock_provider.builder.lock().unwrap().clone().build();
-            assert_eq!(&data, expected);
-        }
-
-        async fn check_table_manifest_data(
-            &self,
-            load_req: &LoadRequest,
-            expected: &Option<MetaSnapshot>,
-        ) {
-            let manifest = self.open_manifest().await;
-            self.check_table_manifest_data_with_manifest(load_req, expected, &manifest)
-                .await;
-        }
-
-        fn meta_update_add_table(&self, table_id: TableId) -> MetaUpdate {
-            let table_name = Self::table_name_from_id(table_id);
-            MetaUpdate::AddTable(AddTableMeta {
-                space_id: self.schema_id.as_u32(),
-                table_id,
-                table_name,
-                schema: common_types::tests::build_schema(),
-                opts: TableOptions::default(),
-            })
-        }
-
-        fn meta_update_drop_table(&self, table_id: TableId) -> MetaUpdate {
-            let table_name = Self::table_name_from_id(table_id);
-            MetaUpdate::DropTable(DropTableMeta {
-                space_id: self.schema_id.as_u32(),
-                table_id,
-                table_name,
-            })
-        }
-
-        fn meta_update_version_edit(
-            &self,
-            table_id: TableId,
-            flushed_seq: Option<SequenceNumber>,
-        ) -> MetaUpdate {
-            MetaUpdate::VersionEdit(VersionEditMeta {
-                space_id: self.schema_id.as_u32(),
-                table_id,
-                flushed_sequence: flushed_seq.unwrap_or(100),
-                files_to_add: vec![],
-                files_to_delete: vec![],
-                mems_to_remove: vec![],
-                max_file_id: 0,
-            })
-        }
-
-        fn meta_update_alter_table_options(&self, table_id: TableId) -> MetaUpdate {
-            MetaUpdate::AlterOptions(AlterOptionsMeta {
-                space_id: self.schema_id.as_u32(),
-                table_id,
-                options: TableOptions {
-                    enable_ttl: false,
-                    ..Default::default()
-                },
-            })
-        }
-
-        fn meta_update_alter_table_schema(&self, table_id: TableId) -> MetaUpdate {
-            MetaUpdate::AlterSchema(AlterSchemaMeta {
-                space_id: self.schema_id.as_u32(),
-                table_id,
-                schema: build_altered_schema(&common_types::tests::build_schema()),
-                pre_schema_version: 1,
-            })
-        }
-
-        async fn add_table_with_manifest(
-            &self,
-            table_id: TableId,
-            manifest_data_builder: &mut MetaSnapshotBuilder,
-            manifest: &ManifestImpl,
-        ) {
-            let shard_info = TableShardInfo {
-                shard_id: DEFAULT_SHARD_ID,
-            };
-
-            let add_table = self.meta_update_add_table(table_id);
-            let edit_req = {
-                MetaEditRequest {
-                    shard_info,
-                    meta_edit: MetaEdit::Update(add_table.clone()),
-                }
-            };
-
-            manifest.apply_edit(edit_req).await.unwrap();
-            manifest_data_builder
-                .apply_update(add_table.clone())
-                .unwrap();
-        }
-
-        async fn drop_table_with_manifest(
-            &self,
-            table_id: TableId,
-            manifest_data_builder: &mut MetaSnapshotBuilder,
-            manifest: &ManifestImpl,
-        ) {
-            let shard_info = TableShardInfo {
-                shard_id: DEFAULT_SHARD_ID,
-            };
-
-            let drop_table = self.meta_update_drop_table(table_id);
-            let edit_req = {
-                MetaEditRequest {
-                    shard_info,
-                    meta_edit: MetaEdit::Update(drop_table.clone()),
-                }
-            };
-            manifest.apply_edit(edit_req).await.unwrap();
-            manifest_data_builder
-                .apply_update(drop_table.clone())
-                .unwrap();
-        }
-
-        async fn version_edit_table_with_manifest(
-            &self,
-            table_id: TableId,
-            flushed_seq: Option<SequenceNumber>,
-            manifest_data_builder: &mut MetaSnapshotBuilder,
-            manifest: &ManifestImpl,
-        ) {
-            let shard_info = TableShardInfo {
-                shard_id: DEFAULT_SHARD_ID,
-            };
-
-            let version_edit = self.meta_update_version_edit(table_id, flushed_seq);
-            let edit_req = {
-                MetaEditRequest {
-                    shard_info,
-                    meta_edit: MetaEdit::Update(version_edit.clone()),
-                }
-            };
-            manifest.apply_edit(edit_req).await.unwrap();
-            manifest_data_builder
-                .apply_update(version_edit.clone())
-                .unwrap();
-        }
-
-        async fn add_table(
-            &self,
-            table_id: TableId,
-            manifest_data_builder: &mut MetaSnapshotBuilder,
-        ) {
-            let manifest = self.open_manifest().await;
-            self.add_table_with_manifest(table_id, manifest_data_builder, &manifest)
-                .await;
-        }
-
-        async fn drop_table(
-            &self,
-            table_id: TableId,
-            manifest_data_builder: &mut MetaSnapshotBuilder,
-        ) {
-            let manifest = self.open_manifest().await;
-
-            self.drop_table_with_manifest(table_id, manifest_data_builder, &manifest)
-                .await;
-        }
-
-        async fn version_edit_table(
-            &self,
-            table_id: TableId,
-            manifest_data_builder: &mut MetaSnapshotBuilder,
-        ) {
-            let manifest = self.open_manifest().await;
-            self.version_edit_table_with_manifest(table_id, None, manifest_data_builder, &manifest)
-                .await;
-        }
-
-        async fn alter_table_options(
-            &self,
-            table_id: TableId,
-            manifest_data_builder: &mut MetaSnapshotBuilder,
-        ) {
-            let manifest = self.open_manifest().await;
-
-            let shard_info = TableShardInfo {
-                shard_id: DEFAULT_SHARD_ID,
-            };
-
-            let alter_options = self.meta_update_alter_table_options(table_id);
-            let edit_req = {
-                MetaEditRequest {
-                    shard_info,
-                    meta_edit: MetaEdit::Update(alter_options.clone()),
-                }
-            };
-            manifest.apply_edit(edit_req).await.unwrap();
-            manifest_data_builder.apply_update(alter_options).unwrap();
-        }
-
-        async fn alter_table_schema(
-            &self,
-            table_id: TableId,
-            manifest_data_builder: &mut MetaSnapshotBuilder,
-        ) {
-            let manifest = self.open_manifest().await;
-
-            let shard_info = TableShardInfo {
-                shard_id: DEFAULT_SHARD_ID,
-            };
-
-            let alter_schema = self.meta_update_alter_table_schema(table_id);
-            let edit_req = {
-                MetaEditRequest {
-                    shard_info,
-                    meta_edit: MetaEdit::Update(alter_schema.clone()),
-                }
-            };
-
-            manifest.apply_edit(edit_req).await.unwrap();
-            manifest_data_builder.apply_update(alter_schema).unwrap();
-        }
-    }
-
-    fn run_basic_manifest_test<F>(ctx: TestContext, update_table_meta: F)
-    where
-        F: for<'a> FnOnce(
-            &'a TestContext,
-            TableId,
-            &'a mut MetaSnapshotBuilder,
-        ) -> BoxFuture<'a, ()>,
-    {
-        let runtime = ctx.runtime.clone();
-        runtime.block_on(async move {
-            let table_id = ctx.alloc_table_id();
-            let mut manifest_data_builder = MetaSnapshotBuilder::default();
-
-            update_table_meta(&ctx, table_id, &mut manifest_data_builder).await;
-
-            let load_req = LoadRequest {
-                table_id,
-                shard_id: DEFAULT_SHARD_ID,
-                space_id: ctx.schema_id.as_u32(),
-            };
-            let expected_table_manifest_data = manifest_data_builder.build();
-            ctx.check_table_manifest_data(&load_req, &expected_table_manifest_data)
-                .await;
-        })
-    }
-
-    #[test]
-    fn test_manifest_add_table() {
-        let ctx = TestContext::new("add_table", SchemaId::from_u32(0));
-        run_basic_manifest_test(ctx, |ctx, table_id, manifest_data_builder| {
-            Box::pin(async move {
-                ctx.add_table(table_id, manifest_data_builder).await;
-            })
-        });
-    }
-
-    #[test]
-    fn test_manifest_drop_table() {
-        let ctx = TestContext::new("drop_table", SchemaId::from_u32(0));
-        run_basic_manifest_test(ctx, |ctx, table_id, manifest_data_builder| {
-            Box::pin(async move {
-                ctx.add_table(table_id, manifest_data_builder).await;
-                ctx.drop_table(table_id, manifest_data_builder).await;
-            })
-        });
-    }
-
-    #[test]
-    fn test_manifest_version_edit() {
-        let ctx = TestContext::new("version_edit", SchemaId::from_u32(0));
-        run_basic_manifest_test(ctx, |ctx, table_id, manifest_data_builder| {
-            Box::pin(async move {
-                ctx.add_table(table_id, manifest_data_builder).await;
-                ctx.version_edit_table(table_id, manifest_data_builder)
-                    .await;
-            })
-        });
-    }
-
-    #[test]
-    fn test_manifest_alter_options() {
-        let ctx = TestContext::new("version_edit", SchemaId::from_u32(0));
-        run_basic_manifest_test(ctx, |ctx, table_id, manifest_data_builder| {
-            Box::pin(async move {
-                ctx.add_table(table_id, manifest_data_builder).await;
-                ctx.alter_table_options(table_id, manifest_data_builder)
-                    .await;
-            })
-        });
-    }
-
-    #[test]
-    fn test_manifest_alter_schema() {
-        let ctx = TestContext::new("version_edit", SchemaId::from_u32(0));
-        run_basic_manifest_test(ctx, |ctx, table_id, manifest_data_builder| {
-            Box::pin(async move {
-                ctx.add_table(table_id, manifest_data_builder).await;
-                ctx.alter_table_schema(table_id, manifest_data_builder)
-                    .await;
-            })
-        });
-    }
-
-    #[test]
-    fn test_manifest_snapshot_one_table() {
-        let ctx = TestContext::new("snapshot_one_table", SchemaId::from_u32(0));
-        let runtime = ctx.runtime.clone();
-
-        runtime.block_on(async move {
-            let table_id = ctx.alloc_table_id();
-            let location = WalLocation::new(DEFAULT_SHARD_ID as u64, table_id.as_u64());
-            let mut manifest_data_builder = MetaSnapshotBuilder::default();
-            let manifest = ctx.open_manifest().await;
-            ctx.add_table_with_manifest(table_id, &mut manifest_data_builder, &manifest)
-                .await;
-
-            manifest
-                .do_snapshot_internal(ctx.schema_id.as_u32(), table_id, location)
-                .await
-                .unwrap();
-
-            ctx.version_edit_table_with_manifest(
-                table_id,
-                None,
-                &mut manifest_data_builder,
-                &manifest,
-            )
-            .await;
-            let load_req = LoadRequest {
-                space_id: ctx.schema_id.as_u32(),
-                table_id,
-                shard_id: DEFAULT_SHARD_ID,
-            };
-            ctx.check_table_manifest_data_with_manifest(
-                &load_req,
-                &manifest_data_builder.build(),
-                &manifest,
-            )
-            .await;
-        });
-    }
-
-    #[test]
-    fn test_manifest_snapshot_one_table_massive_logs() {
-        let ctx = TestContext::new("snapshot_one_table_massive_logs", SchemaId::from_u32(0));
-        let runtime = ctx.runtime.clone();
-        runtime.block_on(async move {
-            let table_id = ctx.alloc_table_id();
-            let load_req = LoadRequest {
-                space_id: ctx.schema_id.as_u32(),
-                table_id,
-                shard_id: DEFAULT_SHARD_ID,
-            };
-            let mut manifest_data_builder = MetaSnapshotBuilder::default();
-            let manifest = ctx.open_manifest().await;
-            ctx.add_table_with_manifest(table_id, &mut manifest_data_builder, &manifest)
-                .await;
-
-            for i in 0..500 {
-                ctx.version_edit_table_with_manifest(
-                    table_id,
-                    Some(i),
-                    &mut manifest_data_builder,
-                    &manifest,
-                )
-                .await;
-            }
-            ctx.check_table_manifest_data_with_manifest(
-                &load_req,
-                &manifest_data_builder.clone().build(),
-                &manifest,
-            )
-            .await;
-
-            let location = WalLocation::new(DEFAULT_SHARD_ID as u64, table_id.as_u64());
-            manifest
-                .do_snapshot_internal(ctx.schema_id.as_u32(), table_id, location)
-                .await
-                .unwrap();
-            for i in 500..550 {
-                ctx.version_edit_table_with_manifest(
-                    table_id,
-                    Some(i),
-                    &mut manifest_data_builder,
-                    &manifest,
-                )
-                .await;
-            }
-            ctx.check_table_manifest_data_with_manifest(
-                &load_req,
-                &manifest_data_builder.build(),
-                &manifest,
-            )
-            .await;
-        });
-    }
-
-    #[derive(Debug, Clone)]
-    struct MemLogStore {
-        logs: Arc<std::sync::Mutex<Vec<Option<MetaUpdate>>>>,
-    }
-
-    impl MemLogStore {
-        fn from_updates(updates: &[MetaUpdate]) -> Self {
-            let mut buf = Vec::with_capacity(updates.len());
-            buf.extend(updates.iter().map(|v| Some(v.clone())));
-            Self {
-                logs: Arc::new(std::sync::Mutex::new(buf)),
-            }
-        }
-
-        async fn to_meta_updates(&self) -> Vec<MetaUpdate> {
-            let logs = self.logs.lock().unwrap();
-            logs.iter().filter_map(|v| v.clone()).collect()
-        }
-
-        fn next_seq(&self) -> u64 {
-            let logs = self.logs.lock().unwrap();
-            logs.len() as u64
-        }
-    }
-
-    #[async_trait]
-    impl MetaUpdateLogStore for MemLogStore {
-        type Iter = vec::IntoIter<(SequenceNumber, MetaUpdate)>;
-
-        async fn scan(&self, start: ReadBoundary) -> Result<Self::Iter> {
-            let logs = self.logs.lock().unwrap();
-            let start = start.as_start_sequence_number().unwrap() as usize;
-
-            let mut exist_logs = Vec::new();
-            let logs_with_idx = logs.iter().enumerate();
-            for (idx, update) in logs_with_idx {
-                if idx < start || update.is_none() {
-                    continue;
-                }
-                exist_logs.push((idx as u64, update.clone().unwrap()));
-            }
-
-            Ok(exist_logs.into_iter())
-        }
-
-        async fn append(&self, meta_update: MetaUpdate) -> Result<SequenceNumber> {
-            let mut logs = self.logs.lock().unwrap();
-            let seq = logs.len() as u64;
-            logs.push(Some(meta_update));
-
-            Ok(seq)
-        }
-
-        async fn delete_up_to(&self, inclusive_end: SequenceNumber) -> Result<()> {
-            let mut logs = self.logs.lock().unwrap();
-            for i in 0..=inclusive_end {
-                logs[i as usize] = None;
-            }
-
-            Ok(())
-        }
-    }
-
-    #[async_trait]
-    impl<T> MetaUpdateLogEntryIterator for T
-    where
-        T: Iterator<Item = (SequenceNumber, MetaUpdate)> + Send + Sync,
-    {
-        async fn next_update(&mut self) -> Result<Option<(SequenceNumber, MetaUpdate)>> {
-            Ok(self.next())
-        }
-    }
-
-    #[derive(Debug, Clone)]
-    struct MemSnapshotStore {
-        curr_snapshot: Arc<Mutex<Option<Snapshot>>>,
-    }
-
-    impl MemSnapshotStore {
-        fn new() -> Self {
-            Self {
-                curr_snapshot: Arc::new(Mutex::new(None)),
-            }
-        }
-    }
-
-    #[async_trait]
-    impl MetaUpdateSnapshotStore for MemSnapshotStore {
-        async fn store(&self, snapshot: &Snapshot) -> Result<()> {
-            let mut curr_snapshot = self.curr_snapshot.lock().await;
-            *curr_snapshot = Some(snapshot.clone());
-            Ok(())
-        }
-
-        async fn load(&self) -> Result<Option<Snapshot>> {
-            let curr_snapshot = self.curr_snapshot.lock().await;
-            Ok(curr_snapshot.clone())
-        }
-    }
-
-    fn run_snapshot_test(
-        ctx: Arc<TestContext>,
-        table_id: TableId,
-        input_updates: Vec<MetaUpdate>,
-        updates_after_snapshot: Vec<MetaUpdate>,
-    ) {
-        let log_store = MemLogStore::from_updates(&input_updates);
-        let snapshot_store = MemSnapshotStore::new();
-        let snapshot_data_provider = ctx.mock_provider.clone();
-
-        ctx.runtime.block_on(async move {
-            let log_store = log_store;
-            let snapshot_store = snapshot_store;
-            let snapshot_provider = snapshot_data_provider;
-
-            // 1. Test write and do snapshot
-            // Create and check the latest snapshot first.
-            let mut manifest_builder = MetaSnapshotBuilder::default();
-            for update in &input_updates {
-                manifest_builder.apply_update(update.clone()).unwrap();
-                let request = MetaEditRequest {
-                    shard_info: TableShardInfo::new(DEFAULT_SHARD_ID),
-                    meta_edit: MetaEdit::Update(update.clone()),
-                };
-                snapshot_provider.apply_edit_to_table(request).unwrap();
-            }
-            let expect_table_manifest_data = manifest_builder.clone().build();
-
-            // Do snapshot from memory and check the snapshot result.
-            let snapshot = build_and_store_snapshot(
-                &log_store,
-                &snapshot_store,
-                snapshot_provider.clone(),
-                table_id,
-            )
-            .await;
-            if input_updates.is_empty() {
-                assert!(snapshot.is_none());
-            } else {
-                assert!(snapshot.is_some());
-                let snapshot = snapshot.unwrap();
-                assert_eq!(snapshot.data, expect_table_manifest_data);
-                assert_eq!(snapshot.end_seq, log_store.next_seq() - 1);
-
-                let recovered_snapshot =
-                    recover_snapshot(table_id, 0, &log_store, &snapshot_store).await;
-                assert_eq!(snapshot, recovered_snapshot.unwrap());
-            }
-            // The logs in the log store should be cleared after snapshot.
-            let updates_in_log_store = log_store.to_meta_updates().await;
-            assert!(updates_in_log_store.is_empty());
-
-            // 2. Test write after snapshot, and do snapshot again
-            // Write the updates after snapshot.
-            for update in &updates_after_snapshot {
-                manifest_builder.apply_update(update.clone()).unwrap();
-                log_store.append(update.clone()).await.unwrap();
-                let request = MetaEditRequest {
-                    shard_info: TableShardInfo::new(DEFAULT_SHARD_ID),
-                    meta_edit: MetaEdit::Update(update.clone()),
-                };
-                snapshot_provider.apply_edit_to_table(request).unwrap();
-            }
-            let expect_table_manifest_data = manifest_builder.build();
-            // Do snapshot and check the snapshot result again.
-            let snapshot =
-                build_and_store_snapshot(&log_store, &snapshot_store, snapshot_provider, table_id)
-                    .await;
-
-            if input_updates.is_empty() && updates_after_snapshot.is_empty() {
-                assert!(snapshot.is_none());
-            } else {
-                assert!(snapshot.is_some());
-                let snapshot = snapshot.unwrap();
-                assert_eq!(snapshot.data, expect_table_manifest_data);
-                assert_eq!(snapshot.end_seq, log_store.next_seq() - 1);
-
-                let recovered_snapshot =
-                    recover_snapshot(table_id, 0, &log_store, &snapshot_store).await;
-                assert_eq!(snapshot, recovered_snapshot.unwrap());
-            }
-            // The logs in the log store should be cleared after snapshot.
-            let updates_in_log_store = log_store.to_meta_updates().await;
-            assert!(updates_in_log_store.is_empty());
-        });
-    }
-
-    async fn build_and_store_snapshot(
-        log_store: &MemLogStore,
-        snapshot_store: &MemSnapshotStore,
-        snapshot_provider: Arc<MockProviderImpl>,
-        table_id: TableId,
-    ) -> Option<Snapshot> {
-        let end_seq = log_store.next_seq() - 1;
-        let snapshotter = Snapshotter {
-            log_store: log_store.clone(),
-            snapshot_store: snapshot_store.clone(),
-            end_seq,
-            snapshot_data_provider: snapshot_provider,
-            space_id: 0,
-            table_id,
-        };
-        snapshotter.snapshot().await.unwrap()
-    }
-
-    async fn recover_snapshot(
-        table_id: TableId,
-        space_id: SpaceId,
-        log_store: &MemLogStore,
-        snapshot_store: &MemSnapshotStore,
-    ) -> Option<Snapshot> {
-        let recoverer = SnapshotRecoverer {
-            table_id,
-            space_id,
-            log_store: log_store.clone(),
-            snapshot_store: snapshot_store.clone(),
-        };
-        recoverer.recover().await.unwrap()
-    }
-
-    #[test]
-    fn test_simple_snapshot() {
-        let ctx = Arc::new(TestContext::new(
-            "snapshot_merge_no_snapshot",
-            SchemaId::from_u32(0),
-        ));
-        let table_id = ctx.alloc_table_id();
-        let input_updates = vec![
-            ctx.meta_update_add_table(table_id),
-            ctx.meta_update_version_edit(table_id, Some(1)),
-            ctx.meta_update_version_edit(table_id, Some(3)),
-        ];
-
-        run_snapshot_test(ctx, table_id, input_updates, vec![]);
-    }
-
-    #[test]
-    fn test_snapshot_drop_table() {
-        let ctx = Arc::new(TestContext::new(
-            "snapshot_drop_table",
-            SchemaId::from_u32(0),
-        ));
-        let table_id = ctx.alloc_table_id();
-        let input_updates = vec![
-            ctx.meta_update_add_table(table_id),
-            ctx.meta_update_drop_table(table_id),
-        ];
-
-        run_snapshot_test(ctx, table_id, input_updates, vec![]);
-    }
-
-    #[test]
-    fn test_snapshot_twice() {
-        let ctx = Arc::new(TestContext::new(
-            "snapshot_merge_no_snapshot",
-            SchemaId::from_u32(0),
-        ));
-        let table_id = ctx.alloc_table_id();
-        let input_updates = vec![
-            ctx.meta_update_add_table(table_id),
-            ctx.meta_update_version_edit(table_id, Some(1)),
-            ctx.meta_update_version_edit(table_id, Some(3)),
-        ];
-        let updates_after_snapshot = vec![
-            ctx.meta_update_version_edit(table_id, Some(4)),
-            ctx.meta_update_version_edit(table_id, Some(8)),
-        ];
-
-        run_snapshot_test(ctx, table_id, input_updates, updates_after_snapshot);
     }
 }

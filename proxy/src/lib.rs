@@ -52,12 +52,12 @@ use futures::FutureExt;
 use generic_error::BoxError;
 use influxql_query::logical_optimizer::range_predicate::find_time_range;
 use interpreters::{
-    context::Context as InterpreterContext,
+    context::InterpreterContext as InterpreterContext,
     factory::Factory,
     interpreter::{InterpreterPtr, Output},
 };
 use log::{error, info};
-use query_engine::executor::Executor as QueryExecutor;
+use query_engine::executor::QueryExecutor as QueryExecutor;
 use query_frontend::plan::Plan;
 use router::{endpoint::Endpoint, Router};
 use runtime::Runtime;
@@ -82,10 +82,10 @@ use crate::{
 // Because the clock may have errors, choose 1 hour as the error buffer
 const QUERY_EXPIRED_BUFFER: Duration = Duration::from_secs(60 * 60);
 
-pub struct Proxy<Q> {
+pub struct Proxy<QueryExecutor> {
     router: Arc<dyn Router + Send + Sync>,
     forwarder: ForwarderRef,
-    instance: InstanceRef<Q>,
+    instance: InstanceRef<QueryExecutor>,
     resp_compress_min_length: usize,
     auto_create_table: bool,
     schema_config_provider: SchemaConfigProviderRef,
@@ -94,20 +94,18 @@ pub struct Proxy<Q> {
     cluster_with_meta: bool,
 }
 
-impl<Q: QueryExecutor + 'static> Proxy<Q> {
+impl<QueryExecutor0: QueryExecutor + 'static> Proxy<QueryExecutor0> {
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        router: Arc<dyn Router + Send + Sync>,
-        instance: InstanceRef<Q>,
-        forward_config: forward::Config,
-        local_endpoint: Endpoint,
-        resp_compress_min_length: usize,
-        auto_create_table: bool,
-        schema_config_provider: SchemaConfigProviderRef,
-        hotspot_config: hotspot::Config,
-        engine_runtimes: Arc<EngineRuntimes>,
-        cluster_with_meta: bool,
-    ) -> Self {
+    pub fn new(router: Arc<dyn Router + Send + Sync>,
+               instance: InstanceRef<QueryExecutor0>,
+               forward_config: forward::Config,
+               local_endpoint: Endpoint,
+               resp_compress_min_length: usize,
+               auto_create_table: bool,
+               schema_config_provider: SchemaConfigProviderRef,
+               hotspot_config: hotspot::Config,
+               engine_runtimes: Arc<EngineRuntimes>,
+               cluster_with_meta: bool) -> Self {
         let forwarder = Arc::new(Forwarder::new(
             forward_config,
             router.clone(),
@@ -131,7 +129,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         }
     }
 
-    pub fn instance(&self) -> InstanceRef<Q> {
+    pub fn instance(&self) -> InstanceRef<QueryExecutor0> {
         self.instance.clone()
     }
 
@@ -165,7 +163,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                         msg: "Forwarded sql query failed",
                     })
             }
-            .boxed();
+                .boxed();
 
             Box::new(query) as _
         };
@@ -219,7 +217,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                 .name
                 .clone();
             let ts_col = Column::from_name(timestamp_name);
-            let range = find_time_range(&query.df_plan, &ts_col)
+            let range = find_time_range(&query.dataFusionLogicalPlan, &ts_col)
                 .box_err()
                 .context(Internal {
                     msg: "Failed to find time range",
@@ -328,7 +326,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                     schema_name.to_string(),
                     table_name.to_string(),
                 )
-                .await?;
+                    .await?;
             }
             (Some(table), None) => {
                 // Drop partition table because it does not exist in ceresmeta but exists in
@@ -341,7 +339,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                         schema_name.to_string(),
                         table_name.to_string(),
                     )
-                    .await?;
+                        .await?;
                 }
                 // No need to create non-partition table.
                 return Ok(());
@@ -448,99 +446,85 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             })
     }
 
-    async fn execute_plan(
-        &self,
-        request_id: RequestId,
-        catalog: &str,
-        schema: &str,
-        plan: Plan,
-        deadline: Option<Instant>,
-    ) -> Result<Output> {
+    async fn execute_plan(&self,
+                          request_id: RequestId,
+                          catalog: &str,
+                          schema: &str,
+                          plan: Plan,
+                          deadline: Option<Instant>,
+                          enable_partition_table_access: bool) -> Result<Output> {
         self.instance
             .limiter
             .try_limit(&plan)
             .box_err()
-            .context(Internal {
-                msg: "Request is blocked",
-            })?;
+            .context(Internal { msg: "Request is blocked" })?;
 
         let interpreter =
-            self.build_interpreter(request_id, catalog, schema, plan, deadline, false)?;
+            self.build_interpreter(request_id,
+                                   catalog,
+                                   schema,
+                                   plan,
+                                   deadline,
+                                   enable_partition_table_access)?;
+
         Self::interpreter_execute_plan(interpreter, deadline).await
     }
 
-    async fn execute_plan_involving_partition_table(
-        &self,
-        request_id: RequestId,
-        catalog: &str,
-        schema: &str,
-        plan: Plan,
-        deadline: Option<Instant>,
-    ) -> Result<Output> {
+    /*async fn execute_plan_involving_partition_table(&self,
+                                                    request_id: RequestId,
+                                                    catalog: &str,
+                                                    schema: &str,
+                                                    plan: Plan,
+                                                    deadline: Option<Instant>) -> Result<Output> {
         self.instance
             .limiter
             .try_limit(&plan)
             .box_err()
-            .context(Internal {
-                msg: "Request is blocked",
-            })?;
+            .context(Internal { msg: "Request is blocked" })?;
 
         let interpreter =
-            self.build_interpreter(request_id, catalog, schema, plan, deadline, true)?;
-        Self::interpreter_execute_plan(interpreter, deadline).await
-    }
+            self.build_interpreter(request_id,
+                                   catalog,
+                                   schema,
+                                   plan,
+                                   deadline,
+                                   true)?;
 
-    fn build_interpreter(
-        &self,
-        request_id: RequestId,
-        catalog: &str,
-        schema: &str,
-        plan: Plan,
-        deadline: Option<Instant>,
-        enable_partition_table_access: bool,
-    ) -> Result<InterpreterPtr> {
+        Self::interpreter_execute_plan(interpreter, deadline).await
+    }*/
+
+    fn build_interpreter(&self,
+                         request_id: RequestId,
+                         catalog: &str,
+                         schema: &str,
+                         plan: Plan,
+                         deadline: Option<Instant>,
+                         enable_partition_table_access: bool) -> Result<InterpreterPtr> {
         let interpreter_ctx = InterpreterContext::builder(request_id, deadline)
-            // Use current ctx's catalog and schema as default catalog and schema
             .default_catalog_and_schema(catalog.to_string(), schema.to_string())
             .enable_partition_table_access(enable_partition_table_access)
             .build();
-        let interpreter_factory = Factory::new(
-            self.instance.query_executor.clone(),
-            self.instance.catalog_manager.clone(),
-            self.instance.table_engine.clone(),
-            self.instance.table_manipulator.clone(),
-        );
+
+        let interpreter_factory =
+            Factory::new(self.instance.query_executor.clone(),
+                         self.instance.catalog_manager.clone(),
+                         self.instance.table_engine.clone(),
+                         self.instance.table_manipulator.clone());
+
         interpreter_factory
             .create(interpreter_ctx, plan)
             .box_err()
-            .context(Internal {
-                msg: "Failed to create interpreter",
-            })
+            .context(Internal { msg: "Failed to create interpreter" })
     }
 
-    async fn interpreter_execute_plan(
-        interpreter: InterpreterPtr,
-        deadline: Option<Instant>,
-    ) -> Result<Output> {
+    async fn interpreter_execute_plan(interpreter: InterpreterPtr, deadline: Option<Instant>) -> Result<Output> {
         if let Some(deadline) = deadline {
-            tokio::time::timeout_at(
-                tokio::time::Instant::from_std(deadline),
-                interpreter.execute(),
-            )
-            .await
-            .box_err()
-            .context(Internal {
-                msg: "Plan execution timeout",
-            })
-            .and_then(|v| {
-                v.box_err().context(Internal {
-                    msg: "Failed to execute interpreter",
-                })
-            })
+            tokio::time::timeout_at(tokio::time::Instant::from_std(deadline), interpreter.execute()).await
+                .box_err()
+                .context(Internal { msg: "Plan execution timeout" })
+                .and_then(|v| { v.box_err().context(Internal { msg: "Failed to execute interpreter" })})
         } else {
-            interpreter.execute().await.box_err().context(Internal {
-                msg: "Failed to execute interpreter",
-            })
+            interpreter.execute().await.box_err().context(Internal { msg: "Failed to execute interpreter" })
         }
     }
 }

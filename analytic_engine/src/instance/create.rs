@@ -10,7 +10,7 @@ use table_engine::engine::CreateTableRequest;
 use crate::{
     instance::{
         engine::{CreateOpenFailedTable, InvalidOptions, Result, TableNotExist, WriteManifest},
-        Instance,
+        TableEngineInstance,
     },
     manifest::meta_edit::{AddTableMeta, MetaEdit, MetaEditRequest, MetaUpdate},
     space::SpaceRef,
@@ -18,7 +18,7 @@ use crate::{
     table_options,
 };
 
-impl Instance {
+impl TableEngineInstance {
     /// Create table need to be handled by write worker.
     pub async fn do_create_table(
         &self,

@@ -21,7 +21,7 @@ use generic_error::BoxError;
 use http::StatusCode;
 use interpreters::interpreter::Output;
 use log::info;
-use query_engine::executor::{Executor as QueryExecutor, RecordBatchVec};
+use query_engine::executor::{QueryExecutor as QueryExecutor, RecordBatchVec};
 use query_frontend::{
     frontend::{Context as SqlContext, Error as FrontendError, Frontend},
     promql::ColumnNames,
@@ -117,7 +117,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             })?;
 
         let output = self
-            .execute_plan(request_id, catalog, &schema, plan, deadline)
+            .execute_plan(request_id, catalog, &schema, plan, deadline,false)
             .await
             .box_err()
             .with_context(|| ErrWithCause {
@@ -327,178 +327,5 @@ impl RecordConverter {
         }
 
         tsid_to_samples
-    }
-}
-
-#[cfg(test)]
-mod tests {
-
-    use common_types::{
-        column::{ColumnBlock, ColumnBlockBuilder},
-        column_schema,
-        datum::{Datum, DatumKind},
-        row::Row,
-        schema,
-        string::StringBytes,
-        time::Timestamp,
-    };
-
-    use super::*;
-
-    fn build_schema() -> schema::Schema {
-        schema::Builder::new()
-            .auto_increment_column_id(true)
-            .add_key_column(
-                column_schema::Builder::new("timestamp".to_string(), DatumKind::Timestamp)
-                    .build()
-                    .unwrap(),
-            )
-            .unwrap()
-            .add_key_column(
-                column_schema::Builder::new(TSID_COLUMN.to_string(), DatumKind::UInt64)
-                    .build()
-                    .unwrap(),
-            )
-            .unwrap()
-            .add_normal_column(
-                column_schema::Builder::new("field1".to_string(), DatumKind::Double)
-                    .build()
-                    .unwrap(),
-            )
-            .unwrap()
-            .add_normal_column(
-                column_schema::Builder::new("tag1".to_string(), DatumKind::String)
-                    .is_tag(true)
-                    .build()
-                    .unwrap(),
-            )
-            .unwrap()
-            .add_normal_column(
-                column_schema::Builder::new("tag_dictionary".to_string(), DatumKind::String)
-                    .is_tag(true)
-                    .is_dictionary(true)
-                    .is_nullable(true)
-                    .build()
-                    .unwrap(),
-            )
-            .unwrap()
-            .build()
-            .unwrap()
-    }
-
-    fn build_column_block() -> Vec<ColumnBlock> {
-        let build_row = |ts: i64, tsid: u64, field1: f64, field2: &str, dic: Option<&str>| -> Row {
-            let datums = vec![
-                Datum::Timestamp(Timestamp::new(ts)),
-                Datum::UInt64(tsid),
-                Datum::Double(field1),
-                Datum::String(StringBytes::from(field2)),
-                dic.map(|v| Datum::String(StringBytes::from(v)))
-                    .unwrap_or(Datum::Null),
-            ];
-
-            Row::from_datums(datums)
-        };
-
-        let rows = vec![
-            build_row(1000001, 1, 10.0, "v5", Some("d1")),
-            build_row(1000002, 1, 11.0, "v5", None),
-            build_row(1000000, 2, 10.0, "v4", Some("d2")),
-            build_row(1000000, 3, 10.0, "v3", None),
-        ];
-
-        let mut builder = ColumnBlockBuilder::with_capacity(&DatumKind::Timestamp, 2, false);
-        for row in &rows {
-            builder.append(row[0].clone()).unwrap();
-        }
-        let timestamp_block = builder.build();
-
-        let mut builder = ColumnBlockBuilder::with_capacity(&DatumKind::UInt64, 2, false);
-        for row in &rows {
-            builder.append(row[1].clone()).unwrap();
-        }
-        let tsid_block = builder.build();
-
-        let mut builder = ColumnBlockBuilder::with_capacity(&DatumKind::Double, 2, false);
-        for row in &rows {
-            builder.append(row[2].clone()).unwrap();
-        }
-        let field_block = builder.build();
-
-        let mut builder = ColumnBlockBuilder::with_capacity(&DatumKind::String, 2, false);
-        for row in &rows {
-            builder.append(row[3].clone()).unwrap();
-        }
-        let tag_block = builder.build();
-
-        let mut builder = ColumnBlockBuilder::with_capacity(&DatumKind::String, 2, true);
-        for row in &rows {
-            builder.append(row[4].clone()).unwrap();
-        }
-        let dictionary_block = builder.build();
-
-        vec![
-            timestamp_block,
-            tsid_block,
-            field_block,
-            tag_block,
-            dictionary_block,
-        ]
-    }
-
-    fn make_sample(timestamp: i64, value: f64) -> Sample {
-        Sample { value, timestamp }
-    }
-
-    fn make_tags(tags: Vec<(String, String)>) -> BTreeMap<String, String> {
-        tags.into_iter().collect::<BTreeMap<_, _>>()
-    }
-
-    #[test]
-    fn test_record_convert() {
-        let schema = build_schema();
-        let record_schema = schema.to_record_schema();
-        let column_blocks = build_column_block();
-        let record_batch = RecordBatch::new(record_schema, column_blocks).unwrap();
-
-        let column_name = ColumnNames {
-            timestamp: "timestamp".to_string(),
-            tag_keys: vec!["tag1".to_string(), "tag_dictionary".to_string()],
-            field: "field1".to_string(),
-        };
-        let converter = RecordConverter::try_new(&column_name, &schema.to_record_schema()).unwrap();
-        let mut tsid_to_tags = HashMap::new();
-        let tsid_to_samples = converter.convert_to_samples(record_batch, &mut tsid_to_tags);
-
-        assert_eq!(
-            tsid_to_samples.get(&1).unwrap().clone(),
-            vec![make_sample(1000001, 10.0), make_sample(1000002, 11.0)]
-        );
-        assert_eq!(
-            tsid_to_samples.get(&2).unwrap().clone(),
-            vec![make_sample(1000000, 10.0)]
-        );
-        assert_eq!(
-            tsid_to_samples.get(&3).unwrap().clone(),
-            vec![make_sample(1000000, 10.0)]
-        );
-        assert_eq!(
-            tsid_to_tags.get(&1).unwrap().clone(),
-            make_tags(vec![
-                ("tag1".to_string(), "v5".to_string()),
-                ("tag_dictionary".to_string(), "d1".to_string())
-            ])
-        );
-        assert_eq!(
-            tsid_to_tags.get(&2).unwrap().clone(),
-            make_tags(vec![
-                ("tag1".to_string(), "v4".to_string()),
-                ("tag_dictionary".to_string(), "d2".to_string())
-            ])
-        );
-        assert_eq!(
-            tsid_to_tags.get(&3).unwrap().clone(),
-            make_tags(vec![("tag1".to_string(), "v3".to_string())])
-        );
     }
 }

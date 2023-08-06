@@ -29,7 +29,7 @@ use table_engine::{
 use trace_metric::Metric;
 
 use crate::{
-    instance::Instance,
+    instance::TableEngineInstance,
     row_iter::{
         chain,
         chain::{ChainConfig, ChainIterator},
@@ -73,7 +73,7 @@ const ITER_NUM_METRIC_NAME: &str = "iter_num";
 const MERGE_ITER_METRICS_COLLECTOR_NAME_PREFIX: &str = "merge_iter";
 const CHAIN_ITER_METRICS_COLLECTOR_NAME_PREFIX: &str = "chain_iter";
 
-impl Instance {
+impl TableEngineInstance {
     /// Read data in multiple time range from table, and return
     /// `read_parallelism` output streams.
     pub async fn partitioned_read_from_table(

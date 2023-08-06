@@ -20,7 +20,7 @@ use futures::stream::{self, BoxStream, FuturesUnordered, StreamExt};
 use generic_error::BoxError;
 use log::{error, info};
 use proxy::instance::InstanceRef;
-use query_engine::executor::Executor as QueryExecutor;
+use query_engine::executor::QueryExecutor as QueryExecutor;
 use snafu::{OptionExt, ResultExt};
 use table_engine::{
     engine::EngineRuntimes, predicate::PredicateRef, remote::model::TableIdentifier,
@@ -557,7 +557,7 @@ async fn handle_write(ctx: HandlerContext, request: WriteRequest) -> Result<Writ
             msg: "fail to convert write request",
         })?;
 
-    let num_rows = write_request.write_request.row_group.num_rows();
+    let num_rows = write_request.write_request.rowGroup.num_rows();
     let table = find_table_by_identifier(&ctx, &write_request.table)?;
 
     let res = table

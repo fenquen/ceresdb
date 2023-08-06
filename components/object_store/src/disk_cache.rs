@@ -38,10 +38,10 @@ pub const CASTAGNOLI: Crc<u32> = Crc::<u32>::new(&CRC_32_ISCSI);
 #[derive(Debug, Snafu)]
 enum Error {
     #[snafu(display(
-        "IO failed, file:{}, source:{}.\nbacktrace:\n{}",
-        file,
-        source,
-        backtrace
+    "IO failed, file:{}, source:{}.\nbacktrace:\n{}",
+    file,
+    source,
+    backtrace
     ))]
     Io {
         file: String,
@@ -50,9 +50,9 @@ enum Error {
     },
 
     #[snafu(display(
-        "Failed to deserialize manifest, source:{}.\nbacktrace:\n{}",
-        source,
-        backtrace
+    "Failed to deserialize manifest, source:{}.\nbacktrace:\n{}",
+    source,
+    backtrace
     ))]
     DeserializeManifest {
         source: serde_json::Error,
@@ -60,9 +60,9 @@ enum Error {
     },
 
     #[snafu(display(
-        "Failed to serialize manifest, source:{}.\nbacktrace:\n{}",
-        source,
-        backtrace
+    "Failed to serialize manifest, source:{}.\nbacktrace:\n{}",
+    source,
+    backtrace
     ))]
     SerializeManifest {
         source: serde_json::Error,
@@ -73,10 +73,10 @@ enum Error {
     InvalidManifest { old: usize, new: usize },
 
     #[snafu(display(
-        "Failed to persist cache, file:{}, source:{}.\nbacktrace:\n{}",
-        file,
-        source,
-        backtrace
+    "Failed to persist cache, file:{}, source:{}.\nbacktrace:\n{}",
+    file,
+    source,
+    backtrace
     ))]
     PersistCache {
         file: String,
@@ -85,17 +85,17 @@ enum Error {
     },
 
     #[snafu(display(
-        "Failed to decode cache pb value, file:{}, source:{}.\nbacktrace:\n{}",
-        file,
-        source,
-        backtrace
+    "Failed to decode cache pb value, file:{}, source:{}.\nbacktrace:\n{}",
+    file,
+    source,
+    backtrace
     ))]
     DecodeCache {
         file: String,
         source: prost::DecodeError,
         backtrace: Backtrace,
     },
-    #[snafu(display("disk cache cap must large than 0",))]
+    #[snafu(display("disk cache cap must large than 0", ))]
     InvalidCapacity,
 }
 
@@ -277,7 +277,7 @@ impl Display for DiskCache {
 /// 2. ${sst-path}-${range.start}-${range.end}, which contains bytes of given
 /// range, start/end are aligned to page_size.
 #[derive(Debug)]
-pub struct DiskCacheStore {
+pub struct ObjectStoreWithDiskCache {
     cache: DiskCache,
     // Max disk capacity cache use can
     cap: usize,
@@ -285,17 +285,15 @@ pub struct DiskCacheStore {
     page_size: usize,
     // location path size cache
     size_cache: Arc<Mutex<LruCache<String, usize>>>,
-    underlying_store: Arc<dyn ObjectStore>,
+    underlyingObjectStore: Arc<dyn ObjectStore>,
 }
 
-impl DiskCacheStore {
-    pub async fn try_new(
-        cache_dir: String,
-        cap: usize,
-        page_size: usize,
-        underlying_store: Arc<dyn ObjectStore>,
-        partition_bits: usize,
-    ) -> Result<Self> {
+impl ObjectStoreWithDiskCache {
+    pub async fn try_new(cache_dir: String,
+                         cap: usize,
+                         page_size: usize,
+                         underlying_store: Arc<dyn ObjectStore>,
+                         partition_bits: usize, ) -> Result<Self> {
         let page_num_per_part = cap / page_size;
         ensure!(page_num_per_part != 0, InvalidCapacity);
         let _ = Self::create_manifest_if_not_exists(&cache_dir, page_size).await?;
@@ -309,7 +307,7 @@ impl DiskCacheStore {
             size_cache,
             cap,
             page_size,
-            underlying_store,
+            underlyingObjectStore: underlying_store,
         })
     }
 
@@ -404,7 +402,7 @@ impl DiskCacheStore {
     }
 }
 
-impl Display for DiskCacheStore {
+impl Display for ObjectStoreWithDiskCache {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("DiskCacheStore")
             .field("page_size", &self.page_size)
@@ -415,20 +413,20 @@ impl Display for DiskCacheStore {
 }
 
 #[async_trait]
-impl ObjectStore for DiskCacheStore {
+impl ObjectStore for ObjectStoreWithDiskCache {
     async fn put(&self, location: &Path, bytes: Bytes) -> Result<()> {
-        self.underlying_store.put(location, bytes).await
+        self.underlyingObjectStore.put(location, bytes).await
     }
 
     async fn put_multipart(
         &self,
         location: &Path,
     ) -> Result<(MultipartId, Box<dyn AsyncWrite + Unpin + Send>)> {
-        self.underlying_store.put_multipart(location).await
+        self.underlyingObjectStore.put_multipart(location).await
     }
 
     async fn abort_multipart(&self, location: &Path, multipart_id: &MultipartId) -> Result<()> {
-        self.underlying_store
+        self.underlyingObjectStore
             .abort_multipart(location, multipart_id)
             .await
     }
@@ -436,7 +434,7 @@ impl ObjectStore for DiskCacheStore {
     // TODO: don't cache whole path for reasons below
     // In sst module, we only use get_range, get is not used
     async fn get(&self, location: &Path) -> Result<GetResult> {
-        self.underlying_store.get(location).await
+        self.underlyingObjectStore.get(location).await
     }
 
     async fn get_range(&self, location: &Path, range: Range<usize>) -> Result<Bytes> {
@@ -476,7 +474,7 @@ impl ObjectStore for DiskCacheStore {
             let range_start = range.start;
             let cache_key = Self::cache_key(location, &range);
             // TODO: we should use get_ranges here.
-            let bytes = self.underlying_store.get_range(location, range).await?;
+            let bytes = self.underlyingObjectStore.get_range(location, range).await?;
             self.cache.insert(cache_key, bytes.clone()).await;
             ranged_bytes.insert(range_start, bytes);
         }
@@ -509,453 +507,26 @@ impl ObjectStore for DiskCacheStore {
     }
 
     async fn head(&self, location: &Path) -> Result<ObjectMeta> {
-        self.underlying_store.head(location).await
+        self.underlyingObjectStore.head(location).await
     }
 
     async fn delete(&self, location: &Path) -> Result<()> {
-        self.underlying_store.delete(location).await
+        self.underlyingObjectStore.delete(location).await
     }
 
     async fn list(&self, prefix: Option<&Path>) -> Result<BoxStream<'_, Result<ObjectMeta>>> {
-        self.underlying_store.list(prefix).await
+        self.underlyingObjectStore.list(prefix).await
     }
 
     async fn list_with_delimiter(&self, prefix: Option<&Path>) -> Result<ListResult> {
-        self.underlying_store.list_with_delimiter(prefix).await
+        self.underlyingObjectStore.list_with_delimiter(prefix).await
     }
 
     async fn copy(&self, from: &Path, to: &Path) -> Result<()> {
-        self.underlying_store.copy(from, to).await
+        self.underlyingObjectStore.copy(from, to).await
     }
 
     async fn copy_if_not_exists(&self, from: &Path, to: &Path) -> Result<()> {
-        self.underlying_store.copy_if_not_exists(from, to).await
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use tempfile::{tempdir, TempDir};
-    use upstream::local::LocalFileSystem;
-
-    use super::*;
-
-    struct StoreWithCacheDir {
-        inner: DiskCacheStore,
-        cache_dir: TempDir,
-    }
-
-    async fn prepare_store(
-        page_size: usize,
-        cap: usize,
-        partition_bits: usize,
-    ) -> StoreWithCacheDir {
-        let local_path = tempdir().unwrap();
-        let local_store = Arc::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
-
-        let cache_dir = tempdir().unwrap();
-        let store = DiskCacheStore::try_new(
-            cache_dir.as_ref().to_string_lossy().to_string(),
-            cap,
-            page_size,
-            local_store,
-            partition_bits,
-        )
-        .await
-        .unwrap();
-
-        StoreWithCacheDir {
-            inner: store,
-            cache_dir,
-        }
-    }
-
-    #[tokio::test]
-    async fn test_normalize_range_less_than_file_size() {
-        let page_size = 16;
-        let testcases = vec![
-            (0..1, vec![0..16]),
-            (0..16, vec![0..16]),
-            (0..17, vec![0..16, 16..32]),
-            (16..32, vec![16..32]),
-            (
-                16..100,
-                vec![16..32, 32..48, 48..64, 64..80, 80..96, 96..112],
-            ),
-        ];
-
-        let store = prepare_store(page_size, 1024, 0).await;
-        for (input, expected) in testcases {
-            assert_eq!(store.inner.normalize_range(1024, &input), expected);
-        }
-    }
-
-    #[tokio::test]
-    async fn test_normalize_range_great_than_file_size() {
-        let page_size = 16;
-        let testcases = vec![
-            (0..1, vec![0..16]),
-            (0..16, vec![0..16]),
-            (0..17, vec![0..16, 16..20]),
-            (16..32, vec![16..20]),
-            (32..100, vec![]),
-        ];
-
-        let store = prepare_store(page_size, 1024, 0).await;
-        for (input, expected) in testcases {
-            assert_eq!(store.inner.normalize_range(20, &input), expected);
-        }
-    }
-
-    fn test_file_exists(cache_dir: &TempDir, location: &Path, range: &Range<usize>) -> bool {
-        cache_dir
-            .path()
-            .join(DiskCacheStore::cache_key(location, range))
-            .exists()
-    }
-
-    #[tokio::test]
-    async fn test_disk_cache_store_get_range() {
-        let page_size = 16;
-        // 51 byte
-        let data = b"a b c d e f g h i j k l m n o p q r s t u v w x y z";
-        let location = Path::from("1.sst");
-        let store = prepare_store(page_size, 1024, 0).await;
-
-        let mut buf = BytesMut::with_capacity(data.len() * 4);
-        // extend 4 times, then location will contain 200 bytes
-        for _ in 0..4 {
-            buf.extend_from_slice(data);
-        }
-        store.inner.put(&location, buf.freeze()).await.unwrap();
-
-        let testcases = vec![
-            (0..6, "a b c "),
-            (0..16, "a b c d e f g h "),
-            // len of aligned ranges will be 2
-            (0..17, "a b c d e f g h i"),
-            (16..17, "i"),
-            // len of aligned ranges will be 6
-            (16..100, "i j k l m n o p q r s t u v w x y za b c d e f g h i j k l m n o p q r s t u v w x y"),
-        ];
-
-        for (input, expected) in testcases {
-            assert_eq!(
-                store.inner.get_range(&location, input).await.unwrap(),
-                Bytes::copy_from_slice(expected.as_bytes())
-            );
-        }
-
-        // remove cached values, then get again
-        {
-            for range in vec![0..16, 16..32, 32..48, 48..64, 64..80, 80..96, 96..112] {
-                let data_cache = store
-                    .inner
-                    .cache
-                    .cache
-                    .lock(&DiskCacheStore::cache_key(&location, &range).as_str())
-                    .await;
-                assert!(data_cache.contains(DiskCacheStore::cache_key(&location, &range).as_str()));
-                assert!(test_file_exists(&store.cache_dir, &location, &range));
-            }
-
-            for range in vec![16..32, 48..64, 80..96] {
-                let mut data_cache = store
-                    .inner
-                    .cache
-                    .cache
-                    .lock(&DiskCacheStore::cache_key(&location, &range).as_str())
-                    .await;
-                assert!(data_cache
-                    .pop(&DiskCacheStore::cache_key(&location, &range))
-                    .is_some());
-            }
-        }
-
-        assert_eq!(
-            store.inner.get_range(&location, 16..100).await.unwrap(),
-            Bytes::copy_from_slice(
-                b"i j k l m n o p q r s t u v w x y za b c d e f g h i j k l m n o p q r s t u v w x y"
-            )
-        );
-    }
-
-    #[tokio::test]
-    async fn test_disk_cache_remove_cache_file() {
-        let page_size = 16;
-        // 51 byte
-        let data = b"a b c d e f g h i j k l m n o p q r s t u v w x y z";
-        let location = Path::from("remove_cache_file.sst");
-        let store = prepare_store(page_size, 32, 0).await;
-        let mut buf = BytesMut::with_capacity(data.len() * 4);
-        // extend 4 times, then location will contain 200 bytes, but cache cap is 32
-        for _ in 0..4 {
-            buf.extend_from_slice(data);
-        }
-        store.inner.put(&location, buf.freeze()).await.unwrap();
-
-        let _ = store.inner.get_range(&location, 0..16).await.unwrap();
-        let _ = store.inner.get_range(&location, 16..32).await.unwrap();
-        // cache is full now
-        assert!(test_file_exists(&store.cache_dir, &location, &(0..16)));
-        assert!(test_file_exists(&store.cache_dir, &location, &(16..32)));
-
-        // insert new cache, evict oldest entry
-        let _ = store.inner.get_range(&location, 32..48).await.unwrap();
-        assert!(!test_file_exists(&store.cache_dir, &location, &(0..16)));
-        assert!(test_file_exists(&store.cache_dir, &location, &(32..48)));
-
-        // insert new cache, evict oldest entry
-        let _ = store.inner.get_range(&location, 48..64).await.unwrap();
-        assert!(!test_file_exists(&store.cache_dir, &location, &(16..32)));
-        assert!(test_file_exists(&store.cache_dir, &location, &(48..64)));
-    }
-
-    #[tokio::test]
-    async fn test_disk_cache_remove_cache_file_two_partition() {
-        let page_size = 16;
-        // 51 byte
-        let data = b"a b c d e f g h i j k l m n o p q r s t u v w x y z";
-        let location = Path::from("remove_cache_file_two_partition.sst");
-        // partition_cap: 64 / 16 / 2 = 2
-        let store = prepare_store(page_size, 64, 1).await;
-        let mut buf = BytesMut::with_capacity(data.len() * 8);
-        // extend 8 times
-        for _ in 0..8 {
-            buf.extend_from_slice(data);
-        }
-        store.inner.put(&location, buf.freeze()).await.unwrap();
-        // use seahash
-        // 0..16: partition 1
-        // 16..32 partition 1
-        // 32..48 partition 0
-        // 48..64 partition 1
-        // 64..80 partition 1
-        // 80..96 partition 0
-        // 96..112 partition 0
-        // 112..128 partition 0
-        // 128..144 partition 0
-        let _ = store.inner.get_range(&location, 0..16).await.unwrap();
-        let _ = store.inner.get_range(&location, 16..32).await.unwrap();
-        // partition 1 cache is full now
-        assert!(test_file_exists(&store.cache_dir, &location, &(0..16)));
-        assert!(test_file_exists(&store.cache_dir, &location, &(16..32)));
-
-        let _ = store.inner.get_range(&location, 32..48).await.unwrap();
-        let _ = store.inner.get_range(&location, 80..96).await.unwrap();
-        // partition 0 cache is full now
-
-        assert!(test_file_exists(&store.cache_dir, &location, &(32..48)));
-        assert!(test_file_exists(&store.cache_dir, &location, &(80..96)));
-
-        // insert new entry into partition 0, evict partition 0's oldest entry
-        let _ = store.inner.get_range(&location, 96..112).await.unwrap();
-        assert!(!test_file_exists(&store.cache_dir, &location, &(32..48)));
-        assert!(test_file_exists(&store.cache_dir, &location, &(80..96)));
-
-        assert!(test_file_exists(&store.cache_dir, &location, &(0..16)));
-        assert!(test_file_exists(&store.cache_dir, &location, &(16..32)));
-
-        // insert new entry into partition 0, evict partition 0's oldest entry
-        let _ = store.inner.get_range(&location, 128..144).await.unwrap();
-        assert!(!test_file_exists(&store.cache_dir, &location, &(80..96)));
-        assert!(test_file_exists(&store.cache_dir, &location, &(96..112)));
-        assert!(test_file_exists(&store.cache_dir, &location, &(128..144)));
-
-        assert!(test_file_exists(&store.cache_dir, &location, &(0..16)));
-        assert!(test_file_exists(&store.cache_dir, &location, &(16..32)));
-
-        // insert new entry into partition 1, evict partition 1's oldest entry
-        let _ = store.inner.get_range(&location, 64..80).await.unwrap();
-        assert!(!test_file_exists(&store.cache_dir, &location, &(0..16)));
-        assert!(test_file_exists(&store.cache_dir, &location, &(16..32)));
-        assert!(test_file_exists(&store.cache_dir, &location, &(64..80)));
-
-        assert!(test_file_exists(&store.cache_dir, &location, &(96..112)));
-        assert!(test_file_exists(&store.cache_dir, &location, &(128..144)));
-    }
-
-    #[tokio::test]
-    async fn test_disk_cache_manifest() {
-        let cache_dir = tempdir().unwrap();
-        let cache_root_dir = cache_dir.as_ref().to_string_lossy().to_string();
-        let page_size = 8;
-        let first_create_time = {
-            let _store = {
-                let local_path = tempdir().unwrap();
-                let local_store =
-                    Arc::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
-                DiskCacheStore::try_new(cache_root_dir.clone(), 160, 8, local_store, 0)
-                    .await
-                    .unwrap()
-            };
-            let manifest =
-                DiskCacheStore::create_manifest_if_not_exists(&cache_root_dir, page_size)
-                    .await
-                    .unwrap();
-
-            assert_eq!(manifest.page_size, 8);
-            assert_eq!(manifest.version, 1);
-            manifest.create_at
-        };
-
-        // open again
-        {
-            let _store = {
-                let local_path = tempdir().unwrap();
-                let local_store =
-                    Arc::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
-                DiskCacheStore::try_new(cache_root_dir.clone(), 160, 8, local_store, 0)
-                    .await
-                    .unwrap()
-            };
-
-            let manifest =
-                DiskCacheStore::create_manifest_if_not_exists(&cache_root_dir, page_size)
-                    .await
-                    .unwrap();
-            assert_eq!(manifest.create_at, first_create_time);
-            assert_eq!(manifest.page_size, 8);
-            assert_eq!(manifest.version, 1);
-        }
-
-        // open again, but with different page_size
-        {
-            let local_path = tempdir().unwrap();
-            let local_store =
-                Arc::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
-            let store = DiskCacheStore::try_new(
-                cache_dir.as_ref().to_string_lossy().to_string(),
-                160,
-                page_size * 2,
-                local_store,
-                0,
-            )
-            .await;
-
-            assert!(store.is_err())
-        }
-    }
-
-    #[tokio::test]
-    async fn test_disk_cache_recovery() {
-        let cache_dir = tempdir().unwrap();
-        let cache_root_dir = cache_dir.as_ref().to_string_lossy().to_string();
-        let page_size = 16;
-        let location = Path::from("recovery.sst");
-        {
-            let store = {
-                let local_path = tempdir().unwrap();
-                let local_store =
-                    Arc::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
-                DiskCacheStore::try_new(cache_root_dir.clone(), 10240, page_size, local_store, 0)
-                    .await
-                    .unwrap()
-            };
-            let data = b"abcd";
-            let mut buf = BytesMut::with_capacity(data.len() * 1024);
-            for _ in 0..1024 {
-                buf.extend_from_slice(data);
-            }
-            store.put(&location, buf.freeze()).await.unwrap();
-            assert!(!store
-                .get_range(&location, 16..100)
-                .await
-                .unwrap()
-                .is_empty());
-        };
-
-        // recover
-        {
-            let store = {
-                let local_path = tempdir().unwrap();
-                let local_store =
-                    Arc::new(LocalFileSystem::new_with_prefix(local_path.path()).unwrap());
-                DiskCacheStore::try_new(cache_root_dir.clone(), 160, page_size, local_store, 0)
-                    .await
-                    .unwrap()
-            };
-            for range in vec![16..32, 32..48, 48..64, 64..80, 80..96, 96..112] {
-                let cache = store
-                    .cache
-                    .cache
-                    .lock(&DiskCacheStore::cache_key(&location, &range).as_str())
-                    .await;
-                assert!(cache.contains(&DiskCacheStore::cache_key(&location, &range)));
-                assert!(test_file_exists(&cache_dir, &location, &range));
-            }
-        };
-    }
-
-    #[test]
-    fn test_disk_cache_bytes_crc() {
-        let testcases = vec![("abc", 910901175), ("hello ceresdb", 2026251212)];
-
-        for (input, expect) in testcases {
-            let actual = CASTAGNOLI.checksum(input.as_bytes());
-            assert_eq!(actual, expect);
-        }
-    }
-
-    #[tokio::test]
-    async fn corrupted_disk_cache() {
-        let StoreWithCacheDir {
-            inner: store,
-            cache_dir,
-        } = prepare_store(16, 1024, 0).await;
-        let test_file_name = "corrupted_disk_cache_file";
-        let test_file_path = Path::from(test_file_name);
-        let test_file_bytes = Bytes::from("corrupted_disk_cache_file_data");
-
-        // Put data into store and get it to let the cache load the data.
-        store
-            .put(&test_file_path, test_file_bytes.clone())
-            .await
-            .unwrap();
-
-        // The data should be in the cache.
-        let got_bytes = store
-            .get_range(&test_file_path, 0..test_file_bytes.len())
-            .await
-            .unwrap();
-        assert_eq!(got_bytes, test_file_bytes);
-
-        // Corrupt files in the cache dir.
-        let mut cache_read_dir = tokio::fs::read_dir(cache_dir.as_ref()).await.unwrap();
-        while let Some(entry) = cache_read_dir.next_entry().await.unwrap() {
-            let path_buf = entry.path();
-            let path = path_buf.to_str().unwrap();
-            if path.contains(test_file_name) {
-                let mut file = tokio::fs::OpenOptions::new()
-                    .write(true)
-                    .open(path)
-                    .await
-                    .unwrap();
-                file.write_all(b"corrupted").await.unwrap();
-            }
-        }
-
-        // The data should be removed from the cache.
-        let got_bytes = store
-            .get_range(&test_file_path, 0..test_file_bytes.len())
-            .await
-            .unwrap();
-        assert_eq!(got_bytes, test_file_bytes);
-        // The cache should be updated.
-        let mut cache_read_dir = tokio::fs::read_dir(cache_dir.as_ref()).await.unwrap();
-        while let Some(entry) = cache_read_dir.next_entry().await.unwrap() {
-            let path_buf = entry.path();
-            let path = path_buf.to_str().unwrap();
-            if path.contains(test_file_name) {
-                let mut file = tokio::fs::OpenOptions::new()
-                    .read(true)
-                    .open(path)
-                    .await
-                    .unwrap();
-                let mut buffer = Vec::new();
-                file.read_to_end(&mut buffer).await.unwrap();
-                assert_ne!(buffer, b"corrupted");
-            }
-        }
+        self.underlyingObjectStore.copy_if_not_exists(from, to).await
     }
 }

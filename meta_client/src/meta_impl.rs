@@ -258,15 +258,13 @@ fn check_response_header(header: &Option<ResponseHeader>) -> Result<()> {
             code: header.code,
             msg: header.error.clone(),
         }
-        .fail()
+            .fail()
     }
 }
 
 /// Create a meta client with given `config`.
-pub async fn build_meta_client(
-    config: MetaClientConfig,
-    node_meta_info: NodeMetaInfo,
-) -> Result<MetaClientRef> {
+pub async fn build_meta_client(config: MetaClientConfig,
+                               node_meta_info: NodeMetaInfo) -> Result<Arc<dyn MetaClient>> {
     let meta_client = MetaClientImpl::connect(config, node_meta_info).await?;
     Ok(Arc::new(meta_client))
 }

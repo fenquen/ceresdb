@@ -19,8 +19,7 @@ use crate::{
 
 /// Table operator
 ///
-/// Encapsulate all operations about tables, including create/drop, open/close
-/// and etc.
+/// Encapsulate all operations about tables, including create/drop, open/close and etc.
 #[derive(Clone)]
 pub struct TableOperator {
     catalog_manager: ManagerRef,
@@ -50,7 +49,7 @@ impl TableOperator {
         let engine_open_shard_req = engine::OpenShardRequest {
             shard_id,
             table_defs: engine_table_defs,
-            engine: request.engine,
+            engineType: request.engine,
         };
         let mut shard_result = table_engine
             .open_shard(engine_open_shard_req)
@@ -126,7 +125,7 @@ impl TableOperator {
         let engine_close_shard_req = engine::CloseShardRequest {
             shard_id: request.shard_id,
             table_defs: engine_table_defs,
-            engine: request.engine,
+            engineType: request.engine,
         };
         let close_results = table_engine.close_shard(engine_close_shard_req).await;
 

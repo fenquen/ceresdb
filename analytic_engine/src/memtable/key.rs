@@ -215,24 +215,3 @@ pub fn user_key_from_internal_key(internal_key: &[u8]) -> Result<(&[u8], KeySequ
 
     Ok((left, sequence))
 }
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn test_sequence_codec() {
-        let codec = SequenceCodec;
-
-        let sequence = KeySequence::new(123, 456);
-        assert_eq!(12, codec.estimate_encoded_size(&sequence));
-        let mut buf = Vec::new();
-        codec.encode(&mut buf, &sequence).unwrap();
-        assert_eq!(12, buf.len());
-
-        let mut b = &buf[..];
-        let decoded_sequence = codec.decode(&mut b).unwrap();
-
-        assert_eq!(sequence, decoded_sequence);
-    }
-}

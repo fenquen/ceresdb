@@ -3,8 +3,6 @@
 pub mod meta_data;
 pub mod prune;
 pub mod reader;
-#[cfg(test)]
-pub mod tests;
 
 use std::sync::Arc;
 

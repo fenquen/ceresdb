@@ -10,7 +10,7 @@ use std::{
 use async_trait::async_trait;
 use catalog::{
     self, consts,
-    manager::{self, Manager},
+    manager::{self, CatalogManager},
     schema::{
         self, AllocateTableId, CatalogMismatch, CreateExistTable, CreateOptions,
         CreateTableRequest, CreateTableWithCause, DropOptions, DropTableRequest,
@@ -35,24 +35,21 @@ use table_engine::{
     },
 };
 use tokio::sync::Mutex;
+use table_engine::engine::TableEngine;
 
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display("Failed to build sys catalog table, err:{}", source))]
     BuildSysCatalog {
-        source: system_catalog::sys_catalog_table::Error,
+        source: sys_catalog_table::Error,
     },
 
     #[snafu(display("Failed to visit sys catalog table, err:{}", source))]
     VisitSysCatalog {
-        source: system_catalog::sys_catalog_table::Error,
+        source: sys_catalog_table::Error,
     },
 
-    #[snafu(display(
-        "Failed to find table to update, name:{}.\nBacktrace:\n{}",
-        name,
-        backtrace
-    ))]
+    #[snafu(display("Failed to find table to update, name:{}.\nBacktrace:\n{}", name, backtrace))]
     UpdateTableNotFound { name: String, backtrace: Backtrace },
 
     #[snafu(display("Failed to create catalog, catalog:{}, err:{}", catalog, source))]
@@ -61,24 +58,14 @@ pub enum Error {
         source: system_catalog::sys_catalog_table::Error,
     },
 
-    #[snafu(display(
-        "Failed to create schema, catalog:{}, schema:{}, err:{}",
-        catalog,
-        schema,
-        source
-    ))]
+    #[snafu(display("Failed to create schema, catalog:{}, schema:{}, err:{}", catalog, schema, source))]
     CreateSchema {
         catalog: String,
         schema: String,
         source: system_catalog::sys_catalog_table::Error,
     },
 
-    #[snafu(display(
-        "Invalid schema id and table seq, schema_id:{:?}, table_seq:{:?}.\nBacktrace:\n{}",
-        schema_id,
-        table_seq,
-        backtrace,
-    ))]
+    #[snafu(display("Invalid schema id and table seq, schema_id:{:?}, table_seq:{:?}.\nBacktrace:\n{}", schema_id, table_seq, backtrace, ))]
     InvalidSchemaIdAndTableSeq {
         schema_id: SchemaId,
         table_seq: TableSeq,
@@ -89,15 +76,15 @@ pub enum Error {
 define_result!(Error);
 
 /// Table based catalog manager
-pub struct TableBasedManager {
+pub struct CatalogManagerTableBased {
     /// Sys catalog table
-    catalog_table: Arc<SysCatalogTable>,
-    catalogs: CatalogMap,
+    sysCatalogTable: Arc<SysCatalogTable>,
+    catalogs: HashMap<String, Arc<CatalogTableBased>>,
     /// Global schema id generator, Each schema has a unique schema id.
     schema_id_generator: Arc<SchemaIdGenerator>,
 }
 
-impl Manager for TableBasedManager {
+impl CatalogManager for CatalogManagerTableBased {
     fn default_catalog_name(&self) -> NameRef {
         consts::DEFAULT_CATALOG
     }
@@ -116,18 +103,14 @@ impl Manager for TableBasedManager {
     }
 }
 
-impl TableBasedManager {
-    /// Create and init the TableBasedManager.
+impl CatalogManagerTableBased {
     // TODO(yingwen): Define all constants in catalog crate.
-    pub async fn new(backend: TableEngineRef) -> Result<Self> {
-        // Create or open sys_catalog table, will also create a space (catalog + schema)
-        // for system catalog.
-        let catalog_table = SysCatalogTable::new(backend)
-            .await
-            .context(BuildSysCatalog)?;
+    pub async fn new(tableEngine: Arc<dyn TableEngine>) -> Result<Self> {
+        // create or open system.public.sys_catalog, will also create a space (catalog + schema) for system catalog.
+        let sysCatalogTable = SysCatalogTable::new(tableEngine).await.context(BuildSysCatalog)?;
 
         let mut manager = Self {
-            catalog_table: Arc::new(catalog_table),
+            sysCatalogTable: Arc::new(sysCatalogTable),
             catalogs: HashMap::new(),
             schema_id_generator: Arc::new(SchemaIdGenerator::default()),
         };
@@ -138,21 +121,24 @@ impl TableBasedManager {
     }
 
     pub async fn fetch_table_infos(&mut self) -> Result<Vec<TableInfo>> {
-        let catalog_table = self.catalog_table.clone();
+        let catalog_table = self.sysCatalogTable.clone();
 
-        let mut table_infos = Vec::default();
-        let visitor_inner = VisitorInnerImpl {
+        let mut tableInfos = Vec::default();
+
+        let vistorInnerImpl = VisitorInnerImpl {
             catalog_table: catalog_table.clone(),
             catalogs: &mut self.catalogs,
             schema_id_generator: self.schema_id_generator.clone(),
-            table_infos: &mut table_infos,
+            table_infos: &mut tableInfos,
         };
 
-        let visit_opts = VisitOptionsBuilder::default().visit_table().build();
+        let visitOptions = VisitOptionsBuilder::default().visit_table().build();
 
-        Self::visit_catalog_table_with_options(catalog_table, visitor_inner, visit_opts).await?;
+        Self::visit_catalog_table_with_options(catalog_table,
+                                               vistorInnerImpl,
+                                               visitOptions).await?;
 
-        Ok(table_infos)
+        Ok(tableInfos)
     }
 
     /// Load all data from sys catalog table.
@@ -161,10 +147,10 @@ impl TableBasedManager {
         self.load_system_catalog();
 
         // Load all existent catalog/schema from catalog_table
-        let catalog_table = self.catalog_table.clone();
+        let catalog_table = self.sysCatalogTable.clone();
 
         let visitor_inner = VisitorInnerImpl {
-            catalog_table: self.catalog_table.clone(),
+            catalog_table: self.sysCatalogTable.clone(),
             catalogs: &mut self.catalogs,
             schema_id_generator: self.schema_id_generator.clone(),
             table_infos: &mut Vec::default(),
@@ -198,22 +184,22 @@ impl TableBasedManager {
 
     fn load_system_catalog(&mut self) {
         // Get the `sys_catalog` table and add it to tables.
-        let table = self.catalog_table.inner_table();
+        let table = self.sysCatalogTable.inner_table();
         let mut tables = SchemaTables::default();
-        tables.insert(self.catalog_table.table_id(), table);
+        tables.insert(self.sysCatalogTable.table_id(), table);
 
         // Use schema id of schema `system/public` as last schema id.
         let schema_id = system_catalog::SYSTEM_SCHEMA_ID;
         self.schema_id_generator.set_last_schema_id(schema_id);
 
         // Create the default schema in system catalog.
-        let schema = Arc::new(SchemaImpl {
-            catalog_name: consts::SYSTEM_CATALOG.to_string(),
-            schema_name: consts::SYSTEM_CATALOG_SCHEMA.to_string(),
-            schema_id,
+        let schema = Arc::new(SchemaTableBased {
+            belongingCatalogName: consts::SYSTEM_CATALOG.to_string(),
+            name: consts::SYSTEM_CATALOG_SCHEMA.to_string(),
+            id: schema_id,
             tables: RwLock::new(tables),
             mutex: Mutex::new(()),
-            catalog_table: self.catalog_table.clone(),
+            catalog_table: self.sysCatalogTable.clone(),
             table_seq_generator: TableSeqGenerator::default(),
         });
         // Use table seq of `sys_catalog` table as last table seq.
@@ -225,9 +211,9 @@ impl TableBasedManager {
         schemas.insert(schema.name().to_string(), schema);
 
         let schema_id_generator = self.schema_id_generator.clone();
-        let catalog_table = self.catalog_table.clone();
+        let catalog_table = self.sysCatalogTable.clone();
         // Create the system catalog.
-        let catalog = Arc::new(CatalogImpl {
+        let catalog = Arc::new(CatalogTableBased {
             name: consts::SYSTEM_CATALOG.to_string(),
             schemas: RwLock::new(schemas),
             schema_id_generator,
@@ -250,7 +236,7 @@ impl TableBasedManager {
                 self.create_catalog(CreateCatalogRequest {
                     catalog_name: consts::DEFAULT_CATALOG.to_string(),
                 })
-                .await?
+                    .await?
             }
         };
 
@@ -270,16 +256,16 @@ impl TableBasedManager {
                 },
                 &catalog,
             )
-            .await?;
+                .await?;
         }
 
         Ok(())
     }
 
-    async fn create_catalog(&mut self, request: CreateCatalogRequest) -> Result<Arc<CatalogImpl>> {
+    async fn create_catalog(&mut self, request: CreateCatalogRequest) -> Result<Arc<CatalogTableBased>> {
         let catalog_name = request.catalog_name.clone();
 
-        self.catalog_table
+        self.sysCatalogTable
             .create_catalog(request)
             .await
             .context(CreateCatalog {
@@ -287,8 +273,8 @@ impl TableBasedManager {
             })?;
 
         let schema_id_generator = self.schema_id_generator.clone();
-        let catalog_table = self.catalog_table.clone();
-        let catalog = Arc::new(CatalogImpl {
+        let catalog_table = self.sysCatalogTable.clone();
+        let catalog = Arc::new(CatalogTableBased {
             name: catalog_name.clone(),
             schemas: RwLock::new(HashMap::new()),
             schema_id_generator,
@@ -304,12 +290,12 @@ impl TableBasedManager {
     async fn add_schema_to_catalog(
         &mut self,
         request: CreateSchemaRequest,
-        catalog: &CatalogImpl,
-    ) -> Result<Arc<SchemaImpl>> {
+        catalog: &CatalogTableBased,
+    ) -> Result<Arc<SchemaTableBased>> {
         let schema_name = request.schema_name.clone();
         let schema_id = request.schema_id;
 
-        self.catalog_table
+        self.sysCatalogTable
             .create_schema(request)
             .await
             .context(CreateSchema {
@@ -317,11 +303,11 @@ impl TableBasedManager {
                 schema: &schema_name,
             })?;
 
-        let schema = Arc::new(SchemaImpl::new(
+        let schema = Arc::new(SchemaTableBased::new(
             &catalog.name,
             &schema_name,
             schema_id,
-            self.catalog_table.clone(),
+            self.sysCatalogTable.clone(),
         ));
 
         catalog.insert_schema_into_memory(schema.clone());
@@ -330,7 +316,7 @@ impl TableBasedManager {
     }
 }
 
-type CatalogMap = HashMap<String, Arc<CatalogImpl>>;
+type CatalogMap = HashMap<String, Arc<CatalogTableBased>>;
 
 /// Sys catalog visitor implementation, used to load catalog info
 struct VisitorInnerImpl<'a> {
@@ -347,7 +333,7 @@ impl<'a> VisitorInner for VisitorInnerImpl<'a> {
         let schema_id_generator = self.schema_id_generator.clone();
         let catalog_table = self.catalog_table.clone();
 
-        let catalog = CatalogImpl {
+        let catalog = CatalogTableBased {
             name: request.catalog_name.to_string(),
             schemas: RwLock::new(HashMap::new()),
             schema_id_generator,
@@ -373,7 +359,7 @@ impl<'a> VisitorInner for VisitorInnerImpl<'a> {
                 })?;
 
         let schema_id = request.schema_id;
-        let schema = Arc::new(SchemaImpl::new(
+        let schema = Arc::new(SchemaTableBased::new(
             &request.catalog_name,
             &request.schema_name,
             schema_id,
@@ -431,15 +417,15 @@ impl<'a> VisitorInner for VisitorInnerImpl<'a> {
     }
 }
 
-type SchemaMap = HashMap<String, Arc<SchemaImpl>>;
+type SchemaMap = HashMap<String, Arc<SchemaTableBased>>;
 
 /// Table based catalog
-struct CatalogImpl {
+struct CatalogTableBased {
     /// Catalog name
     name: String,
     /// Schemas of catalog
     // Now the Schema trait does not support create schema, so we use impl type here
-    schemas: RwLock<SchemaMap>,
+    schemas: RwLock<HashMap<String, Arc<SchemaTableBased>>>,
     /// Global schema id generator, Each schema has a unique schema id.
     schema_id_generator: Arc<SchemaIdGenerator>,
     /// Sys catalog table
@@ -452,23 +438,22 @@ struct CatalogImpl {
     mutex: Mutex<()>,
 }
 
-impl CatalogImpl {
+impl CatalogTableBased {
     /// Insert schema
-    fn insert_schema_into_memory(&self, schema: Arc<SchemaImpl>) {
+    fn insert_schema_into_memory(&self, schema: Arc<SchemaTableBased>) {
         let mut schemas = self.schemas.write().unwrap();
         schemas.insert(schema.name().to_string(), schema);
     }
 
-    fn find_schema(&self, schema_name: &str) -> Option<Arc<SchemaImpl>> {
+    fn find_schema(&self, schema_name: &str) -> Option<Arc<SchemaTableBased>> {
         let schemas = self.schemas.read().unwrap();
         schemas.get(schema_name).cloned()
     }
 }
 
-// TODO(yingwen): Support add schema (with options to control schema
-// persistence)
+// TODO(yingwen): Support add schema (with options to control schema persistence)
 #[async_trait]
-impl Catalog for CatalogImpl {
+impl Catalog for CatalogTableBased {
     fn name(&self) -> NameRef {
         &self.name
     }
@@ -515,7 +500,7 @@ impl Catalog for CatalogImpl {
                 schema: &name.to_string(),
             })?;
 
-        let schema = Arc::new(SchemaImpl::new(
+        let schema = Arc::new(SchemaTableBased::new(
             &self.name,
             name,
             schema_id,
@@ -542,14 +527,10 @@ impl Catalog for CatalogImpl {
 }
 
 /// Table based schema
-struct SchemaImpl {
-    /// Catalog name
-    catalog_name: String,
-    /// Schema name
-    schema_name: String,
-    /// Schema id
-    schema_id: SchemaId,
-    /// Tables of schema
+struct SchemaTableBased {
+    belongingCatalogName: String,
+    name: String,
+    id: SchemaId,
     tables: RwLock<SchemaTables>,
     /// Mutex
     ///
@@ -562,7 +543,7 @@ struct SchemaImpl {
     table_seq_generator: TableSeqGenerator,
 }
 
-impl SchemaImpl {
+impl SchemaTableBased {
     fn new(
         catalog_name: &str,
         schema_name: &str,
@@ -570,9 +551,9 @@ impl SchemaImpl {
         catalog_table: Arc<SysCatalogTable>,
     ) -> Self {
         Self {
-            catalog_name: catalog_name.to_string(),
-            schema_name: schema_name.to_string(),
-            schema_id,
+            belongingCatalogName: catalog_name.to_string(),
+            name: schema_name.to_string(),
+            id: schema_id,
             tables: RwLock::new(SchemaTables::default()),
             mutex: Mutex::new(()),
             catalog_table,
@@ -582,16 +563,16 @@ impl SchemaImpl {
 
     fn validate_schema_info(&self, catalog_name: &str, schema_name: &str) -> schema::Result<()> {
         ensure!(
-            self.catalog_name == catalog_name,
+            self.belongingCatalogName == catalog_name,
             CatalogMismatch {
-                expect: &self.catalog_name,
+                expect: &self.belongingCatalogName,
                 given: catalog_name,
             }
         );
         ensure!(
-            self.schema_name == schema_name,
+            self.name == schema_name,
             SchemaMismatch {
-                expect: &self.schema_name,
+                expect: &self.name,
                 given: schema_name,
             }
         );
@@ -649,18 +630,18 @@ impl SchemaImpl {
             .table_seq_generator
             .alloc_table_seq()
             .context(TooManyTable {
-                schema: &self.schema_name,
+                schema: &self.name,
                 table: name,
             })?;
 
-        TableId::with_seq(self.schema_id, table_seq)
+        TableId::with_seq(self.id, table_seq)
             .context(InvalidSchemaIdAndTableSeq {
-                schema_id: self.schema_id,
+                schema_id: self.id,
                 table_seq,
             })
             .box_err()
             .context(AllocateTableId {
-                schema: &self.schema_name,
+                schema: &self.name,
                 table: name,
             })
     }
@@ -687,13 +668,13 @@ impl SchemaTables {
 }
 
 #[async_trait]
-impl Schema for SchemaImpl {
+impl Schema for SchemaTableBased {
     fn name(&self) -> NameRef {
-        &self.schema_name
+        &self.name
     }
 
     fn id(&self) -> SchemaId {
-        self.schema_id
+        self.id
     }
 
     fn table_by_name(&self, name: NameRef) -> schema::Result<Option<TableRef>> {
@@ -708,15 +689,10 @@ impl Schema for SchemaImpl {
     }
 
     // TODO(yingwen): Do not persist if engine is memory engine.
-    async fn create_table(
-        &self,
-        request: CreateTableRequest,
-        opts: CreateOptions,
-    ) -> schema::Result<TableRef> {
-        info!(
-            "Table based catalog manager create table, request:{:?}",
-            request
-        );
+    async fn create_table(&self,
+                          request: CreateTableRequest,
+                          opts: CreateOptions) -> schema::Result<TableRef> {
+        info!("Table based catalog manager create table, request:{:?}",request);
 
         self.validate_schema_info(&request.catalog_name, &request.schema_name)?;
 
@@ -740,7 +716,7 @@ impl Schema for SchemaImpl {
 
         // Create table
         let table_id = self.alloc_table_id(&request.table_name).await?;
-        let request = request.into_engine_create_request(Some(table_id), self.schema_id);
+        let request = request.into_engine_create_request(Some(table_id), self.id);
         let table_name = request.table_name.clone();
         let table = opts
             .table_engine
@@ -793,7 +769,7 @@ impl Schema for SchemaImpl {
         // Determine the real engine type of the table to drop.
         // FIXME(xikai): the engine should not be part of the DropRequest.
         request.engine = table.engine_type().to_string();
-        let request = request.into_engine_drop_request(self.schema_id);
+        let request = request.into_engine_drop_request(self.id);
 
         // Prepare to drop table info in the sys_catalog.
         self.catalog_table
@@ -855,302 +831,5 @@ impl Schema for SchemaImpl {
 
     fn unregister_table(&self, table_name: &str) {
         self.remove_table_in_memory(table_name);
-    }
-}
-
-#[cfg(any(test, feature = "test"))]
-mod tests {
-    use std::{collections::HashMap, sync::Arc};
-
-    use analytic_engine::tests::util::{EngineBuildContext, RocksDBEngineBuildContext, TestEnv};
-    use catalog::{
-        consts::DEFAULT_CATALOG,
-        manager::Manager,
-        schema::{CreateOptions, CreateTableRequest, DropOptions, DropTableRequest, SchemaRef},
-    };
-    use common_types::table::DEFAULT_SHARD_ID;
-    use table_engine::{
-        engine::{TableEngineRef, TableState},
-        memory::MemoryTableEngine,
-        proxy::TableEngineProxy,
-        ANALYTIC_ENGINE_TYPE,
-    };
-
-    use crate::table_based::TableBasedManager;
-
-    async fn build_catalog_manager(analytic: TableEngineRef) -> TableBasedManager {
-        // Create catalog manager, use analytic table as backend
-        TableBasedManager::new(analytic.clone())
-            .await
-            .expect("Failed to create catalog manager")
-    }
-
-    async fn build_default_schema_with_catalog(catalog_manager: &TableBasedManager) -> SchemaRef {
-        let catalog_name = catalog_manager.default_catalog_name();
-        let schema_name = catalog_manager.default_schema_name();
-        let catalog = catalog_manager.catalog_by_name(catalog_name);
-        assert!(catalog.is_ok());
-        assert!(catalog.as_ref().unwrap().is_some());
-        catalog
-            .as_ref()
-            .unwrap()
-            .as_ref()
-            .unwrap()
-            .schema_by_name(schema_name)
-            .unwrap()
-            .unwrap()
-    }
-
-    async fn build_create_table_req(table_name: &str, schema: SchemaRef) -> CreateTableRequest {
-        CreateTableRequest {
-            catalog_name: DEFAULT_CATALOG.to_string(),
-            schema_name: schema.name().to_string(),
-            table_name: table_name.to_string(),
-            table_id: None,
-            table_schema: common_types::tests::build_schema(),
-            engine: ANALYTIC_ENGINE_TYPE.to_string(),
-            options: HashMap::new(),
-            state: TableState::Stable,
-            shard_id: DEFAULT_SHARD_ID,
-            partition_info: None,
-        }
-    }
-
-    #[tokio::test]
-    async fn test_catalog_by_name_schema_by_name_rocks() {
-        let rocksdb_ctx = RocksDBEngineBuildContext::default();
-        test_catalog_by_name_schema_by_name(rocksdb_ctx).await;
-    }
-
-    async fn test_catalog_by_name_schema_by_name<T>(engine_context: T)
-    where
-        T: EngineBuildContext,
-    {
-        let env = TestEnv::builder().build();
-        let mut test_ctx = env.new_context(engine_context);
-        test_ctx.open().await;
-
-        let catalog_manager = build_catalog_manager(test_ctx.clone_engine()).await;
-        let catalog_name = catalog_manager.default_catalog_name();
-        let schema_name = catalog_manager.default_schema_name();
-        let catalog = catalog_manager.catalog_by_name(catalog_name);
-        assert!(catalog.is_ok());
-        assert!(catalog.as_ref().unwrap().is_some());
-
-        let schema = catalog
-            .as_ref()
-            .unwrap()
-            .as_ref()
-            .unwrap()
-            .schema_by_name(schema_name);
-        assert!(schema.is_ok());
-        assert!(schema.as_ref().unwrap().is_some());
-
-        let schema_name2 = "test";
-        let schema = catalog
-            .as_ref()
-            .unwrap()
-            .as_ref()
-            .unwrap()
-            .schema_by_name(schema_name2);
-        assert!(schema.is_ok());
-        assert!(schema.as_ref().unwrap().is_none());
-
-        let catalog_name2 = "test";
-        let catalog = catalog_manager.catalog_by_name(catalog_name2);
-        assert!(catalog.is_ok());
-        assert!(catalog.as_ref().unwrap().is_none());
-    }
-
-    #[tokio::test]
-    async fn test_maybe_create_schema_by_name_rocks() {
-        let rocksdb_ctx = RocksDBEngineBuildContext::default();
-        test_maybe_create_schema_by_name(rocksdb_ctx).await;
-    }
-
-    async fn test_maybe_create_schema_by_name<T>(engine_context: T)
-    where
-        T: EngineBuildContext,
-    {
-        let env = TestEnv::builder().build();
-        let mut test_ctx = env.new_context(engine_context);
-        test_ctx.open().await;
-
-        let catalog_manager = build_catalog_manager(test_ctx.clone_engine()).await;
-        let catalog_name = catalog_manager.default_catalog_name();
-        let catalog = catalog_manager.catalog_by_name(catalog_name);
-        assert!(catalog.is_ok());
-        assert!(catalog.as_ref().unwrap().is_some());
-
-        let schema_name = "test";
-        let catalog_ref = catalog.as_ref().unwrap().as_ref().unwrap();
-        let mut schema = catalog_ref.schema_by_name(schema_name);
-        assert!(schema.is_ok());
-        assert!(schema.as_ref().unwrap().is_none());
-
-        catalog_ref.create_schema(schema_name).await.unwrap();
-        schema = catalog_ref.schema_by_name(schema_name);
-        assert!(schema.is_ok());
-        assert!(schema.as_ref().unwrap().is_some());
-    }
-
-    #[tokio::test]
-    async fn test_create_table_rocks() {
-        let rocksdb_ctx = RocksDBEngineBuildContext::default();
-        test_create_table(rocksdb_ctx).await;
-    }
-
-    async fn test_create_table<T: EngineBuildContext>(engine_context: T) {
-        let env = TestEnv::builder().build();
-        let mut test_ctx = env.new_context(engine_context);
-        test_ctx.open().await;
-
-        let engine = test_ctx.engine().clone();
-        let memory = MemoryTableEngine;
-        let engine_proxy = Arc::new(TableEngineProxy {
-            memory,
-            analytic: engine.clone(),
-        });
-
-        let catalog_manager = build_catalog_manager(engine.clone()).await;
-        let schema = build_default_schema_with_catalog(&catalog_manager).await;
-
-        let table_name = "test";
-        let request = build_create_table_req(table_name, schema.clone()).await;
-
-        let opts = CreateOptions {
-            table_engine: engine_proxy.clone(),
-            create_if_not_exists: true,
-        };
-
-        schema
-            .create_table(request.clone(), opts.clone())
-            .await
-            .unwrap();
-        assert!(schema.table_by_name(table_name).unwrap().is_some());
-
-        // create again
-        schema.create_table(request.clone(), opts).await.unwrap();
-        assert!(schema.table_by_name(table_name).unwrap().is_some());
-
-        let opts2 = CreateOptions {
-            table_engine: engine_proxy,
-            create_if_not_exists: false,
-        };
-        assert!(schema.create_table(request.clone(), opts2).await.is_err());
-    }
-
-    #[tokio::test]
-    async fn test_drop_table_rocks() {
-        let rocksdb_ctx = RocksDBEngineBuildContext::default();
-        test_drop_table(rocksdb_ctx).await;
-    }
-
-    async fn test_drop_table<T: EngineBuildContext>(engine_context: T) {
-        let env = TestEnv::builder().build();
-        let mut test_ctx = env.new_context(engine_context);
-        test_ctx.open().await;
-
-        let engine = test_ctx.engine().clone();
-        let memory = MemoryTableEngine;
-        let engine_proxy = Arc::new(TableEngineProxy {
-            memory,
-            analytic: engine.clone(),
-        });
-
-        let catalog_manager = build_catalog_manager(engine.clone()).await;
-        let schema = build_default_schema_with_catalog(&catalog_manager).await;
-
-        let table_name = "test";
-        let engine_name = "test_engine";
-        let drop_table_request = DropTableRequest {
-            catalog_name: DEFAULT_CATALOG.to_string(),
-            schema_name: schema.name().to_string(),
-            table_name: table_name.to_string(),
-            engine: engine_name.to_string(),
-        };
-        let drop_table_opts = DropOptions {
-            table_engine: engine_proxy.clone(),
-        };
-
-        assert!(!schema
-            .drop_table(drop_table_request.clone(), drop_table_opts.clone())
-            .await
-            .unwrap());
-
-        let create_table_request = build_create_table_req(table_name, schema.clone()).await;
-        let create_table_opts = CreateOptions {
-            table_engine: engine_proxy,
-            create_if_not_exists: true,
-        };
-
-        // create table
-        {
-            schema
-                .create_table(create_table_request.clone(), create_table_opts.clone())
-                .await
-                .unwrap();
-            // check table exists
-            assert!(schema.table_by_name(table_name).unwrap().is_some());
-        }
-
-        // drop table
-        {
-            assert!(schema
-                .drop_table(drop_table_request.clone(), drop_table_opts.clone())
-                .await
-                .unwrap());
-            // check table not exists
-            assert!(schema.table_by_name(table_name).unwrap().is_none());
-        }
-
-        // create table again
-        {
-            schema
-                .create_table(create_table_request.clone(), create_table_opts.clone())
-                .await
-                .unwrap();
-            // check table exists
-            assert!(schema.table_by_name(table_name).unwrap().is_some());
-        }
-
-        // drop table again
-        {
-            assert!(schema
-                .drop_table(drop_table_request.clone(), drop_table_opts.clone())
-                .await
-                .unwrap());
-            // check table not exists
-            assert!(schema.table_by_name(table_name).unwrap().is_none());
-        }
-
-        // create two tables
-        {
-            let table_name2 = "test2";
-            let create_table_request2 = build_create_table_req(table_name2, schema.clone()).await;
-            schema
-                .create_table(create_table_request2.clone(), create_table_opts.clone())
-                .await
-                .unwrap();
-            // check table exists
-            assert!(schema.table_by_name(table_name2).unwrap().is_some());
-
-            schema
-                .create_table(create_table_request, create_table_opts)
-                .await
-                .unwrap();
-            // check table exists
-            assert!(schema.table_by_name(table_name).unwrap().is_some());
-        }
-
-        // drop table again
-        {
-            assert!(schema
-                .drop_table(drop_table_request, drop_table_opts)
-                .await
-                .unwrap());
-            // check table not exists
-            assert!(schema.table_by_name(table_name).unwrap().is_none());
-        }
     }
 }

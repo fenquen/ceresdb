@@ -2,20 +2,22 @@
 
 //! Interpreter for create statements
 
+use std::sync::Arc;
 use async_trait::async_trait;
 use macros::define_result;
 use query_frontend::plan::CreateTablePlan;
 use snafu::{ResultExt, Snafu};
-use table_engine::engine::TableEngineRef;
+use table_engine::engine::{TableEngine, TableEngineRef};
 
 use crate::{
-    context::Context,
+    context::InterpreterContext,
     interpreter::{Create, Interpreter, InterpreterPtr, Output, Result as InterpreterResult},
     table_manipulator::{self, TableManipulatorRef},
 };
+use crate::table_manipulator::TableManipulator;
 
 #[derive(Debug, Snafu)]
-#[snafu(visibility(pub(crate)))]
+#[snafu(visibility(pub (crate)))]
 pub enum Error {
     #[snafu(display("Failed to create table by table manipulator, err:{}", source))]
     ManipulateTable { source: table_manipulator::Error },
@@ -25,22 +27,20 @@ define_result!(Error);
 
 /// Create interpreter
 pub struct CreateInterpreter {
-    ctx: Context,
-    plan: CreateTablePlan,
-    table_engine: TableEngineRef,
-    table_manipulator: TableManipulatorRef,
+    interpreterContext: InterpreterContext,
+    createTablePlan: CreateTablePlan,
+    table_engine: Arc<dyn TableEngine>,
+    table_manipulator: Arc<dyn TableManipulator + Send + Sync>,
 }
 
 impl CreateInterpreter {
-    pub fn create(
-        ctx: Context,
-        plan: CreateTablePlan,
-        table_engine: TableEngineRef,
-        table_manipulator: TableManipulatorRef,
-    ) -> InterpreterPtr {
+    pub fn create(interpreterContext: InterpreterContext,
+                  createTablePlan: CreateTablePlan,
+                  table_engine: Arc<dyn TableEngine>,
+                  table_manipulator: Arc<dyn TableManipulator + Send + Sync>) -> InterpreterPtr {
         Box::new(Self {
-            ctx,
-            plan,
+            interpreterContext,
+            createTablePlan,
             table_engine,
             table_manipulator,
         })
@@ -49,10 +49,9 @@ impl CreateInterpreter {
 
 impl CreateInterpreter {
     async fn execute_create(self: Box<Self>) -> Result<Output> {
-        self.table_manipulator
-            .create_table(self.ctx, self.plan, self.table_engine)
-            .await
-            .context(ManipulateTable)
+        self.table_manipulator.create_table(self.interpreterContext,
+                                            self.createTablePlan,
+                                            self.table_engine).await.context(ManipulateTable)
     }
 }
 

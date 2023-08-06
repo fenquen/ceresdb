@@ -7,7 +7,7 @@
 //!   etc.
 //!
 //! The core types are [Cluster] trait and its implementation [ClusterImpl].
-
+#![allow(non_snake_case)]
 #![feature(trait_alias)]
 
 use std::sync::Arc;

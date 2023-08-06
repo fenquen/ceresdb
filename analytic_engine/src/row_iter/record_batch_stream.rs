@@ -340,32 +340,3 @@ pub async fn stream_from_sst_file(
 
     Ok(Box::new(stream))
 }
-
-#[cfg(test)]
-pub mod tests {
-    use common_types::{row::Row, schema::Schema};
-
-    use super::*;
-    use crate::row_iter;
-
-    /// Build [SequencedRecordBatchStream] from the sequenced rows.
-    pub fn build_sequenced_record_batch_stream(
-        schema: &Schema,
-        batches: Vec<(SequenceNumber, Vec<Row>)>,
-    ) -> Vec<BoxedPrefetchableRecordBatchStream> {
-        batches
-            .into_iter()
-            .map(|(seq, rows)| {
-                let batch = SequencedRecordBatch {
-                    record_batch: row_iter::tests::build_record_batch_with_key(
-                        schema.clone(),
-                        rows,
-                    ),
-                    sequence: seq,
-                };
-                let stream = Box::new(stream::iter(vec![Ok(batch)]));
-                Box::new(NoopPrefetcher(stream as _)) as BoxedPrefetchableRecordBatchStream
-            })
-            .collect()
-    }
-}

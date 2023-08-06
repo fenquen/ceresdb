@@ -232,9 +232,9 @@ impl TableUnit {
 }
 
 /// [WalManager] implementation based on RocksDB.
-/// A [RocksImpl] consists of multiple [TableUnit]s and any read/write/delete
+/// A [WalManagerRocksDb] consists of multiple [TableUnit]s and any read/write/delete
 /// request is delegated to specific [TableUnit].
-pub struct RocksImpl {
+pub struct WalManagerRocksDb {
     /// Wal data path
     wal_path: String,
     /// RocksDB instance
@@ -251,7 +251,7 @@ pub struct RocksImpl {
     stats: Option<Statistics>,
 }
 
-impl Drop for RocksImpl {
+impl Drop for WalManagerRocksDb {
     fn drop(&mut self) {
         // Clear all table_units.
         {
@@ -263,7 +263,7 @@ impl Drop for RocksImpl {
     }
 }
 
-impl RocksImpl {
+impl WalManagerRocksDb {
     fn build_table_units(&self) -> Result<()> {
         let table_seqs = self.find_table_seqs_from_db()?;
 
@@ -626,7 +626,7 @@ impl Builder {
         self
     }
 
-    pub fn build(self) -> Result<RocksImpl> {
+    pub fn build(self) -> Result<WalManagerRocksDb> {
         let mut rocksdb_config = DBOptions::default();
         rocksdb_config.create_if_missing(true);
 
@@ -681,7 +681,7 @@ impl Builder {
             .context(Open {
                 wal_path: self.wal_path.clone(),
             })?;
-        let rocks_impl = RocksImpl {
+        let rocks_impl = WalManagerRocksDb {
             wal_path: self.wal_path,
             db: Arc::new(db),
             runtime: self.runtime,
@@ -833,7 +833,7 @@ impl SyncLogIterator for RocksLogIterator {
 }
 
 #[async_trait]
-impl WalManager for RocksImpl {
+impl WalManager for WalManagerRocksDb {
     async fn sequence_num(&self, location: WalLocation) -> Result<u64> {
         if let Some(table_unit) = self.table_unit(&location) {
             return table_unit.sequence_num();
@@ -842,41 +842,30 @@ impl WalManager for RocksImpl {
         Ok(MIN_SEQUENCE_NUMBER)
     }
 
-    async fn mark_delete_entries_up_to(
-        &self,
-        location: WalLocation,
-        sequence_num: SequenceNumber,
-    ) -> Result<()> {
+    async fn mark_delete_entries_up_to(&self,
+                                       location: WalLocation,
+                                       sequence_num: SequenceNumber) -> Result<()> {
         if let Some(table_unit) = self.table_unit(&location) {
             let region_id = location.region_id;
-            return table_unit
-                .delete_entries_up_to(region_id, sequence_num)
-                .await;
+            return table_unit.delete_entries_up_to(region_id, sequence_num).await;
         }
 
         Ok(())
     }
 
     async fn close_region(&self, region_id: RegionId) -> Result<()> {
-        debug!(
-            "Close region for RocksDB based WAL is noop operation, region_id:{}",
-            region_id
-        );
-
+        debug!("close region for RocksDB based WAL is noop operation, region_id:{}",region_id);
         Ok(())
     }
 
     async fn close_gracefully(&self) -> Result<()> {
         info!("Close rocksdb wal gracefully");
-
         Ok(())
     }
 
-    async fn read_batch(
-        &self,
-        ctx: &ReadContext,
-        req: &ReadRequest,
-    ) -> Result<BatchLogIteratorAdapter> {
+    async fn read_batch(&self,
+                        ctx: &ReadContext,
+                        req: &ReadRequest, ) -> Result<BatchLogIteratorAdapter> {
         let sync_iter = if let Some(table_unit) = self.table_unit(&req.location) {
             table_unit.read(ctx, req)?
         } else {
@@ -909,8 +898,7 @@ impl WalManager for RocksImpl {
             CommonLogKey::new(region_id, TableId::MAX, SequenceNumber::MAX),
         );
 
-        let log_iter =
-            RocksLogIterator::with_data(self.log_encoding.clone(), iter, min_log_key, max_log_key);
+        let log_iter = RocksLogIterator::with_data(self.log_encoding.clone(), iter, min_log_key, max_log_key);
 
         Ok(BatchLogIteratorAdapter::new_with_sync(
             Box::new(log_iter),
@@ -920,12 +908,12 @@ impl WalManager for RocksImpl {
     }
 
     async fn get_statistics(&self) -> Option<String> {
-        // RocksDB stats.
         let rocksdb_stats = if let Some(stats) = &self.stats {
             stats.to_string()
         } else {
             None
         };
+
         let rocksdb_stats = rocksdb_stats.unwrap_or_default();
 
         // Wal stats.
@@ -942,10 +930,8 @@ impl WalManager for RocksImpl {
     }
 }
 
-impl fmt::Debug for RocksImpl {
+impl fmt::Debug for WalManagerRocksDb {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.debug_struct("RocksImpl")
-            .field("wal_path", &self.wal_path)
-            .finish()
+        f.debug_struct("RocksImpl").field("wal_path", &self.wal_path).finish()
     }
 }

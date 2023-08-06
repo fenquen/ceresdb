@@ -9,7 +9,7 @@ use std::{
 
 use common_types::table::ShardId;
 use log::{error, info};
-use object_store::ObjectStoreRef;
+use object_store::ObjectStore;
 use snafu::ResultExt;
 use table_engine::{engine::TableDef, table::TableId};
 use wal::manager::WalManagerRef;
@@ -17,13 +17,13 @@ use wal::manager::WalManagerRef;
 use super::{engine::OpenTablesOfShard, flush_compaction::Flusher};
 use crate::{
     compaction::scheduler::SchedulerImpl,
-    context::OpenContext,
+    context::OpenedTableEngineInstanceContext,
     engine,
     instance::{
         engine::{OpenManifest, ReadMetaUpdate, Result},
         mem_collector::MemUsageCollector,
         wal_replayer::{ReplayMode, WalReplayer},
-        Instance, SpaceStore,
+        TableEngineInstance, SpaceStore,
     },
     manifest::{details::ManifestImpl, LoadRequest, Manifest, ManifestRef},
     row_iter::IterOptions,
@@ -36,25 +36,24 @@ use crate::{
     table_meta_set_impl::TableMetaSetImpl,
     RecoverMode,
 };
+use crate::space::Space;
 
 const MAX_RECORD_BATCHES_IN_FLIGHT_WHEN_COMPACTION_READ: usize = 64;
 
 pub(crate) struct ManifestStorages {
     pub wal_manager: WalManagerRef,
-    pub oss_storage: ObjectStoreRef,
+    pub objectStore: Arc<dyn ObjectStore>,
 }
 
-impl Instance {
+impl TableEngineInstance {
     /// Open a new instance
-    pub(crate) async fn open(
-        ctx: OpenContext,
-        manifest_storages: ManifestStorages,
-        wal_manager: WalManagerRef,
-        store_picker: ObjectStorePickerRef,
-        sst_factory: SstFactoryRef,
-    ) -> Result<Arc<Self>> {
+    pub(crate) async fn open(ctx: OpenedTableEngineInstanceContext,
+                             manifest_storages: ManifestStorages,
+                             wal_manager: WalManagerRef,
+                             store_picker: ObjectStorePickerRef,
+                             sst_factory: SstFactoryRef) -> Result<Arc<Self>> {
         let spaces: Arc<RwLock<Spaces>> = Arc::new(RwLock::new(Spaces::default()));
-        let default_runtime = ctx.runtimes.default_runtime.clone();
+        let default_runtime = ctx.engineRuntimes.default_runtime.clone();
         let file_purger = Arc::new(FilePurger::start(
             &default_runtime,
             store_picker.default_store().clone(),
@@ -63,17 +62,17 @@ impl Instance {
         let table_meta_set_impl = Arc::new(TableMetaSetImpl {
             spaces: spaces.clone(),
             file_purger: file_purger.clone(),
-            preflush_write_buffer_size_ratio: ctx.config.preflush_write_buffer_size_ratio,
-            manifest_snapshot_every_n_updates: ctx.config.manifest.snapshot_every_n_updates,
+            preflush_write_buffer_size_ratio: ctx.analyticEngineConfig.preflush_write_buffer_size_ratio,
+            manifest_snapshot_every_n_updates: ctx.analyticEngineConfig.manifest.snapshot_every_n_updates,
         });
         let manifest = ManifestImpl::open(
-            ctx.config.manifest.clone(),
+            ctx.analyticEngineConfig.manifest.clone(),
             manifest_storages.wal_manager,
-            manifest_storages.oss_storage,
+            manifest_storages.objectStore,
             table_meta_set_impl,
         )
-        .await
-        .context(OpenManifest)?;
+            .await
+            .context(OpenManifest)?;
 
         let space_store = Arc::new(SpaceStore {
             spaces,
@@ -84,72 +83,67 @@ impl Instance {
             meta_cache: ctx.meta_cache.clone(),
         });
 
-        let scheduler_config = ctx.config.compaction.clone();
+        let scheduler_config = ctx.analyticEngineConfig.compaction.clone();
         let scan_options_for_compaction = ScanOptions {
             background_read_parallelism: 1,
             max_record_batches_in_flight: MAX_RECORD_BATCHES_IN_FLIGHT_WHEN_COMPACTION_READ,
-            num_streams_to_prefetch: ctx.config.num_streams_to_prefetch,
+            num_streams_to_prefetch: ctx.analyticEngineConfig.num_streams_to_prefetch,
         };
-        let compaction_runtime = ctx.runtimes.compact_runtime.clone();
+        let compaction_runtime = ctx.engineRuntimes.compact_runtime.clone();
         let compaction_scheduler = Arc::new(SchedulerImpl::new(
             space_store.clone(),
             compaction_runtime,
             scheduler_config,
-            ctx.config.write_sst_max_buffer_size.as_byte() as usize,
+            ctx.analyticEngineConfig.write_sst_max_buffer_size.as_byte() as usize,
             scan_options_for_compaction,
         ));
 
         let scan_options = ScanOptions {
-            background_read_parallelism: ctx.config.sst_background_read_parallelism,
-            max_record_batches_in_flight: ctx.config.scan_max_record_batches_in_flight,
-            num_streams_to_prefetch: ctx.config.num_streams_to_prefetch,
+            background_read_parallelism: ctx.analyticEngineConfig.sst_background_read_parallelism,
+            max_record_batches_in_flight: ctx.analyticEngineConfig.scan_max_record_batches_in_flight,
+            num_streams_to_prefetch: ctx.analyticEngineConfig.num_streams_to_prefetch,
         };
 
         let iter_options = ctx
-            .config
+            .analyticEngineConfig
             .scan_batch_size
             .map(|batch_size| IterOptions { batch_size });
-        let instance = Arc::new(Instance {
+        let instance = Arc::new(TableEngineInstance {
             space_store,
-            runtimes: ctx.runtimes.clone(),
-            table_opts: ctx.config.table_opts.clone(),
+            runtimes: ctx.engineRuntimes.clone(),
+            table_opts: ctx.analyticEngineConfig.table_opts.clone(),
 
             compaction_scheduler,
             file_purger,
             meta_cache: ctx.meta_cache.clone(),
             mem_usage_collector: Arc::new(MemUsageCollector::default()),
-            max_rows_in_write_queue: ctx.config.max_rows_in_write_queue,
-            db_write_buffer_size: ctx.config.db_write_buffer_size,
-            space_write_buffer_size: ctx.config.space_write_buffer_size,
-            replay_batch_size: ctx.config.replay_batch_size,
-            write_sst_max_buffer_size: ctx.config.write_sst_max_buffer_size.as_byte() as usize,
-            max_retry_flush_limit: ctx.config.max_retry_flush_limit,
+            max_rows_in_write_queue: ctx.analyticEngineConfig.max_rows_in_write_queue,
+            db_write_buffer_size: ctx.analyticEngineConfig.db_write_buffer_size,
+            space_write_buffer_size: ctx.analyticEngineConfig.space_write_buffer_size,
+            replay_batch_size: ctx.analyticEngineConfig.replay_batch_size,
+            write_sst_max_buffer_size: ctx.analyticEngineConfig.write_sst_max_buffer_size.as_byte() as usize,
+            max_retry_flush_limit: ctx.analyticEngineConfig.max_retry_flush_limit,
             max_bytes_per_write_batch: ctx
-                .config
+                .analyticEngineConfig
                 .max_bytes_per_write_batch
                 .map(|v| v.as_byte() as usize),
             iter_options,
             scan_options,
-            recover_mode: ctx.config.recover_mode,
+            recover_mode: ctx.analyticEngineConfig.recover_mode,
         });
 
         Ok(instance)
     }
 
-    /// Open the table.
-    pub async fn do_open_tables_of_shard(
-        self: &Arc<Self>,
-        context: TablesOfShardContext,
-    ) -> Result<OpenTablesOfShardResult> {
-        let mut shard_opener = ShardOpener::init(
-            context,
-            self.space_store.manifest.clone(),
-            self.space_store.wal_manager.clone(),
-            self.replay_batch_size,
-            self.make_flusher(),
-            self.max_retry_flush_limit,
-            self.recover_mode,
-        )?;
+    pub async fn do_open_tables_of_shard(self: &Arc<Self>, context: TablesOfShardContext) -> Result<HashMap<TableId, Result<Option<SpaceAndTable>>>> {
+        let mut shard_opener =
+            ShardOpener::init(context,
+                              self.space_store.manifest.clone(),
+                              self.space_store.wal_manager.clone(),
+                              self.replay_batch_size,
+                              self.make_flusher(),
+                              self.max_retry_flush_limit,
+                              self.recover_mode)?;
 
         shard_opener.open().await
     }
@@ -165,8 +159,8 @@ pub struct TablesOfShardContext {
 
 #[derive(Clone, Debug)]
 pub struct TableContext {
-    pub table_def: TableDef,
-    pub space: SpaceRef,
+    pub tableDef: TableDef,
+    pub space: Arc<Space>,
 }
 
 #[derive(Debug)]
@@ -196,6 +190,7 @@ struct ShardOpener {
     shard_id: ShardId,
     manifest: ManifestRef,
     wal_manager: WalManagerRef,
+    /// init()中会有变化
     stages: HashMap<TableId, TableOpenStage>,
     wal_replay_batch_size: usize,
     flusher: Flusher,
@@ -204,29 +199,29 @@ struct ShardOpener {
 }
 
 impl ShardOpener {
-    fn init(
-        shard_context: TablesOfShardContext,
-        manifest: ManifestRef,
-        wal_manager: WalManagerRef,
-        wal_replay_batch_size: usize,
-        flusher: Flusher,
-        max_retry_flush_limit: usize,
-        recover_mode: RecoverMode,
-    ) -> Result<Self> {
+    fn init(shard_context: TablesOfShardContext,
+            manifest: ManifestRef,
+            wal_manager: WalManagerRef,
+            wal_replay_batch_size: usize,
+            flusher: Flusher,
+            max_retry_flush_limit: usize,
+            recover_mode: RecoverMode) -> Result<Self> {
         let mut stages = HashMap::with_capacity(shard_context.table_ctxs.len());
+
         for table_ctx in shard_context.table_ctxs {
             let space = &table_ctx.space;
-            let table_id = table_ctx.table_def.id;
+            let table_id = table_ctx.tableDef.id;
+
             let state = if let Some(table_data) = space.find_table_by_id(table_id) {
-                // Table is possible to have been opened, we just mark it ready and ignore in
-                // recovery.
+                // Table is possible to have been opened, we just mark it ready and ignore in recovery.
                 TableOpenStage::Success(Some(SpaceAndTable::new(space.clone(), table_data)))
             } else {
                 TableOpenStage::RecoverTableMeta(RecoverTableMetaContext {
-                    table_def: table_ctx.table_def,
+                    table_def: table_ctx.tableDef,
                     space: table_ctx.space,
                 })
             };
+
             stages.insert(table_id, state);
         }
 
@@ -242,7 +237,7 @@ impl ShardOpener {
         })
     }
 
-    async fn open(&mut self) -> Result<OpenTablesOfShardResult> {
+    async fn open(&mut self) -> Result<HashMap<TableId, Result<Option<SpaceAndTable>>>> {
         // Recover tables' metadata.
         self.recover_table_metas().await?;
 
@@ -254,21 +249,12 @@ impl ShardOpener {
         let mut table_results = HashMap::with_capacity(stages.len());
         for (table_id, state) in stages {
             match state {
-                TableOpenStage::Failed(e) => {
-                    table_results.insert(table_id, Err(e));
+                TableOpenStage::Failed(e) => table_results.insert(table_id, Err(e)),
+                TableOpenStage::Success(data) => table_results.insert(table_id, Ok(data)),
+                TableOpenStage::RecoverTableMeta(_) | TableOpenStage::RecoverTableData(_) =>{
+                    return OpenTablesOfShard { msg: format!("unexpected table state, state:{state:?}, table_id:{table_id}"), }.fail();
                 }
-                TableOpenStage::Success(data) => {
-                    table_results.insert(table_id, Ok(data));
-                }
-                TableOpenStage::RecoverTableMeta(_) | TableOpenStage::RecoverTableData(_) => {
-                    return OpenTablesOfShard {
-                        msg: format!(
-                            "unexpected table state, state:{state:?}, table_id:{table_id}",
-                        ),
-                    }
-                    .fail()
-                }
-            }
+            };
         }
 
         Ok(table_results)
@@ -276,22 +262,13 @@ impl ShardOpener {
 
     /// Recover table meta data from manifest based on shard.
     async fn recover_table_metas(&mut self) -> Result<()> {
-        info!(
-            "ShardOpener recover table metas begin, shard_id:{}",
-            self.shard_id
-        );
+        info!("shardOpener recover table metas begin, shard_id:{}",self.shard_id);
 
         for (table_id, state) in self.stages.iter_mut() {
             match state {
                 // Only do the meta recovery work in `RecoverTableMeta` state.
                 TableOpenStage::RecoverTableMeta(ctx) => {
-                    let result = match Self::recover_single_table_meta(
-                        self.manifest.as_ref(),
-                        self.shard_id,
-                        &ctx.table_def,
-                    )
-                    .await
-                    {
+                    let result = match Self::recover_single_table_meta(self.manifest.as_ref(), self.shard_id, &ctx.table_def).await {
                         Ok(()) => {
                             let table_data = ctx.space.find_table_by_id(*table_id);
                             Ok(table_data.map(|data| (data, ctx.space.clone())))
@@ -319,7 +296,7 @@ impl ShardOpener {
                     return OpenTablesOfShard {
                         msg: format!("unexpected table state:{state:?}"),
                     }
-                    .fail();
+                        .fail();
                 }
             }
         }
@@ -333,13 +310,11 @@ impl ShardOpener {
 
     /// Recover table data based on shard.
     async fn recover_table_datas(&mut self) -> Result<()> {
-        info!(
-            "ShardOpener recover table datas begin, shard_id:{}",
-            self.shard_id
-        );
+        info!("shardOpener recover table datas begin, shard_id:{}",self.shard_id);
 
         // Replay wal logs of tables.
         let mut replay_table_datas = Vec::with_capacity(self.stages.len());
+
         for (table_id, stage) in self.stages.iter_mut() {
             match stage {
                 // Only do the wal recovery work in `RecoverTableData` state.
@@ -350,22 +325,14 @@ impl ShardOpener {
                 TableOpenStage::Failed(_) | TableOpenStage::Success(_) => {}
                 TableOpenStage::RecoverTableMeta(_) => {
                     return OpenTablesOfShard {
-                        msg: format!(
-                            "unexpected stage, stage:{stage:?}, table_id:{table_id}, shard_id:{}",
-                            self.shard_id
-                        ),
-                    }
-                    .fail();
+                        msg: format!("unexpected stage, stage:{stage:?}, table_id:{table_id}, shard_id:{}", self.shard_id),
+                    }.fail();
                 }
             }
         }
 
         if replay_table_datas.is_empty() {
-            info!(
-                "ShardOpener recover empty table datas finish, shard_id:{}",
-                self.shard_id
-            );
-
+            info!("shardOpener recover empty table datas finish, shard_id:{}",self.shard_id);
             return Ok(());
         }
 
@@ -404,9 +371,7 @@ impl ShardOpener {
                 }
 
                 (other_stage, _) => {
-                    return OpenTablesOfShard {
-                        msg: format!("unexpected stage, stage:{other_stage:?}, table_id:{table_id}, shard_id:{}", self.shard_id),
-                    }.fail();
+                    return OpenTablesOfShard { msg: format!("unexpected stage, stage:{other_stage:?}, table_id:{table_id}, shard_id:{}", self.shard_id) }.fail();
                 }
             }
         }
@@ -421,32 +386,23 @@ impl ShardOpener {
     /// Recover meta data from manifest.
     ///
     /// Return None if no meta data is found for the table.
-    async fn recover_single_table_meta(
-        manifest: &dyn Manifest,
-        shard_id: ShardId,
-        table_def: &TableDef,
-    ) -> Result<()> {
-        info!(
-            "Instance recover table meta begin, table_id:{}, table_name:{}, shard_id:{shard_id}",
-            table_def.id, table_def.name
-        );
+    async fn recover_single_table_meta(manifest: &dyn Manifest,
+                                       shard_id: ShardId,
+                                       table_def: &TableDef) -> Result<()> {
+        info!("instance recover table meta begin, table_id:{}, table_name:{}, shard_id:{}",table_def.id, table_def.name,shard_id);
 
         // Load manifest, also create a new snapshot at startup.
         let table_id = table_def.id;
         let space_id = engine::build_space_id(table_def.schema_id);
-        let load_req = LoadRequest {
+        let loadRequest = LoadRequest {
             space_id,
             table_id,
             shard_id,
         };
-        manifest.recover(&load_req).await.context(ReadMetaUpdate {
-            table_id: table_def.id,
-        })?;
 
-        info!(
-            "Instance recover table meta end, table_id:{}, table_name:{}, shard_id:{shard_id}",
-            table_def.id, table_def.name
-        );
+        manifest.recover(&loadRequest).await.context(ReadMetaUpdate { table_id: table_def.id})?;
+
+        info!("instance recover table meta end, table_id:{}, table_name:{}, shard_id:{}",table_def.id, table_def.name,shard_id);
 
         Ok(())
     }

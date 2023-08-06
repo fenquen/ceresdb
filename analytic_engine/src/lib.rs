@@ -3,6 +3,7 @@
 //! Analytic table engine implementations
 
 #![feature(option_get_or_insert_default)]
+#![allow(non_snake_case)]
 mod compaction;
 mod context;
 mod engine;
@@ -18,10 +19,7 @@ pub mod space;
 pub mod sst;
 pub mod table;
 pub mod table_options;
-
 pub mod table_meta_set_impl;
-#[cfg(any(test, feature = "test"))]
-pub mod tests;
 
 use manifest::details::Options as ManifestOptions;
 use message_queue::kafka::config::Config as KafkaConfig;
@@ -37,11 +35,11 @@ use wal::{
 
 pub use crate::{compaction::scheduler::SchedulerConfig, table_options::TableOptions};
 
-/// Config of analytic engine
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
-pub struct Config {
-    /// Storage options of the engine
+pub struct AnalyticEngineConfig {
+    /// storage options of the engine
     pub storage: StorageOptions,
 
     /// Batch size to read records from wal to replay
@@ -93,15 +91,15 @@ pub struct Config {
     /// If this is set, the atomicity of write request will be broken.
     pub max_bytes_per_write_batch: Option<ReadableSize>,
 
-    /// Wal storage config
+    /// Wal storage config 默认rocksdb
     ///
     /// Now, following three storages are supported:
     /// + RocksDB
     /// + OBKV
     /// + Kafka
-    pub wal: WalStorageConfig,
+    pub walStorageConfig: WalStorageConfig,
 
-    /// Recover mode
+    /// Recover mode 默认是tableBased
     ///
     /// + TableBased, tables on same shard will be recovered table by table.
     /// + ShardBased, tables on same shard will be recovered together.
@@ -116,7 +114,7 @@ pub enum RecoverMode {
     ShardBased,
 }
 
-impl Default for Config {
+impl Default for AnalyticEngineConfig {
     fn default() -> Self {
         Self {
             storage: Default::default(),
@@ -128,11 +126,9 @@ impl Default for Config {
             sst_data_cache_cap: Some(1000),
             manifest: ManifestOptions::default(),
             max_rows_in_write_queue: 0,
-            /// Zero means disabling this param, give a positive value to enable
-            /// it.
+            /// Zero means disabling this param, give a positive value to enable it
             space_write_buffer_size: 0,
-            /// Zero means disabling this param, give a positive value to enable
-            /// it.
+            /// Zero means disabling this param, give a positive value to enable it
             db_write_buffer_size: 0,
             preflush_write_buffer_size_ratio: 0.75,
             scan_batch_size: None,
@@ -142,7 +138,7 @@ impl Default for Config {
             write_sst_max_buffer_size: ReadableSize::mb(10),
             max_retry_flush_limit: 0,
             max_bytes_per_write_batch: None,
-            wal: WalStorageConfig::RocksDB(Box::default()),
+            walStorageConfig: WalStorageConfig::RocksDB(Box::default()),
             remote_engine_client: remote_engine_client::config::Config::default(),
             recover_mode: RecoverMode::TableBased,
         }
@@ -273,7 +269,7 @@ pub struct KafkaWalConfig {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct RocksDBConfig {
-    /// Data directory used by RocksDB.
+    /// data directory used by RocksDB 默认在$HOME/ceresdb_wal_rocksdb
     pub data_dir: String,
 
     pub data_namespace: RocksDBWalConfig,
@@ -283,12 +279,13 @@ pub struct RocksDBConfig {
 impl Default for RocksDBConfig {
     fn default() -> Self {
         Self {
-            data_dir: "/tmp/ceresdb".to_string(),
+            data_dir: format!("{}{}",env!("HOME"),"/ceresdb_wal_rocksdb"),
             data_namespace: Default::default(),
             meta_namespace: Default::default(),
         }
     }
 }
+
 /// Options for wal storage backend
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "type")]
