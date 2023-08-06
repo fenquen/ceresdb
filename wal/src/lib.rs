@@ -7,4 +7,3 @@ pub mod log_batch;
 pub mod manager;
 pub mod message_queue_impl;
 pub mod rocks_impl;
-pub mod table_kv_impl;

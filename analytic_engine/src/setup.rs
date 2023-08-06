@@ -16,7 +16,6 @@ use wal::{
     manager::{self, WalManagerRef},
     message_queue_impl::wal::MessageQueueImpl,
     rocks_impl::manager::Builder as RocksWalBuilder,
-    table_kv_impl::{wal::WalNamespaceImpl, WalRuntimes},
 };
 use wal::manager::WalManager;
 
@@ -28,7 +27,7 @@ use crate::{
         factory::{FactoryImpl, ObjectStorePicker, ObjectStorePickerRef, ReadFrequency},
         meta_data::cache::{MetaCache, MetaCacheRef},
     },
-    AnalyticEngineConfig, ObkvWalConfig, WalStorageConfig,
+    AnalyticEngineConfig, WalStorageConfig,
 };
 
 #[derive(Debug, Snafu)]
@@ -233,41 +232,6 @@ impl WalsOpener for RocksDBWalsOpener {
     }
 }
 
-/// [ReplicatedEngine] builder.
-#[derive(Default)]
-pub struct ObkvWalsOpener;
-
-#[async_trait]
-impl WalsOpener for ObkvWalsOpener {
-    async fn open_wals(
-        &self,
-        config: &WalStorageConfig,
-        engine_runtimes: Arc<EngineRuntimes>,
-    ) -> Result<OpenedWals> {
-        let obkv_wal_config = match config {
-            WalStorageConfig::Obkv(config) => config.clone(),
-            _ => {
-                return InvalidWalConfig {
-                    msg: format!(
-                        "invalid wal storage config while opening obkv wal, config:{config:?}"
-                    ),
-                }
-                    .fail();
-            }
-        };
-
-        // Notice the creation of obkv client may block current thread.
-        let obkv_config = obkv_wal_config.obkv.clone();
-        let obkv = engine_runtimes
-            .write_runtime
-            .spawn_blocking(move || ObkvImpl::new(obkv_config).context(OpenObkv))
-            .await
-            .context(RuntimeExec)??;
-
-        open_wal_and_manifest_with_table_kv(*obkv_wal_config, engine_runtimes, obkv).await
-    }
-}
-
 /// [MemWalEngine] builder.
 ///
 /// All engine built by this builder share same [MemoryImpl] instance, so the
@@ -285,7 +249,6 @@ impl WalsOpener for MemWalsOpener {
         engine_runtimes: Arc<EngineRuntimes>,
     ) -> Result<OpenedWals> {
         let obkv_wal_config = match config {
-            WalStorageConfig::Obkv(config) => config.clone(),
             _ => {
                 return InvalidWalConfig {
                     msg: format!(
@@ -295,13 +258,6 @@ impl WalsOpener for MemWalsOpener {
                     .fail();
             }
         };
-
-        open_wal_and_manifest_with_table_kv(
-            *obkv_wal_config,
-            engine_runtimes,
-            self.table_kv.clone(),
-        )
-            .await
     }
 }
 
@@ -351,41 +307,6 @@ impl WalsOpener for KafkaWalsOpener {
             manifestWalManager: Arc::new(manifest_wal),
         })
     }
-}
-
-async fn open_wal_and_manifest_with_table_kv<T: TableKv>(
-    config: ObkvWalConfig,
-    engine_runtimes: Arc<EngineRuntimes>,
-    table_kv: T,
-) -> Result<OpenedWals> {
-    let runtimes = WalRuntimes {
-        read_runtime: engine_runtimes.read_runtime.clone(),
-        write_runtime: engine_runtimes.write_runtime.clone(),
-        default_runtime: engine_runtimes.default_runtime.clone(),
-    };
-
-    let data_wal = WalNamespaceImpl::open(
-        table_kv.clone(),
-        runtimes.clone(),
-        WAL_DIR_NAME,
-        config.data_namespace.clone().into(),
-    )
-        .await
-        .context(OpenWal)?;
-
-    let manifest_wal = WalNamespaceImpl::open(
-        table_kv,
-        runtimes,
-        MANIFEST_DIR_NAME,
-        config.meta_namespace.clone().into(),
-    )
-        .await
-        .context(OpenManifestWal)?;
-
-    Ok(OpenedWals {
-        dataWalManager: Arc::new(data_wal),
-        manifestWalManager: Arc::new(manifest_wal),
-    })
 }
 
 async fn open_instance(analyticConfig: AnalyticEngineConfig,

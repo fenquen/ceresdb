@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use analytic_engine::{
     self,
-    setup::{AnalyticTableEngineBuilder, KafkaWalsOpener, ObkvWalsOpener, RocksDBWalsOpener, WalsOpener},
+    setup::{AnalyticTableEngineBuilder, KafkaWalsOpener, RocksDBWalsOpener, WalsOpener},
     WalStorageConfig,
 };
 use catalog::{manager::ManagerRef, schema::OpenOptions, table_operator::TableOperator};
@@ -82,7 +82,6 @@ pub fn run_server(config: Config, logLevel: RuntimeLevel) {
     runtimes.default_runtime.block_on(async {
         match config.analytic.walStorageConfig {
             WalStorageConfig::RocksDB(_) => run_server_with_runtimes::<RocksDBWalsOpener>(config, engine_runtimes, logLevel).await,
-            WalStorageConfig::Obkv(_) => run_server_with_runtimes::<ObkvWalsOpener>(config, engine_runtimes, logLevel).await,
             WalStorageConfig::Kafka(_) => run_server_with_runtimes::<KafkaWalsOpener>(config, engine_runtimes, logLevel).await,
         }
     });
