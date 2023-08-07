@@ -40,10 +40,10 @@ use crate::{
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display(
-        "Schema mismatch, memtable_version:{}, given:{}.\nBacktrace:\n{}",
-        memtable_version,
-        given,
-        backtrace
+    "Schema mismatch, memtable_version:{}, given:{}.\nBacktrace:\n{}",
+    memtable_version,
+    given,
+    backtrace
     ))]
     SchemaMismatch {
         memtable_version: schema::Version,
@@ -245,8 +245,10 @@ struct MemTableView {
     /// This memtable is special and may contains data in differnt segment, so
     /// can not be moved into immutable memtable set.
     sampling_mem: Option<SamplingMemTable>,
+
     /// Mutable memtables arranged by its time range.
     mutables: MutableMemTableSet,
+
     /// Immutable memtables set, lookup by memtable id is fast.
     immutables: ImmutableMemTableSet,
 }
@@ -264,10 +266,10 @@ impl MemTableView {
     fn mutable_memory_usage(&self) -> usize {
         self.mutables.memory_usage()
             + self
-                .sampling_mem
-                .as_ref()
-                .map(|v| v.memory_usage())
-                .unwrap_or(0)
+            .sampling_mem
+            .as_ref()
+            .map(|v| v.memory_usage())
+            .unwrap_or(0)
     }
 
     /// Get the total memory usage of mutable and immutable memtables.
@@ -485,7 +487,7 @@ pub type LeveledFiles = Vec<Vec<FileHandle>>;
 /// Memtable/sst to read for given time range.
 pub struct ReadView {
     pub sampling_mem: Option<SamplingMemTable>,
-    pub memtables: MemTableVec,
+    pub memtables: Vec<MemTableState>,
     /// Ssts to read in each level.
     ///
     /// The `ReadView` MUST ensure the length of `leveled_ssts` >= MAX_LEVEL.
@@ -551,14 +553,14 @@ impl TableVersionInner {
 /// Switching memtable, memtable to level 0 file, addition/deletion to files
 /// should be done atomically.
 pub struct TableVersion {
-    inner: RwLock<TableVersionInner>,
+    tableVersionInner: RwLock<TableVersionInner>,
 }
 
 impl TableVersion {
     /// Create an empty table version
     pub fn new(purge_queue: FilePurgeQueue) -> Self {
         Self {
-            inner: RwLock::new(TableVersionInner {
+            tableVersionInner: RwLock::new(TableVersionInner {
                 memtable_view: MemTableView::new(),
                 levels_controller: LevelsController::new(purge_queue),
                 flushed_sequence: 0,
@@ -569,7 +571,7 @@ impl TableVersion {
 
     /// See [MemTableView::mutable_memory_usage]
     pub fn mutable_memory_usage(&self) -> usize {
-        self.inner
+        self.tableVersionInner
             .read()
             .unwrap()
             .memtable_view
@@ -578,7 +580,7 @@ impl TableVersion {
 
     /// See [MemTableView::total_memory_usage]
     pub fn total_memory_usage(&self) -> usize {
-        self.inner
+        self.tableVersionInner
             .read()
             .unwrap()
             .memtable_view
@@ -588,7 +590,7 @@ impl TableVersion {
     /// Return the suggested segment duration if sampling memtable is still
     /// active.
     pub fn suggest_duration(&self) -> Option<Duration> {
-        self.inner.write().unwrap().memtable_view.suggest_duration()
+        self.tableVersionInner.write().unwrap().memtable_view.suggest_duration()
     }
 
     /// Switch all mutable memtables
@@ -596,14 +598,14 @@ impl TableVersion {
     /// Returns the maxium `SequenceNumber` in the mutable memtables needs to be
     /// freezed.
     pub fn switch_memtables(&self) -> Option<SequenceNumber> {
-        self.inner.write().unwrap().memtable_view.switch_memtables()
+        self.tableVersionInner.write().unwrap().memtable_view.switch_memtables()
     }
 
     /// Stop timestamp sampling and freezed the sampling memtable.
     ///
     /// REQUIRE: Do in write worker
     pub fn freeze_sampling_memtable(&self) -> Option<SequenceNumber> {
-        self.inner
+        self.tableVersionInner
             .write()
             .unwrap()
             .memtable_view
@@ -612,7 +614,7 @@ impl TableVersion {
 
     /// See [MemTableView::pick_memtables_to_flush]
     pub fn pick_memtables_to_flush(&self, last_sequence: SequenceNumber) -> FlushableMemTables {
-        self.inner
+        self.tableVersionInner
             .read()
             .unwrap()
             .memtable_view
@@ -630,7 +632,7 @@ impl TableVersion {
         schema_version: schema::Version,
     ) -> Result<Option<MemTableForWrite>> {
         // Find memtable by timestamp
-        let memtable = self.inner.read().unwrap().memtable_for_write(timestamp);
+        let memtable = self.tableVersionInner.read().unwrap().memtable_for_write(timestamp);
         let mutable = match memtable {
             Some(v) => v,
             None => return Ok(None),
@@ -650,7 +652,7 @@ impl TableVersion {
 
     /// Insert memtable into mutable memtable set.
     pub fn insert_mutable(&self, mem_state: MemTableState) {
-        let mut inner = self.inner.write().unwrap();
+        let mut inner = self.tableVersionInner.write().unwrap();
         let old_memtable = inner.memtable_view.mutables.insert(mem_state.clone());
         assert!(
             old_memtable.is_none(),
@@ -665,14 +667,14 @@ impl TableVersion {
     ///
     /// Panic if the sampling memtable of this version is not None.
     pub fn set_sampling(&self, sampling_mem: SamplingMemTable) {
-        let mut inner = self.inner.write().unwrap();
+        let mut inner = self.tableVersionInner.write().unwrap();
         assert!(inner.memtable_view.sampling_mem.is_none());
         inner.memtable_view.sampling_mem = Some(sampling_mem);
     }
 
     /// Atomically apply the edit to the version.
     pub fn apply_edit(&self, edit: VersionEdit) {
-        let mut inner = self.inner.write().unwrap();
+        let mut inner = self.tableVersionInner.write().unwrap();
 
         // TODO(yingwen): else, log warning
         inner.flushed_sequence = cmp::max(inner.flushed_sequence, edit.flushed_sequence);
@@ -701,38 +703,32 @@ impl TableVersion {
 
     /// Atomically apply the meta to the version, useful in recover.
     pub fn apply_meta(&self, meta: TableVersionMeta) {
-        let mut inner = self.inner.write().unwrap();
+        let mut inner = self.tableVersionInner.write().unwrap();
 
         inner.flushed_sequence = cmp::max(inner.flushed_sequence, meta.flushed_sequence);
 
         inner.max_file_id = cmp::max(inner.max_file_id, meta.max_file_id);
 
         for add_file in meta.files.into_values() {
-            inner
-                .levels_controller
-                .add_sst_to_level(add_file.level, add_file.file);
+            inner.levels_controller.add_sst_to_level(add_file.level, add_file.file);
         }
     }
 
     pub fn pick_read_view(&self, time_range: TimeRange) -> ReadView {
         let mut sampling_mem = None;
-        let mut memtables = MemTableVec::new();
+        let mut memtables = Vec::new();
         let mut leveled_ssts = vec![Vec::new(); SST_LEVEL_NUM];
 
         {
             // Pick memtables for read.
-            let inner = self.inner.read().unwrap();
+            let inner = self.tableVersionInner.read().unwrap();
 
-            inner
-                .memtable_view
-                .memtables_for_read(time_range, &mut memtables, &mut sampling_mem);
+            inner.memtable_view.memtables_for_read(time_range, &mut memtables, &mut sampling_mem);
 
             // Pick ssts for read.
-            inner
-                .levels_controller
-                .pick_ssts(time_range, |level, ssts| {
-                    leveled_ssts[level.as_usize()].extend_from_slice(ssts)
-                });
+            inner.levels_controller.pick_ssts(time_range, |level, ssts| {
+                leveled_ssts[level.as_usize()].extend_from_slice(ssts)
+            });
         }
 
         ReadView {
@@ -748,31 +744,31 @@ impl TableVersion {
         picker_ctx: PickerContext,
         picker: &CompactionPickerRef,
     ) -> picker::Result<CompactionTask> {
-        let mut inner = self.inner.write().unwrap();
+        let mut inner = self.tableVersionInner.write().unwrap();
 
         picker.pick_compaction(picker_ctx, &mut inner.levels_controller)
     }
 
     pub fn has_expired_sst(&self, expire_time: Option<Timestamp>) -> bool {
-        let inner = self.inner.read().unwrap();
+        let inner = self.tableVersionInner.read().unwrap();
 
         inner.levels_controller.has_expired_sst(expire_time)
     }
 
     pub fn expired_ssts(&self, expire_time: Option<Timestamp>) -> Vec<ExpiredFiles> {
-        let inner = self.inner.read().unwrap();
+        let inner = self.tableVersionInner.read().unwrap();
 
         inner.levels_controller.expired_ssts(expire_time)
     }
 
     pub fn flushed_sequence(&self) -> SequenceNumber {
-        let inner = self.inner.read().unwrap();
+        let inner = self.tableVersionInner.read().unwrap();
 
         inner.flushed_sequence
     }
 
     pub fn snapshot(&self) -> TableVersionSnapshot {
-        let inner = self.inner.read().unwrap();
+        let inner = self.tableVersionInner.read().unwrap();
         let controller = &inner.levels_controller;
         let files = controller
             .levels()

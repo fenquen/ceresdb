@@ -32,7 +32,6 @@ use tokio::sync::{
 
 use crate::{space::SpaceId, sst::manager::FileId, table::sst_util, table_options::StorageFormat};
 
-/// Error of sst file.
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display("Failed to join purger, err:{}", source))]
@@ -84,8 +83,7 @@ impl fmt::Display for Level {
     }
 }
 
-// TODO(yingwen): Order or split file by time range to speed up filter (even in
-//  level 0).
+// TODO(yingwen): Order or split file by time range to speed up filter (even in level 0).
 /// Manage files of single level
 pub struct LevelHandler {
     pub level: Level,

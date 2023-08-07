@@ -291,23 +291,17 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         &self,
         req: WriteRequest,
     ) -> Result<(WriteRequest, HashMap<Endpoint, WriteRequest>)> {
-        // Split write request into multiple requests, each request contains table
-        // belong to one remote engine.
+        // split write request into multiple requests, each request contains table belong to one remote engine
         let tables = req
             .table_requests
             .iter()
             .map(|table_request| table_request.table.clone())
             .collect();
 
-        // TODO: Make the router can accept an iterator over the tables to avoid the
-        // memory allocation here.
-        let route_data = self
-            .router
-            .route(RouteRequest {
-                context: req.context.clone(),
-                tables,
-            })
-            .await?;
+        // TODO: Make the router can accept an iterator over the tables to avoid the memory allocation here.
+        let route_data =
+            self.router.route(RouteRequest { context: req.context.clone(), tables }).await?;
+
         let forwarded_table_routes = route_data
             .into_iter()
             .filter_map(|router| {
@@ -789,7 +783,7 @@ fn write_entry_to_rows(
     // Init all columns by null.
     let mut rows = vec![
         Row::from_datums(vec![Datum::Null; schema.num_columns()]);
-        write_series_entry.field_groups.len()
+        write_series_entry.field_groups.len(),
     ];
 
     // Fill tsid by default value.

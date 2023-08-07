@@ -29,12 +29,10 @@ pub trait RecordBatchWithKeyIterator: Send {
 
     fn schema(&self) -> &RecordSchemaWithKey;
 
-    async fn next_batch(&mut self) -> std::result::Result<Option<RecordBatchWithKey>, Self::Error>;
+    async fn next_batch(&mut self) -> Result<Option<RecordBatchWithKey>, Self::Error>;
 }
 
-pub fn record_batch_with_key_iter_to_stream<I: RecordBatchWithKeyIterator + Unpin + 'static>(
-    mut iter: I,
-) -> RecordBatchStream {
+pub fn record_batch_with_key_iter_to_stream<I: RecordBatchWithKeyIterator + Unpin + 'static>(mut iter: I) -> RecordBatchStream {
     let record_batch_stream = try_stream! {
         while let Some(batch) = iter.next_batch().await.box_err().transpose() {
             yield batch?;

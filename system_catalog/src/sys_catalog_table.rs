@@ -443,9 +443,7 @@ impl SysCatalogTable {
             primary_key,
         };
 
-        match self.table.get(get_req).await.context(GetTableInfo {
-            table: table_key.table,
-        })? {
+        match self.table.get(get_req).await.context(GetTableInfo { table: table_key.table })? {
             Some(row) => {
                 let table_info = self.decode_table_info(row)?;
                 let decoded_table_key = TableKey {
@@ -493,13 +491,13 @@ impl SysCatalogTable {
         }
     }
 
-    /// Visit all data in the sys catalog table
+    /// visit all data in the sys catalog table
     // TODO(yingwen): Expose read options
     pub async fn visit(&self,
                        opts: ReadOptions,
-                       visitor_inner: &mut dyn VisitorInner,
+                       visitorInner: &mut dyn VisitorInner,
                        visitOptions: VisitOptions) -> Result<()> {
-        let read_request = ReadRequest {
+        let readRequest = ReadRequest {
             request_id: RequestId::next_id(),
             opts,
             // The schema of sys catalog table is never changed
@@ -508,12 +506,13 @@ impl SysCatalogTable {
             metrics_collector: MetricsCollector::default(),
         };
 
-        let mut batch_stream = self.table.read(read_request).await.context(ReadTable)?;
+        let mut batch_stream = self.table.read(readRequest).await.context(ReadTable)?;
 
         info!("batch_stream schema is:{:?}", batch_stream.schema());
+
         // TODO(yingwen): Check stream schema and table schema?
         let mut visitor = Visitor {
-            inner: visitor_inner,
+            inner: visitorInner,
             options: visitOptions,
         };
 

@@ -80,8 +80,7 @@ pub trait Factory: Send + Sync + Debug {
     ) -> Result<Box<dyn SstWriter + Send + 'a>>;
 }
 
-/// The frequency of query execution may decide some behavior in the sst reader,
-/// e.g. cache policy.
+/// The frequency of query execution may decide some behavior in the sst reader, e.g. cache policy.
 #[derive(Debug, Copy, Clone)]
 pub enum ReadFrequency {
     Once,

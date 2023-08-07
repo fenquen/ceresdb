@@ -346,8 +346,7 @@ impl From<ReadOptions> for ceresdbproto::remote_engine::ReadOptions {
 pub struct GetRequest {
     /// Query request id.
     pub request_id: RequestId,
-    /// The schema and projection for get, the output data should match this
-    /// schema.
+    /// The schema and projection for get, the output data should match this schema.
     pub projected_schema: ProjectedSchema,
     /// The primary key of the row to get.
     pub primary_key: Vec<Datum>,
@@ -476,7 +475,7 @@ pub trait Table: fmt::Debug {
     async fn write(&self, writeRequest: WriteRequest) -> Result<usize>;
 
     /// Read from table.
-    async fn read(&self, request: ReadRequest) -> Result<SendableRecordBatchStream>;
+    async fn read(&self, readRequest: ReadRequest) -> Result<SendableRecordBatchStream>;
 
     /// Get the specific row according to the primary key.
     async fn get(&self, request: GetRequest) -> Result<Option<Row>>;

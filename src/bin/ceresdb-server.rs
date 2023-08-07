@@ -58,14 +58,12 @@ fn main() {
     let version = fetch_version();
     let matches = App::new("CeresDB Server")
         .version(version.as_str())
-        .arg(
-            Arg::with_name("config")
+        .arg(Arg::with_name("config")
                 .short('c')
                 .long("config")
                 .required(false)
                 .takes_value(true)
-                .help("Set configuration file, eg: \"/path/server.toml\""),
-        ).get_matches();
+                .help("Set configuration file, eg: \"/path/server.toml\""), ).get_matches();
 
     let mut config = match matches.value_of("config") {
         Some(path) => {

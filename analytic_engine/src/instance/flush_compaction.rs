@@ -805,7 +805,7 @@ impl SpaceStore {
                 sst_read_options: sst_read_options.clone(),
                 store_picker: self.store_picker(),
                 merge_iter_options: iter_options.clone(),
-                need_dedup: table_options.need_dedup(),
+                need_dedup: table_options.needDeDuplicate(),
                 reverse: false,
             });
             // Add all ssts in compaction input to builder.
@@ -817,7 +817,7 @@ impl SpaceStore {
             })?
         };
 
-        let record_batch_stream = if table_options.need_dedup() {
+        let record_batch_stream = if table_options.needDeDuplicate() {
             row_iter::record_batch_with_key_iter_to_stream(DedupIterator::new(
                 request_id,
                 merge_iter,

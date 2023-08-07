@@ -1,9 +1,7 @@
 // Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
 //! A table engine instance
-//!
-//! The root mod only contains common functions of instance, other logics are
-//! divided into the sub crates
+//! The root mod only contains common functions of instance, other logics are divided into the sub crates
 
 pub(crate) mod alter;
 mod close;

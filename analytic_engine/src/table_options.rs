@@ -484,7 +484,7 @@ impl TableOptions {
         }
     }
 
-    pub fn need_dedup(&self) -> bool {
+    pub fn needDeDuplicate(&self) -> bool {
         match self.update_mode {
             UpdateMode::Overwrite => true,
             UpdateMode::Append => false,

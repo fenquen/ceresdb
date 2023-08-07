@@ -70,6 +70,7 @@ pub enum Error {
 
 define_result!(Error);
 
+/// 用来 create_table drop_table
 #[async_trait]
 pub trait TableManipulator {
     async fn create_table(&self,

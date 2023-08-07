@@ -435,19 +435,16 @@ impl Table for TableImpl {
             .context(Write { table: self.name() })
     }
 
-    async fn read(&self, mut request: ReadRequest) -> Result<SendableRecordBatchStream> {
-        request.opts.read_parallelism = 1;
-        let mut streams = self
-            .instance
-            .partitioned_read_from_table(&self.table_data, request)
-            .await
-            .box_err()
-            .context(Scan { table: self.name() })?;
+    async fn read(&self, mut readRequest: ReadRequest) -> Result<SendableRecordBatchStream> {
+        readRequest.opts.read_parallelism = 1;
 
-        assert_eq!(streams.streams.len(), 1);
-        let stream = streams.streams.pop().unwrap();
+        let mut partitionedStreams =
+            self.instance.partitioned_read_from_table(&self.table_data, readRequest)
+                .await.box_err().context(Scan { table: self.name() })?;
 
-        Ok(stream)
+        assert_eq!(partitionedStreams.streams.len(), 1);
+        
+        Ok(partitionedStreams.streams.pop().unwrap())
     }
 
     async fn get(&self, request: GetRequest) -> Result<Option<Row>> {

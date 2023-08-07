@@ -37,8 +37,7 @@ pub enum Error {
 
 define_result!(Error);
 
-/// Dedup the elements from the `iter` by choosing the first one in the
-/// duplicate rows.
+/// Dedup the elements from the `iter` by choosing the first one in the duplicate rows.
 pub struct DedupIterator<I> {
     request_id: RequestId,
     schema: RecordSchemaWithKey,
@@ -46,8 +45,7 @@ pub struct DedupIterator<I> {
     iter: I,
     /// Previous row returned.
     prev_row: Option<Row>,
-    /// Store which row in record batch is keep, use Vec<bool> is a bit faster
-    /// than a bitmap.
+    /// Store which row in record batch is keep, use Vec<bool> is a bit faster than a bitmap.
     selected_rows: Vec<bool>,
 
     // Metrics:

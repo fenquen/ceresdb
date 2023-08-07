@@ -553,7 +553,7 @@ impl TableData {
     }
 
     pub fn dedup(&self) -> bool {
-        self.table_options().need_dedup()
+        self.table_options().needDeDuplicate()
     }
 
     pub fn is_expired(&self, timestamp: Timestamp) -> bool {

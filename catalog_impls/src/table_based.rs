@@ -169,15 +169,12 @@ impl CatalogManagerTableBased {
         Ok(())
     }
 
-    async fn visit_catalog_table_with_options(catalog_table: Arc<SysCatalogTable>,
-                                              mut visitor_inner: VisitorInnerImpl<'_>,
+    async fn visit_catalog_table_with_options(sysCatalogTable: Arc<SysCatalogTable>,
+                                              mut visitorInner: VisitorInnerImpl<'_>,
                                               visitOptions: VisitOptions) -> Result<()> {
-        let opts = ReadOptions::default();
-
-        catalog_table
-            .visit(opts, &mut visitor_inner, visitOptions)
-            .await
-            .context(VisitSysCatalog)
+        sysCatalogTable.visit(ReadOptions::default(),
+                              &mut visitorInner,
+                              visitOptions).await.context(VisitSysCatalog)
     }
 
     fn load_system_catalog(&mut self) {
