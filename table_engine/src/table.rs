@@ -154,7 +154,7 @@ define_result!(Error);
 pub const DEFAULT_READ_PARALLELISM: usize = 8;
 const NO_TIMEOUT: i64 = -1;
 
-/// Schema id (24 bits)
+/// Schema id (24 bit)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SchemaId(u32);
 
@@ -242,10 +242,7 @@ impl From<TableId> for TableSeq {
     }
 }
 
-/// Table Id (64 bits)
-///
-/// Table id is constructed via schema id (24 bits) and a table sequence (40
-/// bits).
+/// Table Id (64 bits) contain :id 24 bit and a table sequence 40 bit 的
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Deserialize)]
 pub struct TableId(u64);
 
@@ -452,7 +449,7 @@ impl Default for FlushRequest {
 /// that will tie out abstraction with datafusion. However, we still use
 /// datafusion's RecordBatchStream trait.
 #[async_trait]
-pub trait Table: std::fmt::Debug {
+pub trait Table: fmt::Debug {
     /// Returns table name.
     fn name(&self) -> &str;
 
@@ -530,8 +527,7 @@ impl SchemaIdGenerator {
     }
 
     pub fn set_last_schema_id(&self, last_schema_id: SchemaId) {
-        self.last_schema_id
-            .store(last_schema_id.as_u32(), Ordering::Relaxed);
+        self.last_schema_id.store(last_schema_id.as_u32(), Ordering::Relaxed);
     }
 
     pub fn alloc_schema_id(&self) -> Option<SchemaId> {

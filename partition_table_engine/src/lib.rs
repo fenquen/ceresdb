@@ -17,7 +17,6 @@ use table_engine::{
         OpenShardRequest, OpenShardResult, OpenTableRequest, Result, TableEngine, Unexpected,
         UnexpectedNoCause,
     },
-    remote::RemoteEngineRef,
     table::TableRef,
     PARTITION_TABLE_ENGINE_TYPE,
 };

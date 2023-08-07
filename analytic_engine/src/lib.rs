@@ -26,8 +26,6 @@ use message_queue::kafka::config::Config as KafkaConfig;
 use object_store::config::StorageOptions;
 use serde::{Deserialize, Serialize};
 use size_ext::ReadableSize;
-use table_kv::config::ObkvConfig;
-use time_ext::ReadableDuration;
 use wal::{
     message_queue_impl::config::Config as MessageQueueWalConfig,
     rocks_impl::config::Config as RocksDBWalConfig,

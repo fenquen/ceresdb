@@ -2,6 +2,7 @@
 
 //! Table engine facade, provides read/write interfaces of table
 
+#![allow(non_snake_case)]
 pub mod engine;
 pub mod memory;
 pub mod partition;

@@ -69,14 +69,9 @@ impl Runtime {
     }
 
     /// Run the provided function on an executor dedicated to blocking operations.
-    pub fn spawn_blocking<F, R>(&self, func: F) -> JoinHandle<R>
-        where
-            F: FnOnce() -> R + Send + 'static,
-            R: Send + 'static,
-    {
-        JoinHandle {
-            inner: self.tokioRuntime.spawn_blocking(func),
-        }
+    pub fn spawn_blocking<F, R>(&self, func: F) -> JoinHandle<R> where F: FnOnce() -> R + Send + 'static,
+                                                                       R: Send + 'static, {
+        JoinHandle { inner: self.tokioRuntime.spawn_blocking(func) }
     }
 
     /// Run a future to complete, this is the runtime's entry point

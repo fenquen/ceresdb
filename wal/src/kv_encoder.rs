@@ -65,10 +65,10 @@ pub enum Error {
     DecodeMetaValue { source: bytes_ext::Error },
 
     #[snafu(display(
-        "Found invalid meta key type, expect:{:?}, given:{}.\nBacktrace:\n{}",
-        expect,
-        given,
-        backtrace
+    "Found invalid meta key type, expect:{:?}, given:{}.\nBacktrace:\n{}",
+    expect,
+    given,
+    backtrace
     ))]
     InvalidMetaKeyType {
         expect: MetaKeyType,
@@ -77,10 +77,10 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Found invalid namespace, expect:{:?}, given:{}.\nBacktrace:\n{}",
-        expect,
-        given,
-        backtrace
+    "Found invalid namespace, expect:{:?}, given:{}.\nBacktrace:\n{}",
+    expect,
+    given,
+    backtrace
     ))]
     InvalidNamespace {
         expect: Namespace,
@@ -89,10 +89,10 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Found invalid version, expect:{}, given:{}.\nBacktrace:\n{}",
-        expect,
-        given,
-        backtrace
+    "Found invalid version, expect:{}, given:{}.\nBacktrace:\n{}",
+    expect,
+    given,
+    backtrace
     ))]
     InvalidVersion {
         expect: u8,
@@ -112,6 +112,7 @@ pub enum Namespace {
 /// Log key in old wal design, map the `TableId` to `RegionId`
 pub type LogKey = (u64, SequenceNumber);
 
+// fenquen 似乎主要功已然被CommonLogEncoding的CommonLogKeyEncoder
 #[derive(Debug, Clone)]
 pub struct LogKeyEncoder {
     pub version: u8,
@@ -465,8 +466,9 @@ impl MaxSeqMetaEncoding {
 
 #[derive(Debug, Clone)]
 pub struct LogEncoding {
-    key_enc: LogKeyEncoder,
-    value_enc: LogValueEncoder,
+    /// fenquen 使用了CommonLogEncoding中的替换
+    logKeyEncoder: LogKeyEncoder,
+    logValueEncoder: LogValueEncoder,
     // value decoder is created dynamically from the version,
     value_enc_version: u8,
 }
@@ -474,36 +476,35 @@ pub struct LogEncoding {
 impl LogEncoding {
     pub fn newest() -> Self {
         Self {
-            key_enc: LogKeyEncoder::newest(),
-            value_enc: LogValueEncoder::newest(),
+            logKeyEncoder: LogKeyEncoder::newest(),
+            logValueEncoder: LogValueEncoder::newest(),
             value_enc_version: NEWEST_LOG_VALUE_ENCODING_VERSION,
         }
     }
 
     /// Encode [LogKey] into `buf` and caller should knows that the keys are
     /// ordered by ([RegionId], [SequenceNum]) so the caller can use this
-    /// method to generate min/max key in specific scope(global or in some
-    /// region).
+    /// method to generate min/max key in specific scope(global or in some region).
     pub fn encode_key(&self, buf: &mut BytesMut, log_key: &LogKey) -> Result<()> {
         buf.clear();
-        buf.reserve(self.key_enc.estimate_encoded_size(log_key));
-        self.key_enc.encode(buf, log_key)?;
+        buf.reserve(self.logKeyEncoder.estimate_encoded_size(log_key));
+        self.logKeyEncoder.encode(buf, log_key)?;
 
         Ok(())
     }
 
     pub fn encode_value(&self, buf: &mut BytesMut, payload: &impl Payload) -> Result<()> {
         buf.clear();
-        buf.reserve(self.value_enc.estimate_encoded_size(payload));
-        self.value_enc.encode(buf, payload)
+        buf.reserve(self.logValueEncoder.estimate_encoded_size(payload));
+        self.logValueEncoder.encode(buf, payload)
     }
 
     pub fn is_log_key(&self, mut buf: &[u8]) -> Result<bool> {
-        self.key_enc.is_valid(&mut buf)
+        self.logKeyEncoder.is_valid(&mut buf)
     }
 
     pub fn decode_key(&self, mut buf: &[u8]) -> Result<LogKey> {
-        self.key_enc.decode(&mut buf)
+        self.logKeyEncoder.decode(&mut buf)
     }
 
     pub fn decode_value<'a>(&self, buf: &'a [u8]) -> Result<&'a [u8]> {
@@ -535,10 +536,7 @@ impl LogBatchEncoder {
     pub fn encode(self, payload: &impl Payload) -> manager::Result<LogWriteBatch> {
         let mut write_batch = LogWriteBatch::new(self.location);
         let mut buf = BytesMut::new();
-        self.log_encoding
-            .encode_value(&mut buf, payload)
-            .box_err()
-            .context(Encoding)?;
+        self.log_encoding.encode_value(&mut buf, payload).box_err().context(Encoding)?;
 
         write_batch.push(LogWriteEntry {
             payload: buf.to_vec(),
@@ -550,13 +548,7 @@ impl LogBatchEncoder {
     /// Consume LogBatchEncoder and encode raw payload batch to LogWriteBatch.
     /// Note: To build payload from raw payload in `encode_batch`, raw payload
     /// need implement From trait.
-    pub fn encode_batch<'a, P: Payload, I>(
-        self,
-        raw_payload_batch: &'a [I],
-    ) -> manager::Result<LogWriteBatch>
-    where
-        &'a I: Into<P>,
-    {
+    pub fn encode_batch<'a, P: Payload, I>(self, raw_payload_batch: &'a [I]) -> manager::Result<LogWriteBatch> where &'a I: Into<P>, {
         let mut write_batch = LogWriteBatch::new(self.location);
         let mut buf = BytesMut::new();
         for raw_payload in raw_payload_batch.iter() {
@@ -577,7 +569,6 @@ impl LogBatchEncoder {
 /// Common log key used in multiple wal implementation
 #[derive(Debug, Copy, Clone, Eq, PartialEq, PartialOrd, Ord)]
 pub struct CommonLogKey {
-    /// Id of region which the table belongs to,
     /// region may be mapped to table itself, shard, or others...
     pub region_id: u64,
     pub table_id: TableId,
@@ -586,11 +577,7 @@ pub struct CommonLogKey {
 
 impl CommonLogKey {
     pub fn new(region_id: u64, table_id: TableId, sequence_num: SequenceNumber) -> Self {
-        Self {
-            region_id,
-            table_id,
-            sequence_num,
-        }
+        Self { region_id, table_id, sequence_num }
     }
 }
 
@@ -632,8 +619,7 @@ impl Encoder<CommonLogKey> for CommonLogKeyEncoder {
         buf.try_put_u8(self.namespace as u8).context(EncodeLogKey)?;
         buf.try_put_u64(log_key.region_id).context(EncodeLogKey)?;
         buf.try_put_u64(log_key.table_id).context(EncodeLogKey)?;
-        buf.try_put_u64(log_key.sequence_num)
-            .context(EncodeLogKey)?;
+        buf.try_put_u64(log_key.sequence_num).context(EncodeLogKey)?;
         buf.try_put_u8(self.version).context(EncodeLogKey)?;
 
         Ok(())
@@ -681,8 +667,8 @@ impl Decoder<CommonLogKey> for CommonLogKeyEncoder {
 
 #[derive(Debug, Clone)]
 pub struct CommonLogEncoding {
-    key_enc: CommonLogKeyEncoder,
-    value_enc: LogValueEncoder,
+    commonLogKeyEncoder: CommonLogKeyEncoder,
+    logValEncoder: LogValueEncoder,
     // value decoder is created dynamically from the version,
     value_enc_version: u8,
 }
@@ -690,36 +676,34 @@ pub struct CommonLogEncoding {
 impl CommonLogEncoding {
     pub fn newest() -> Self {
         Self {
-            key_enc: CommonLogKeyEncoder::newest(),
-            value_enc: LogValueEncoder::newest(),
+            commonLogKeyEncoder: CommonLogKeyEncoder::newest(),
+            logValEncoder: LogValueEncoder::newest(),
             value_enc_version: NEWEST_LOG_VALUE_ENCODING_VERSION,
         }
     }
 
     /// Encode [LogKey] into `buf` and caller should knows that the keys are
     /// ordered by ([RegionId], [SequenceNum]) so the caller can use this
-    /// method to generate min/max key in specific scope(global or in some
-    /// region).
-    pub fn encode_key(&self, buf: &mut BytesMut, log_key: &CommonLogKey) -> Result<()> {
+    /// method to generate min/max key in specific scope(global or in some region).
+    pub fn encode_key(&self, buf: &mut BytesMut, commonLogKey: &CommonLogKey) -> Result<()> {
         buf.clear();
-        buf.reserve(self.key_enc.estimate_encoded_size(log_key));
-        self.key_enc.encode(buf, log_key)?;
-
+        buf.reserve(self.commonLogKeyEncoder.estimate_encoded_size(commonLogKey));
+        self.commonLogKeyEncoder.encode(buf, commonLogKey)?;
         Ok(())
     }
 
     pub fn encode_value(&self, buf: &mut BytesMut, payload: &impl Payload) -> Result<()> {
         buf.clear();
-        buf.reserve(self.value_enc.estimate_encoded_size(payload));
-        self.value_enc.encode(buf, payload)
+        buf.reserve(self.logValEncoder.estimate_encoded_size(payload));
+        self.logValEncoder.encode(buf, payload)
     }
 
     pub fn is_log_key(&self, mut buf: &[u8]) -> Result<bool> {
-        self.key_enc.is_valid(&mut buf)
+        self.commonLogKeyEncoder.is_valid(&mut buf)
     }
 
     pub fn decode_key(&self, mut buf: &[u8]) -> Result<CommonLogKey> {
-        self.key_enc.decode(&mut buf)
+        self.commonLogKeyEncoder.decode(&mut buf)
     }
 
     pub fn decode_value<'a>(&self, buf: &'a [u8]) -> Result<&'a [u8]> {

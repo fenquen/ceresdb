@@ -28,7 +28,7 @@ use system_catalog::sys_catalog_table::{
     VisitOptionsBuilder, VisitorCatalogNotFound, VisitorInner, VisitorSchemaNotFound,
 };
 use table_engine::{
-    engine::{TableEngineRef, TableState},
+    engine::TableState,
     table::{
         ReadOptions, SchemaId, SchemaIdGenerator, TableId, TableInfo, TableRef, TableSeq,
         TableSeqGenerator,
@@ -79,7 +79,7 @@ define_result!(Error);
 pub struct CatalogManagerTableBased {
     /// Sys catalog table
     sysCatalogTable: Arc<SysCatalogTable>,
-    catalogs: HashMap<String, Arc<CatalogTableBased>>,
+    catalogName_catalog: HashMap<String, Arc<CatalogTableBased>>,
     /// Global schema id generator, Each schema has a unique schema id.
     schema_id_generator: Arc<SchemaIdGenerator>,
 }
@@ -94,12 +94,12 @@ impl CatalogManager for CatalogManagerTableBased {
     }
 
     fn catalog_by_name(&self, name: NameRef) -> manager::Result<Option<CatalogRef>> {
-        let catalog = self.catalogs.get(name).cloned().map(|v| v as _);
+        let catalog = self.catalogName_catalog.get(name).cloned().map(|v| v as _);
         Ok(catalog)
     }
 
     fn all_catalogs(&self) -> manager::Result<Vec<CatalogRef>> {
-        Ok(self.catalogs.values().map(|v| v.clone() as _).collect())
+        Ok(self.catalogName_catalog.values().map(|v| v.clone() as _).collect())
     }
 }
 
@@ -109,9 +109,9 @@ impl CatalogManagerTableBased {
         // create or open system.public.sys_catalog, will also create a space (catalog + schema) for system catalog.
         let sysCatalogTable = SysCatalogTable::new(tableEngine).await.context(BuildSysCatalog)?;
 
-        let mut manager = Self {
+        let mut manager = CatalogManagerTableBased {
             sysCatalogTable: Arc::new(sysCatalogTable),
-            catalogs: HashMap::new(),
+            catalogName_catalog: HashMap::new(),
             schema_id_generator: Arc::new(SchemaIdGenerator::default()),
         };
 
@@ -120,22 +120,22 @@ impl CatalogManagerTableBased {
         Ok(manager)
     }
 
-    pub async fn fetch_table_infos(&mut self) -> Result<Vec<TableInfo>> {
-        let catalog_table = self.sysCatalogTable.clone();
+    pub async fn getTableInfos(&mut self) -> Result<Vec<TableInfo>> {
+        let sysCatalogTable = self.sysCatalogTable.clone();
 
         let mut tableInfos = Vec::default();
 
-        let vistorInnerImpl = VisitorInnerImpl {
-            catalog_table: catalog_table.clone(),
-            catalogs: &mut self.catalogs,
+        let visitorInnerImpl = VisitorInnerImpl {
+            sysCatalogTable: sysCatalogTable.clone(),
+            catalogName_catalog: &mut self.catalogName_catalog,
             schema_id_generator: self.schema_id_generator.clone(),
             table_infos: &mut tableInfos,
         };
 
         let visitOptions = VisitOptionsBuilder::default().visit_table().build();
 
-        Self::visit_catalog_table_with_options(catalog_table,
-                                               vistorInnerImpl,
+        Self::visit_catalog_table_with_options(sysCatalogTable,
+                                               visitorInnerImpl,
                                                visitOptions).await?;
 
         Ok(tableInfos)
@@ -150,8 +150,8 @@ impl CatalogManagerTableBased {
         let catalog_table = self.sysCatalogTable.clone();
 
         let visitor_inner = VisitorInnerImpl {
-            catalog_table: self.sysCatalogTable.clone(),
-            catalogs: &mut self.catalogs,
+            sysCatalogTable: self.sysCatalogTable.clone(),
+            catalogName_catalog: &mut self.catalogName_catalog,
             schema_id_generator: self.schema_id_generator.clone(),
             table_infos: &mut Vec::default(),
         };
@@ -169,15 +169,13 @@ impl CatalogManagerTableBased {
         Ok(())
     }
 
-    async fn visit_catalog_table_with_options(
-        catalog_table: Arc<SysCatalogTable>,
-        mut visitor_inner: VisitorInnerImpl<'_>,
-        visit_opts: VisitOptions,
-    ) -> Result<()> {
+    async fn visit_catalog_table_with_options(catalog_table: Arc<SysCatalogTable>,
+                                              mut visitor_inner: VisitorInnerImpl<'_>,
+                                              visitOptions: VisitOptions) -> Result<()> {
         let opts = ReadOptions::default();
 
         catalog_table
-            .visit(opts, &mut visitor_inner, visit_opts)
+            .visit(opts, &mut visitor_inner, visitOptions)
             .await
             .context(VisitSysCatalog)
     }
@@ -221,16 +219,16 @@ impl CatalogManagerTableBased {
             mutex: Mutex::new(()),
         });
 
-        self.catalogs.insert(catalog.name().to_string(), catalog);
+        self.catalogName_catalog.insert(catalog.name().to_string(), catalog);
     }
 
     async fn maybe_create_default_catalog(&mut self) -> Result<()> {
         // Try to get default catalog, create it if not exists.
-        let catalog = match self.catalogs.get(consts::DEFAULT_CATALOG) {
+        let catalog = match self.catalogName_catalog.get(consts::DEFAULT_CATALOG) {
             Some(v) => v.clone(),
             None => {
                 // Only system catalog should exists.
-                assert_eq!(1, self.catalogs.len());
+                assert_eq!(1, self.catalogName_catalog.len());
 
                 // Default catalog is not exists, create and store it.
                 self.create_catalog(CreateCatalogRequest {
@@ -282,7 +280,7 @@ impl CatalogManagerTableBased {
             mutex: Mutex::new(()),
         });
 
-        self.catalogs.insert(catalog_name, catalog.clone());
+        self.catalogName_catalog.insert(catalog_name, catalog.clone());
 
         Ok(catalog)
     }
@@ -316,12 +314,10 @@ impl CatalogManagerTableBased {
     }
 }
 
-type CatalogMap = HashMap<String, Arc<CatalogTableBased>>;
-
 /// Sys catalog visitor implementation, used to load catalog info
 struct VisitorInnerImpl<'a> {
-    catalog_table: Arc<SysCatalogTable>,
-    catalogs: &'a mut CatalogMap,
+    sysCatalogTable: Arc<SysCatalogTable>,
+    catalogName_catalog: &'a mut HashMap<String, Arc<CatalogTableBased>>,
     schema_id_generator: Arc<SchemaIdGenerator>,
     table_infos: &'a mut Vec<TableInfo>,
 }
@@ -331,7 +327,7 @@ impl<'a> VisitorInner for VisitorInnerImpl<'a> {
     fn visit_catalog(&mut self, request: CreateCatalogRequest) -> sys_catalog_table::Result<()> {
         debug!("Visitor visit catalog, request:{:?}", request);
         let schema_id_generator = self.schema_id_generator.clone();
-        let catalog_table = self.catalog_table.clone();
+        let catalog_table = self.sysCatalogTable.clone();
 
         let catalog = CatalogTableBased {
             name: request.catalog_name.to_string(),
@@ -342,8 +338,7 @@ impl<'a> VisitorInner for VisitorInnerImpl<'a> {
         };
 
         // Register catalog.
-        self.catalogs
-            .insert(request.catalog_name, Arc::new(catalog));
+        self.catalogName_catalog.insert(request.catalog_name, Arc::new(catalog));
 
         Ok(())
     }
@@ -352,18 +347,15 @@ impl<'a> VisitorInner for VisitorInnerImpl<'a> {
         debug!("Visitor visit schema, request:{:?}", request);
 
         let catalog =
-            self.catalogs
-                .get_mut(&request.catalog_name)
-                .context(VisitorCatalogNotFound {
-                    catalog: &request.catalog_name,
-                })?;
+            self.catalogName_catalog.get_mut(&request.catalog_name)
+                .context(VisitorCatalogNotFound { catalog: &request.catalog_name })?;
 
         let schema_id = request.schema_id;
         let schema = Arc::new(SchemaTableBased::new(
             &request.catalog_name,
             &request.schema_name,
             schema_id,
-            self.catalog_table.clone(),
+            self.sysCatalogTable.clone(),
         ));
 
         // If schema exists, we overwrite it.
@@ -381,7 +373,7 @@ impl<'a> VisitorInner for VisitorInnerImpl<'a> {
         debug!("Visitor visit tables, table_info:{:?}", table_info);
 
         let catalog =
-            self.catalogs
+            self.catalogName_catalog
                 .get_mut(&table_info.catalog_name)
                 .context(VisitorCatalogNotFound {
                     catalog: &table_info.catalog_name,
@@ -417,13 +409,9 @@ impl<'a> VisitorInner for VisitorInnerImpl<'a> {
     }
 }
 
-type SchemaMap = HashMap<String, Arc<SchemaTableBased>>;
-
 /// Table based catalog
 struct CatalogTableBased {
-    /// Catalog name
     name: String,
-    /// Schemas of catalog
     // Now the Schema trait does not support create schema, so we use impl type here
     schemas: RwLock<HashMap<String, Arc<SchemaTableBased>>>,
     /// Global schema id generator, Each schema has a unique schema id.

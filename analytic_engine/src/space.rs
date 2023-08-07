@@ -18,6 +18,7 @@ use crate::{
     instance::mem_collector::MemUsageCollector,
     table::data::{TableDataRef, TableDataSet},
 };
+use crate::table::data::TableData;
 
 pub type SpaceId = u32;
 
@@ -27,9 +28,9 @@ pub type SpaceId = u32;
 #[derive(Clone)]
 pub struct SpaceAndTable {
     /// The space of the table
-    space: SpaceRef,
+    space: Arc<Space>,
     /// Data of the table
-    table_data: TableDataRef,
+    table_data: Arc<TableData>,
 }
 
 impl SpaceAndTable {
@@ -73,9 +74,7 @@ impl fmt::Debug for SpaceAndTable {
 
 #[derive(Debug)]
 pub struct SpaceContext {
-    /// Catalog name
     pub catalog_name: String,
-    /// Schema name
     pub schema_name: String,
 }
 
@@ -202,32 +201,31 @@ impl fmt::Debug for Space {
 /// Spaces states
 #[derive(Default)]
 pub(crate) struct Spaces {
-    /// Id to space
-    id_to_space: HashMap<SpaceId, SpaceRef>,
+    spaceId_space: HashMap<SpaceId, SpaceRef>,
 }
 
 impl Spaces {
     /// Insert space by name, and also insert id to space mapping
     pub fn insert(&mut self, space: SpaceRef) {
         let space_id = space.id;
-        self.id_to_space.insert(space_id, space);
+        self.spaceId_space.insert(space_id, space);
     }
 
     pub fn get_by_id(&self, id: SpaceId) -> Option<&SpaceRef> {
-        self.id_to_space.get(&id)
+        self.spaceId_space.get(&id)
     }
 
     /// List all tables of all spaces
     pub fn list_all_tables(&self, tables: &mut Vec<TableDataRef>) {
-        let total_tables = self.id_to_space.values().map(|s| s.table_num()).sum();
+        let total_tables = self.spaceId_space.values().map(|s| s.table_num()).sum();
         tables.reserve(total_tables);
-        for space in self.id_to_space.values() {
+        for space in self.spaceId_space.values() {
             space.list_all_tables(tables);
         }
     }
 
     pub fn list_all_spaces(&self) -> Vec<SpaceRef> {
-        self.id_to_space.values().cloned().collect()
+        self.spaceId_space.values().cloned().collect()
     }
 }
 

@@ -108,7 +108,7 @@ impl RegionContext {
         log_batch: &LogWriteBatch,
         table_write_ctx: &TableWriteContext<M>,
     ) -> Result<SequenceNumber> {
-        let table_id = log_batch.location.table_id;
+        let table_id = log_batch.walLocation.table_id;
 
         {
             let inner = self.inner.read().await;
@@ -501,7 +501,7 @@ impl RegionContextBuilder {
         debug!("Apply region meta delta, delta:{:?}", delta);
 
         // It is likely that snapshot not exist(e.g. no table has ever flushed).
-        let mut table_meta = self
+        let table_meta = self
             .table_metas
             .entry(delta.table_id)
             .or_insert_with(TableMetaInner::default);
@@ -608,13 +608,13 @@ impl TableWriter {
             }
         );
 
-        let location = &log_batch.location;
-        let log_write_entries = &log_batch.entries;
+        let location = &log_batch.walLocation;
+        let log_write_entries = &log_batch.logWriteEntryVec;
 
         // Create messages and prepare for write.
         let mut next_sequence_num = table_meta.prepare_for_write().await;
 
-        let mut messages = Vec::with_capacity(log_batch.entries.len());
+        let mut messages = Vec::with_capacity(log_batch.logWriteEntryVec.len());
         let mut key_buf = BytesMut::new();
         for entry in log_write_entries {
             let log_key = CommonLogKey::new(region_id, location.table_id, next_sequence_num);
@@ -657,7 +657,7 @@ impl TableWriter {
 
         debug!(
             "Produce to topic success, ctx:{:?}, region id:{}, location:{:?}, topic:{}",
-            _ctx, region_id, log_batch.location, table_write_ctx.log_topic,
+            _ctx, region_id, log_batch.walLocation, table_write_ctx.log_topic,
         );
 
         // Update after write.

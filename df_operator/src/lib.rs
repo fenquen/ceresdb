@@ -2,6 +2,7 @@
 
 //! UDF support.
 
+#![allow(non_snake_case)]
 pub mod aggregate;
 pub mod functions;
 pub mod registry;

@@ -241,7 +241,7 @@ impl ShardOpener {
         // Recover tables' metadata.
         self.recover_table_metas().await?;
 
-        // Recover table' data.
+        // Recover table' data. 上边的函数调用了之后状态 recoverTableMeta 进入 recoverTableData
         self.recover_table_datas().await?;
 
         // Retrieve the table results and return.
@@ -281,7 +281,7 @@ impl ShardOpener {
 
                     match result {
                         Ok(Some((table_data, space))) => {
-                            *state = TableOpenStage::RecoverTableData(RecoverTableDataContext {
+                            *state = TableOpenStage::RecoverTableData(RecoverTableDataContext { // recoverTableMeta后就要进入了recoverTableData
                                 table_data,
                                 space,
                             })
@@ -301,10 +301,8 @@ impl ShardOpener {
             }
         }
 
-        info!(
-            "ShardOpener recover table metas finish, shard_id:{}",
-            self.shard_id
-        );
+        info!("shardOpener recover table metas finish, shard_id:{}",self.shard_id);
+
         Ok(())
     }
 

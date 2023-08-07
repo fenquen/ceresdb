@@ -401,23 +401,23 @@ impl<M: MessageQueue> NamespaceInner<M> {
             "Write table logs in namespace, namespace:{}, ctx:{:?}, location:{:?}, batch size:{}",
             self.namespace,
             ctx,
-            log_batch.location,
-            log_batch.entries.len()
+            log_batch.walLocation,
+            log_batch.logWriteEntryVec.len()
         );
 
         let region = self
-            .get_or_open_region(log_batch.location.region_id)
+            .get_or_open_region(log_batch.walLocation.region_id)
             .await
             .context(Write {
                 namespace: self.namespace.clone(),
-                location: log_batch.location,
-                batch_size: log_batch.entries.len(),
+                location: log_batch.walLocation,
+                batch_size: log_batch.logWriteEntryVec.len(),
             })?;
 
         region.write(ctx, log_batch).await.context(Write {
             namespace: self.namespace.clone(),
-            location: log_batch.location,
-            batch_size: log_batch.entries.len(),
+            location: log_batch.walLocation,
+            batch_size: log_batch.logWriteEntryVec.len(),
         })
     }
 

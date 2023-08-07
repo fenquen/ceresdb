@@ -125,8 +125,8 @@ impl<'a> Alterer<'a> {
         let edit_req = {
             let meta_update = MetaUpdate::AlterSchema(manifest_update);
             MetaEditRequest {
-                shard_info: self.table_data.shard_info,
-                meta_edit: MetaEdit::Update(meta_update),
+                tableShardInfo: self.table_data.shard_info,
+                metaEdit: MetaEdit::Update(meta_update),
             }
         };
         self.instance
@@ -251,8 +251,8 @@ impl<'a> Alterer<'a> {
         let edit_req = {
             let meta_update = MetaUpdate::AlterOptions(manifest_update);
             MetaEditRequest {
-                shard_info: self.table_data.shard_info,
-                meta_edit: MetaEdit::Update(meta_update),
+                tableShardInfo: self.table_data.shard_info,
+                metaEdit: MetaEdit::Update(meta_update),
             }
         };
         self.instance

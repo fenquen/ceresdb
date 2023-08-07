@@ -30,11 +30,7 @@ pub enum Error {
     #[snafu(display("Failed to build projected schema, err:{}", source))]
     BuildProjectedSchema { source: crate::schema::Error },
 
-    #[snafu(display(
-        "Missing not null column for read, name:{}.\nBacktrace:\n{}",
-        name,
-        backtrace
-    ))]
+    #[snafu(display("Missing not null column for read, name:{}.\nBacktrace:\n{}", name, backtrace))]
     MissingReadColumn { name: String, backtrace: Backtrace },
 
     #[snafu(display("Empty table schema.\nBacktrace:\n{}", backtrace))]

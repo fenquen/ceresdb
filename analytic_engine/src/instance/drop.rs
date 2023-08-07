@@ -69,8 +69,8 @@ impl Dropper {
                 table_name: table_data.name.clone(),
             });
             MetaEditRequest {
-                shard_info: table_data.shard_info,
-                meta_edit: MetaEdit::Update(meta_update),
+                tableShardInfo: table_data.shard_info,
+                metaEdit: MetaEdit::Update(meta_update),
             }
         };
         self.space_store

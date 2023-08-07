@@ -61,12 +61,10 @@ struct WriteRequests {
 }
 
 impl WriteRequests {
-    pub fn new(
-        instance: InstanceRef,
-        space: SpaceRef,
-        table_data: TableDataRef,
-        pending_writes: Arc<Mutex<PendingWriteQueue>>,
-    ) -> Self {
+    pub fn new(instance: InstanceRef,
+               space: SpaceRef,
+               table_data: TableDataRef,
+               pending_writes: Arc<Mutex<PendingWriteQueue>>) -> Self {
         Self {
             space,
             instance,
@@ -76,7 +74,6 @@ impl WriteRequests {
     }
 }
 
-/// Table trait implementation
 pub struct TableImpl {
     space: SpaceRef,
     instance: Arc<TableEngineInstance>,
@@ -88,7 +85,7 @@ pub struct TableImpl {
 }
 
 impl TableImpl {
-    pub fn new(instance: InstanceRef, space_table: SpaceAndTable) -> Self {
+    pub fn new(instance: Arc<TableEngineInstance>, space_table: SpaceAndTable) -> Self {
         let pending_writes = Mutex::new(PendingWriteQueue::new(instance.max_rows_in_write_queue));
         let table_data = space_table.table_data().clone();
         let space = space_table.space().clone();

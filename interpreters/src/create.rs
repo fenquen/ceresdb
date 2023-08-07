@@ -7,12 +7,12 @@ use async_trait::async_trait;
 use macros::define_result;
 use query_frontend::plan::CreateTablePlan;
 use snafu::{ResultExt, Snafu};
-use table_engine::engine::{TableEngine, TableEngineRef};
+use table_engine::engine::TableEngine;
 
 use crate::{
     context::InterpreterContext,
     interpreter::{Create, Interpreter, InterpreterPtr, Output, Result as InterpreterResult},
-    table_manipulator::{self, TableManipulatorRef},
+    table_manipulator::{self},
 };
 use crate::table_manipulator::TableManipulator;
 

@@ -24,3 +24,616 @@ objectstore 默认使用 ObjectStoreOptions::Local
        使用的是本地文件系统 默认的总的目录是在 用户目录/ceresdb 其中有子文件夹 data(对应了变量 STORE_DIR_NAME)
 
 sysCatalogTable 对应的表名是 system.public.sys_catalog
+
+
+
+
+
+
+
+
+
+
+/Users/a/github/ceresdb/target/debug/ceresdb-server
+CeresDB server tries starting with config:Config { node: NodeInfo { addr: "127.0.0.1", zone: "", idc: "", binary_version: "" }, server: ServerConfig { bind_addr: "127.0.0.1", mysql_port: 3307, http_port: 5440, grpc_port: 8831, timeout: None, http_max_body_size: ReadableSize(67108864), grpc_server_cq_count: 20, resp_compress_min_length: ReadableSize(4194304), forward: Config { keep_alive_interval: ReadableDuration(600s), keep_alive_timeout: ReadableDuration(3s), keep_alive_while_idle: true, connect_timeout: ReadableDuration(3s), forward_timeout: None }, auto_create_table: true, default_schema_config: SchemaConfig { default_engine_type: "Analytic", default_timestamp_column_name: "timestamp" }, route_cache: RouteCacheConfig { enable: false, ttl: ReadableDuration(5s), tti: ReadableDuration(5s), capacity: 10000 }, hotspot: Config { query_cap: Some(10000), write_cap: Some(10000), dump_interval: 5s, auto_dump_interval: true, auto_dump_len: 10 }, remote_client: Config { connect_timeout: ReadableDuration(3s), channel_pool_max_size_per_partition: 16, channel_pool_partition_num: 16, channel_keep_alive_while_idle: true, channel_keep_alive_timeout: ReadableDuration(3s), channel_keep_alive_interval: ReadableDuration(600s), route_cache_max_size_per_partition: 16, route_cache_partition_num: 16, compression: CompressOptions { compress_min_length: 81920, method: Zstd } }, enable_query_dedup: false }, runtime: RuntimeConfig { read_thread_num: 8, write_thread_num: 8, meta_thread_num: 2, compact_thread_num: 4, default_thread_num: 8, io_thread_num: 4 }, logger: Config { level: "info", enable_async: true, async_channel_len: 102400 }, tracing: Config { prefix: "tracing", dir: "/tmp/ceresdb", level: "info", console: None }, analytic: AnalyticEngineConfig { storage: StorageOptions { mem_cache_capacity: ReadableSize(536870912), mem_cache_partition_bits: 6, disk_cache_capacity: ReadableSize(0), disk_cache_page_size: ReadableSize(2097152), disk_cache_partition_bits: 4, disk_cache_dir: "/Users/a/ceresdb_data", objectStoreOptions: Local(LocalOptions { data_dir: "/Users/a/ceresdb_data" }) }, replay_batch_size: 500, max_replay_tables_per_batch: 64, table_opts: TableOptions { segment_duration: None, update_mode: Overwrite, storage_format_hint: Auto, enable_ttl: true, ttl: ReadableDuration(604800s), arena_block_size: 2097152, write_buffer_size: 33554432, compaction_strategy: Default, num_rows_per_row_group: 8192, compression: Zstd }, compaction: SchedulerConfig { schedule_channel_len: 16, schedule_interval: ReadableDuration(30s), max_ongoing_tasks: 8, max_unflushed_duration: ReadableDuration(18000s), memory_limit: ReadableSize(4294967296), max_pending_compaction_tasks: 1024 }, sst_meta_cache_cap: Some(1000), sst_data_cache_cap: Some(1000), manifest: Options { snapshot_every_n_updates: 100, scan_timeout: ReadableDuration(5s), scan_batch_size: 100, store_timeout: ReadableDuration(5s) }, max_rows_in_write_queue: 0, space_write_buffer_size: 0, db_write_buffer_size: 0, preflush_write_buffer_size_ratio: 0.75, scan_batch_size: None, scan_max_record_batches_in_flight: 1024, sst_background_read_parallelism: 8, num_streams_to_prefetch: 2, write_sst_max_buffer_size: ReadableSize(10485760), max_retry_flush_limit: 0, max_bytes_per_write_batch: None, walStorageConfig: RocksDB(RocksDBConfig { data_dir: "/Users/a/ceresdb_wal_rocksdb", data_namespace: Config { max_subcompactions: 1, max_background_jobs: 2, enable_statistics: false, write_buffer_size: ReadableSize(67108864), max_write_buffer_number: 2, level_zero_file_num_compaction_trigger: 4, level_zero_slowdown_writes_trigger: 20, level_zero_stop_writes_trigger: 36, fifo_compaction_max_table_files_size: ReadableSize(0) }, meta_namespace: Config { max_subcompactions: 1, max_background_jobs: 2, enable_statistics: false, write_buffer_size: ReadableSize(67108864), max_write_buffer_number: 2, level_zero_file_num_compaction_trigger: 4, level_zero_slowdown_writes_trigger: 20, level_zero_stop_writes_trigger: 36, fifo_compaction_max_table_files_size: ReadableSize(0) } }), recover_mode: TableBased, remote_engine_client: Config { connect_timeout: ReadableDuration(3s), channel_pool_max_size_per_partition: 16, channel_pool_partition_num: 16, channel_keep_alive_while_idle: true, channel_keep_alive_timeout: ReadableDuration(3s), channel_keep_alive_interval: ReadableDuration(600s), route_cache_max_size_per_partition: 16, route_cache_partition_num: 16, compression: CompressOptions { compress_min_length: 81920, method: Zstd } } }, query_engine: Config { read_parallelism: 8 }, cluster_deployment: None, limiter: LimiterConfig { write_block_list: [], read_block_list: [], rules: [] } }
+2023-08-06 09:51:46.325 INFO [src/bin/ceresdb-server.rs:97] version:
+Version: 1.2.5-alpha
+Git commit: 1010c4b
+Git branch: fenquen_master20230801
+Opt level: 0
+Rustc version: 1.72.0-nightly
+Target: aarch64-apple-darwin
+Build date: 2023-08-06T01:31:02.035308000Z
+2023-08-06 09:51:46.329 INFO [src/setup.rs:80] Server starts up, config:Config {
+    node: NodeInfo {
+        addr: "127.0.0.1",
+        zone: "",
+        idc: "",
+        binary_version: "",
+    },
+    server: ServerConfig {
+        bind_addr: "127.0.0.1",
+        mysql_port: 3307,
+        http_port: 5440,
+        grpc_port: 8831,
+        timeout: None,
+        http_max_body_size: ReadableSize(
+            67108864,
+        ),
+        grpc_server_cq_count: 20,
+        resp_compress_min_length: ReadableSize(
+            4194304,
+        ),
+        forward: Config {
+            keep_alive_interval: ReadableDuration(
+                600s,
+            ),
+            keep_alive_timeout: ReadableDuration(
+                3s,
+            ),
+            keep_alive_while_idle: true,
+            connect_timeout: ReadableDuration(
+                3s,
+            ),
+            forward_timeout: None,
+        },
+        auto_create_table: true,
+        default_schema_config: SchemaConfig {
+            default_engine_type: "Analytic",
+            default_timestamp_column_name: "timestamp",
+        },
+        route_cache: RouteCacheConfig {
+            enable: false,
+            ttl: ReadableDuration(
+                5s,
+            ),
+            tti: ReadableDuration(
+                5s,
+            ),
+            capacity: 10000,
+        },
+        hotspot: Config {
+            query_cap: Some(
+                10000,
+            ),
+            write_cap: Some(
+                10000,
+            ),
+            dump_interval: 5s,
+            auto_dump_interval: true,
+            auto_dump_len: 10,
+        },
+        remote_client: Config {
+            connect_timeout: ReadableDuration(
+                3s,
+            ),
+            channel_pool_max_size_per_partition: 16,
+            channel_pool_partition_num: 16,
+            channel_keep_alive_while_idle: true,
+            channel_keep_alive_timeout: ReadableDuration(
+                3s,
+            ),
+            channel_keep_alive_interval: ReadableDuration(
+                600s,
+            ),
+            route_cache_max_size_per_partition: 16,
+            route_cache_partition_num: 16,
+            compression: CompressOptions {
+                compress_min_length: 81920,
+                method: Zstd,
+            },
+        },
+        enable_query_dedup: false,
+    },
+    runtime: RuntimeConfig {
+        read_thread_num: 8,
+        write_thread_num: 8,
+        meta_thread_num: 2,
+        compact_thread_num: 4,
+        default_thread_num: 8,
+        io_thread_num: 4,
+    },
+    logger: Config {
+        level: "info",
+        enable_async: true,
+        async_channel_len: 102400,
+    },
+    tracing: Config {
+        prefix: "tracing",
+        dir: "/tmp/ceresdb",
+        level: "info",
+        console: None,
+    },
+    analytic: AnalyticEngineConfig {
+        storage: StorageOptions {
+            mem_cache_capacity: ReadableSize(
+                536870912,
+            ),
+            mem_cache_partition_bits: 6,
+            disk_cache_capacity: ReadableSize(
+                0,
+            ),
+            disk_cache_page_size: ReadableSize(
+                2097152,
+            ),
+            disk_cache_partition_bits: 4,
+            disk_cache_dir: "/Users/a/ceresdb_data",
+            objectStoreOptions: Local(
+                LocalOptions {
+                    data_dir: "/Users/a/ceresdb_data",
+                },
+            ),
+        },
+        replay_batch_size: 500,
+        max_replay_tables_per_batch: 64,
+        table_opts: TableOptions {
+            segment_duration: None,
+            update_mode: Overwrite,
+            storage_format_hint: Auto,
+            enable_ttl: true,
+            ttl: ReadableDuration(
+                604800s,
+            ),
+            arena_block_size: 2097152,
+            write_buffer_size: 33554432,
+            compaction_strategy: Default,
+            num_rows_per_row_group: 8192,
+            compression: Zstd,
+        },
+        compaction: SchedulerConfig {
+            schedule_channel_len: 16,
+            schedule_interval: ReadableDuration(
+                30s,
+            ),
+            max_ongoing_tasks: 8,
+            max_unflushed_duration: ReadableDuration(
+                18000s,
+            ),
+            memory_limit: ReadableSize(
+                4294967296,
+            ),
+            max_pending_compaction_tasks: 1024,
+        },
+        sst_meta_cache_cap: Some(
+            1000,
+        ),
+        sst_data_cache_cap: Some(
+            1000,
+        ),
+        manifest: Options {
+            snapshot_every_n_updates: 100,
+            scan_timeout: ReadableDuration(
+                5s,
+            ),
+            scan_batch_size: 100,
+            store_timeout: ReadableDuration(
+                5s,
+            ),
+        },
+        max_rows_in_write_queue: 0,
+        space_write_buffer_size: 0,
+        db_write_buffer_size: 0,
+        preflush_write_buffer_size_ratio: 0.75,
+        scan_batch_size: None,
+        scan_max_record_batches_in_flight: 1024,
+        sst_background_read_parallelism: 8,
+        num_streams_to_prefetch: 2,
+        write_sst_max_buffer_size: ReadableSize(
+            10485760,
+        ),
+        max_retry_flush_limit: 0,
+        max_bytes_per_write_batch: None,
+        walStorageConfig: RocksDB(
+            RocksDBConfig {
+                data_dir: "/Users/a/ceresdb_wal_rocksdb",
+                data_namespace: Config {
+                    max_subcompactions: 1,
+                    max_background_jobs: 2,
+                    enable_statistics: false,
+                    write_buffer_size: ReadableSize(
+                        67108864,
+                    ),
+                    max_write_buffer_number: 2,
+                    level_zero_file_num_compaction_trigger: 4,
+                    level_zero_slowdown_writes_trigger: 20,
+                    level_zero_stop_writes_trigger: 36,
+                    fifo_compaction_max_table_files_size: ReadableSize(
+                        0,
+                    ),
+                },
+                meta_namespace: Config {
+                    max_subcompactions: 1,
+                    max_background_jobs: 2,
+                    enable_statistics: false,
+                    write_buffer_size: ReadableSize(
+                        67108864,
+                    ),
+                    max_write_buffer_number: 2,
+                    level_zero_file_num_compaction_trigger: 4,
+                    level_zero_slowdown_writes_trigger: 20,
+                    level_zero_stop_writes_trigger: 36,
+                    fifo_compaction_max_table_files_size: ReadableSize(
+                        0,
+                    ),
+                },
+            },
+        ),
+        recover_mode: TableBased,
+        remote_engine_client: Config {
+            connect_timeout: ReadableDuration(
+                3s,
+            ),
+            channel_pool_max_size_per_partition: 16,
+            channel_pool_partition_num: 16,
+            channel_keep_alive_while_idle: true,
+            channel_keep_alive_timeout: ReadableDuration(
+                3s,
+            ),
+            channel_keep_alive_interval: ReadableDuration(
+                600s,
+            ),
+            route_cache_max_size_per_partition: 16,
+            route_cache_partition_num: 16,
+            compression: CompressOptions {
+                compress_min_length: 81920,
+                method: Zstd,
+            },
+        },
+    },
+    query_engine: Config {
+        read_parallelism: 8,
+    },
+    cluster_deployment: None,
+    limiter: LimiterConfig {
+        write_block_list: [],
+        read_block_list: [],
+        rules: [],
+    },
+}
+2023-08-06 09:51:46.385 INFO [wal/src/rocks_impl/manager.rs:270] RocksImpl build table units, wal_path:/Users/a/ceresdb_wal_rocksdb/wal, table_seqs:{}
+2023-08-06 09:51:46.432 INFO [wal/src/rocks_impl/manager.rs:270] RocksImpl build table units, wal_path:/Users/a/ceresdb_wal_rocksdb/manifest, table_seqs:{}
+2023-08-06 09:51:46.434 INFO [analytic_engine/src/sst/file.rs:553] File purger start
+2023-08-06 09:51:46.435 INFO [analytic_engine/src/engine.rs:119] Table engine impl open table, space_id:1, request:OpenTableRequest { catalog_name: "system", schema_name: "public", schema_id: SchemaId(1), table_name: "sys_catalog", table_id: TableId(1099511627777), engineType: "Analytic", shard_id: 0 }
+2023-08-06 09:51:46.435 INFO [analytic_engine/src/instance/open.rs:265] shardOpener recover table metas begin, shard_id:0
+2023-08-06 09:51:46.435 INFO [analytic_engine/src/instance/open.rs:390] instance recover table meta begin, table_id:1099511627777, table_name:sys_catalog, shard_id:0
+2023-08-06 09:51:46.435 INFO [analytic_engine/src/manifest/details.rs:464] Manifest recover begin, request:LoadRequest { space_id: 1, table_id: TableId(1099511627777), shard_id: 0 }
+2023-08-06 09:51:46.437 WARN [analytic_engine/src/manifest/details.rs:584] Current snapshot file doesn't exist, path:/Users/a/ceresdb_data/store/manifest/snapshot/1/1099511627777/current, err:No such file or directory (os error 2)
+2023-08-06 09:51:46.437 INFO [analytic_engine/src/manifest/details.rs:259] manifest recover nothing, table_id:1099511627777, space_id:1
+2023-08-06 09:51:46.437 INFO [analytic_engine/src/manifest/details.rs:500] Manifest recover finish, request:LoadRequest { space_id: 1, table_id: TableId(1099511627777), shard_id: 0 }
+2023-08-06 09:51:46.437 INFO [analytic_engine/src/instance/open.rs:403] instance recover table meta end, table_id:1099511627777, table_name:sys_catalog, shard_id:0
+2023-08-06 09:51:46.437 INFO [analytic_engine/src/instance/open.rs:304] shardOpener recover table metas finish, shard_id:0
+2023-08-06 09:52:28.913 INFO [analytic_engine/src/instance/open.rs:311] shardOpener recover table datas begin, shard_id:0
+2023-08-06 09:52:28.913 INFO [analytic_engine/src/instance/open.rs:333] shardOpener recover empty table datas finish, shard_id:0
+2023-08-06 09:52:28.913 INFO [system_catalog/src/sys_catalog_table.rs:276] sys catalog table is not exists, try to create a new table
+2023-08-06 09:52:28.913 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 09:52:28.914 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 09:52:28.914 INFO [analytic_engine/src/engine.rs:90] Table engine impl create table, space_id:1, request:CreateTableRequest { catalog_name: "system", schema_name: "public", schema_id: SchemaId(1), table_id: TableId(1099511627777), table_name: "sys_catalog", table_schema: Schema { timestamp_index: 1, tsid_index: None, column_schemas: ColumnSchemas { columns: [ColumnSchema { id: 1, name: "key", data_type: Varbinary, is_nullable: false, is_tag: false, is_dictionary: false, comment: "", escaped_name: "key", default_value: None }, ColumnSchema { id: 2, name: "timestamp", data_type: Timestamp, is_nullable: false, is_tag: false, is_dictionary: false, comment: "", escaped_name: "timestamp", default_value: None }, ColumnSchema { id: 3, name: "value", data_type: Varbinary, is_nullable: false, is_tag: false, is_dictionary: false, comment: "", escaped_name: "value", default_value: None }] }, version: 1, primary_key_indexes: [0, 1] }, engine: "Analytic", options: {"enable_ttl": "false"}, state: Stable, shard_id: 0, partition_info: None }
+2023-08-06 09:52:28.914 INFO [analytic_engine/src/instance/create.rs:28] Instance create table, request:CreateTableRequest { catalog_name: "system", schema_name: "public", schema_id: SchemaId(1), table_id: TableId(1099511627777), table_name: "sys_catalog", table_schema: Schema { timestamp_index: 1, tsid_index: None, column_schemas: ColumnSchemas { columns: [ColumnSchema { id: 1, name: "key", data_type: Varbinary, is_nullable: false, is_tag: false, is_dictionary: false, comment: "", escaped_name: "key", default_value: None }, ColumnSchema { id: 2, name: "timestamp", data_type: Timestamp, is_nullable: false, is_tag: false, is_dictionary: false, comment: "", escaped_name: "timestamp", default_value: None }, ColumnSchema { id: 3, name: "value", data_type: Varbinary, is_nullable: false, is_tag: false, is_dictionary: false, comment: "", escaped_name: "value", default_value: None }] }, version: 1, primary_key_indexes: [0, 1] }, engine: "Analytic", options: {"enable_ttl": "false"}, state: Stable, shard_id: 0, partition_info: None }
+2023-08-06 09:52:28.915 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(AddTable(AddTableMeta { space_id: 1, table_id: TableId(1099511627777), table_name: "sys_catalog", schema: Schema { timestamp_index: 1, tsid_index: None, column_schemas: ColumnSchemas { columns: [ColumnSchema { id: 1, name: "key", data_type: Varbinary, is_nullable: false, is_tag: false, is_dictionary: false, comment: "", escaped_name: "key", default_value: None }, ColumnSchema { id: 2, name: "timestamp", data_type: Timestamp, is_nullable: false, is_tag: false, is_dictionary: false, comment: "", escaped_name: "timestamp", default_value: None }, ColumnSchema { id: 3, name: "value", data_type: Varbinary, is_nullable: false, is_tag: false, is_dictionary: false, comment: "", escaped_name: "value", default_value: None }] }, version: 1, primary_key_indexes: [0, 1] }, opts: TableOptions { segment_duration: None, update_mode: Overwrite, storage_format_hint: Auto, enable_ttl: false, ttl: ReadableDuration(604800s), arena_block_size: 2097152, write_buffer_size: 33554432, compaction_strategy: Default, num_rows_per_row_group: 8192, compression: Zstd } })) }
+2023-08-06 09:52:28.916 INFO [wal/src/rocks_impl/manager.rs:523] RocksImpl create new table unit, wal_path:/Users/a/ceresdb_wal_rocksdb/manifest, wal_location:WalLocation { region_id: 0, table_id: 1099511627777 }
+2023-08-06 09:52:28.919 INFO [system_catalog/src/sys_catalog_table.rs:514] batch_stream schema is:RecordSchema { arrow_schema: Schema { fields: [Field { name: "key", data_type: Binary, nullable: false, dict_id: 0, dict_is_ordered: false, metadata: {"field::comment": "", "field::is_tag": "false", "field::is_dictionary": "false", "field::id": "1"} }, Field { name: "timestamp", data_type: Timestamp(Millisecond, None), nullable: false, dict_id: 0, dict_is_ordered: false, metadata: {"field::id": "2", "field::is_tag": "false", "field::is_dictionary": "false", "field::comment": ""} }, Field { name: "value", data_type: Binary, nullable: false, dict_id: 0, dict_is_ordered: false, metadata: {"field::id": "3", "field::is_dictionary": "false", "field::is_tag": "false", "field::comment": ""} }], metadata: {"schema::timestamp_index": "1", "schema::version": "1", "schema::primary_key_indexes": "0,1"} }, column_schemas: ColumnSchemas { columns: [ColumnSchema { id: 1, name: "key", data_type: Varbinary, is_nullable: false, is_tag: false, is_dictionary: false, comment: "", escaped_name: "key", default_value: None }, ColumnSchema { id: 2, name: "timestamp", data_type: Timestamp, is_nullable: false, is_tag: false, is_dictionary: false, comment: "", escaped_name: "timestamp", default_value: None }, ColumnSchema { id: 3, name: "value", data_type: Varbinary, is_nullable: false, is_tag: false, is_dictionary: false, comment: "", escaped_name: "value", default_value: None }] } }
+2023-08-06 09:52:28.920 INFO [analytic_engine/src/row_iter/dedup.rs:185] DedupIterator received none record batch, request_id:2, total_duplications:0, total_selected_rows:0
+2023-08-06 09:52:28.920 INFO [system_catalog/src/sys_catalog_table.rs:313] Add catalog to sys_catalog table, request:CreateCatalogRequest { catalog_name: "ceresdb" }
+2023-08-06 09:52:28.921 INFO [wal/src/rocks_impl/manager.rs:523] RocksImpl create new table unit, wal_path:/Users/a/ceresdb_wal_rocksdb/wal, wal_location:WalLocation { region_id: 0, table_id: 1099511627777 }
+2023-08-06 09:52:28.922 INFO [system_catalog/src/sys_catalog_table.rs:325] Add schema to sys_catalog table, request:CreateSchemaRequest { catalog_name: "ceresdb", schema_name: "public", schema_id: SchemaId(2) }
+2023-08-06 09:52:28.923 INFO [system_catalog/src/sys_catalog_table.rs:514] batch_stream schema is:RecordSchema { arrow_schema: Schema { fields: [Field { name: "key", data_type: Binary, nullable: false, dict_id: 0, dict_is_ordered: false, metadata: {"field::comment": "", "field::is_tag": "false", "field::is_dictionary": "false", "field::id": "1"} }, Field { name: "timestamp", data_type: Timestamp(Millisecond, None), nullable: false, dict_id: 0, dict_is_ordered: false, metadata: {"field::id": "2", "field::is_tag": "false", "field::is_dictionary": "false", "field::comment": ""} }, Field { name: "value", data_type: Binary, nullable: false, dict_id: 0, dict_is_ordered: false, metadata: {"field::id": "3", "field::is_dictionary": "false", "field::is_tag": "false", "field::comment": ""} }], metadata: {"schema::timestamp_index": "1", "schema::version": "1", "schema::primary_key_indexes": "0,1"} }, column_schemas: ColumnSchemas { columns: [ColumnSchema { id: 1, name: "key", data_type: Varbinary, is_nullable: false, is_tag: false, is_dictionary: false, comment: "", escaped_name: "key", default_value: None }, ColumnSchema { id: 2, name: "timestamp", data_type: Timestamp, is_nullable: false, is_tag: false, is_dictionary: false, comment: "", escaped_name: "timestamp", default_value: None }, ColumnSchema { id: 3, name: "value", data_type: Varbinary, is_nullable: false, is_tag: false, is_dictionary: false, comment: "", escaped_name: "value", default_value: None }] } }
+2023-08-06 09:52:28.924 INFO [system_catalog/src/sys_catalog_table.rs:523] real batch_stream schema is:RecordSchema { arrow_schema: Schema { fields: [Field { name: "key", data_type: Binary, nullable: false, dict_id: 0, dict_is_ordered: false, metadata: {"field::comment": "", "field::is_tag": "false", "field::is_dictionary": "false", "field::id": "1"} }, Field { name: "timestamp", data_type: Timestamp(Millisecond, None), nullable: false, dict_id: 0, dict_is_ordered: false, metadata: {"field::id": "2", "field::is_tag": "false", "field::is_dictionary": "false", "field::comment": ""} }, Field { name: "value", data_type: Binary, nullable: false, dict_id: 0, dict_is_ordered: false, metadata: {"field::id": "3", "field::is_dictionary": "false", "field::is_tag": "false", "field::comment": ""} }], metadata: {"schema::timestamp_index": "1", "schema::version": "1", "schema::primary_key_indexes": "0,1"} }, column_schemas: ColumnSchemas { columns: [ColumnSchema { id: 1, name: "key", data_type: Varbinary, is_nullable: false, is_tag: false, is_dictionary: false, comment: "", escaped_name: "key", default_value: None }, ColumnSchema { id: 2, name: "timestamp", data_type: Timestamp, is_nullable: false, is_tag: false, is_dictionary: false, comment: "", escaped_name: "timestamp", default_value: None }, ColumnSchema { id: 3, name: "value", data_type: Varbinary, is_nullable: false, is_tag: false, is_dictionary: false, comment: "", escaped_name: "value", default_value: None }] } }
+2023-08-06 09:52:28.924 INFO [system_catalog/src/sys_catalog_table.rs:539] Sys catalog table visit record batch, column_num:3, row_num:2
+2023-08-06 09:52:28.924 INFO [analytic_engine/src/row_iter/dedup.rs:185] DedupIterator received none record batch, request_id:3, total_duplications:0, total_selected_rows:2
+2023-08-06 09:52:28.925 INFO [router/src/rule_based.rs:92] RuleBasedRouter init with rules, rules:{}, cluster_view:ClusterView { schema_shards: {}, schema_configs: {} }
+2023-08-06 09:52:28.925 INFO [components/timed_task/src/lib.rs:52] TimedTask started, name:hotspot_dump
+2023-08-06 09:52:28.925 INFO [server/src/server.rs:127] Server start, open local tables
+2023-08-06 09:52:28.926 INFO [server/src/server.rs:141] Server start, create default schema if not exist
+2023-08-06 09:52:28.926 INFO [server/src/server.rs:144] Server start, start services
+2023-08-06 09:52:28.926 INFO [server/src/http.rs:160] HTTP server tries to listen on 127.0.0.1:5440
+2023-08-06 09:52:28.927 INFO [server/src/mysql/service.rs:49] MySQL server tries to listen on 127.0.0.1:3307
+2023-08-06 09:52:28.927 INFO [server/src/server.rs:154] Server start finished
+2023-08-06 09:52:28.928 INFO [server/src/grpc/mod.rs:158] Grpc server tries to listen on 127.0.0.1:8831
+2023-08-06 09:52:28.929 INFO [server/src/grpc/mod.rs:167] Grpc server serves remote engine rpc service
+
+2023-08-06 09:52:58.917 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 09:52:58.918 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:4
+2023-08-06 09:52:58.918 INFO [analytic_engine/src/compaction/scheduler.rs:647] Scheduled flush is triggered, table:sys_catalog, last_flush_time:0ms, max_unflushed_duration:18000s
+2023-08-06 09:52:58.918 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 09:52:58.918 WARN [analytic_engine/src/compaction/scheduler.rs:566] No valid context can be created, compaction request will be ignored, table_id:1099511627777, table_name:sys_catalog
+2023-08-06 09:52:58.918 INFO [analytic_engine/src/instance/flush_compaction.rs:297] Update segment duration, table:sys_catalog, table_id:1099511627777, segment_duration:7200s
+2023-08-06 09:52:58.918 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(AlterOptions(AlterOptionsMeta { space_id: 1, table_id: TableId(1099511627777), options: TableOptions { segment_duration: Some(ReadableDuration(7200s)), update_mode: Overwrite, storage_format_hint: Auto, enable_ttl: false, ttl: ReadableDuration(604800s), arena_block_size: 2097152, write_buffer_size: 33554432, compaction_strategy: Default, num_rows_per_row_group: 8192, compression: Zstd } })) }
+2023-08-06 09:52:58.920 INFO [analytic_engine/src/instance/flush_compaction.rs:332] Try to trigger memtable flush of table, table:sys_catalog, table_id:1099511627777, max_memtable_id:1, last_sequence:2
+2023-08-06 09:52:58.920 INFO [analytic_engine/src/instance/flush_compaction.rs:463] Flush sampling memtable, table_id:TableId(1099511627777), table_name:"sys_catalog", request_id:5, sampling memtable time_ranges:[TimeRange { inclusive_start: Timestamp(0), exclusive_end: Timestamp(7200000) }]
+2023-08-06 09:52:58.920 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 100 })) }
+2023-08-06 09:52:58.940 INFO [analytic_engine/src/instance/flush_compaction.rs:392] Instance flush memtables to output, table:sys_catalog, table_id:1099511627777, request_id:5, mems_to_flush:FlushableMemTables { sampling_mem: Some(SamplingMemTable { id: 1, freezed: true }), memtables: [] }, files_to_level0:[AddFile { level: Level(0), file: FileMeta { id: 1, size: 2675, row_num: 2, time_range: TimeRange { inclusive_start: Timestamp(0), exclusive_end: Timestamp(7200000) }, max_seq: 2, storage_format: Columnar } }], flushed_sequence:2
+2023-08-06 09:52:58.940 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 2, files_to_add: [AddFile { level: Level(0), file: FileMeta { id: 1, size: 2675, row_num: 2, time_range: TimeRange { inclusive_start: Timestamp(0), exclusive_end: Timestamp(7200000) }, max_seq: 2, storage_format: Columnar } }], files_to_delete: [], mems_to_remove: [1], max_file_id: 0 })) }
+2023-08-06 09:52:58.941 INFO [analytic_engine/src/instance/flush_compaction.rs:280] Instance flush memtables done, table:sys_catalog, table_id:1099511627777, request_id:5, cost:22ms
+2023-08-06 09:53:28.921 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 09:53:28.922 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:6
+2023-08-06 09:53:28.922 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 09:53:28.923 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 09:53:28.923 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 09:53:58.925 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 09:53:58.925 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:8
+2023-08-06 09:53:58.925 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 09:53:58.926 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 09:53:58.926 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 09:54:28.928 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 09:54:28.928 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:10
+2023-08-06 09:54:28.928 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 09:54:28.928 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 09:54:28.928 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 09:54:58.931 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 09:54:58.932 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:12
+2023-08-06 09:54:58.932 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 09:54:58.932 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 09:54:58.932 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 09:55:28.933 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 09:55:28.933 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:14
+2023-08-06 09:55:28.933 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 09:55:28.934 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 09:55:28.934 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 09:55:58.936 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 09:55:58.936 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:16
+2023-08-06 09:55:58.936 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 09:55:58.936 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 09:55:58.936 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 09:56:28.939 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 09:56:28.939 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:18
+2023-08-06 09:56:28.939 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 09:56:28.940 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 09:56:28.940 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 09:56:58.942 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 09:56:58.942 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:20
+2023-08-06 09:56:58.942 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 09:56:58.942 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 09:56:58.943 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 09:57:28.943 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 09:57:28.944 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:22
+2023-08-06 09:57:28.944 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 09:57:28.944 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 09:57:28.944 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 09:57:58.945 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 09:57:58.945 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:24
+2023-08-06 09:57:58.945 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 09:57:58.946 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 09:57:58.946 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 09:58:28.948 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 09:58:28.948 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:26
+2023-08-06 09:58:28.948 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 09:58:28.949 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 09:58:28.949 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 09:58:58.951 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 09:58:58.951 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:28
+2023-08-06 09:58:58.952 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 09:58:58.952 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 09:58:58.952 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 09:59:28.953 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 09:59:28.954 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:30
+2023-08-06 09:59:28.954 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 09:59:28.954 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 09:59:28.954 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 09:59:58.957 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 09:59:58.957 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:32
+2023-08-06 09:59:58.957 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 09:59:58.957 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 09:59:58.958 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 10:00:28.958 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 10:00:28.959 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:34
+2023-08-06 10:00:28.959 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 10:00:28.959 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 10:00:28.959 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 10:00:58.962 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 10:00:58.962 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:36
+2023-08-06 10:00:58.963 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 10:00:58.963 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 10:00:58.963 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 10:01:28.964 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 10:01:28.965 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:38
+2023-08-06 10:01:28.965 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 10:01:28.965 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 10:01:28.965 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 10:01:58.968 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 10:01:58.968 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:40
+2023-08-06 10:01:58.968 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 10:01:58.968 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 10:01:58.968 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 10:02:28.971 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 10:02:28.971 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:42
+2023-08-06 10:02:28.971 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 10:02:28.972 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 10:02:28.973 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 10:02:58.972 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 10:02:58.973 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:44
+2023-08-06 10:02:58.973 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 10:02:58.973 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 10:02:58.973 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 10:03:28.972 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 10:03:28.973 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:46
+2023-08-06 10:03:28.973 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 10:03:28.973 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 10:03:28.973 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 10:03:58.972 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 10:03:58.973 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:48
+2023-08-06 10:03:58.973 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 10:03:58.973 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 10:03:58.973 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 10:04:28.975 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 10:04:28.975 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:50
+2023-08-06 10:04:28.975 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 10:04:28.975 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 10:04:28.975 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 10:04:58.977 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 10:04:58.977 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:52
+2023-08-06 10:04:58.977 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 10:04:58.978 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 10:04:58.978 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 10:05:28.979 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 10:05:28.980 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:54
+2023-08-06 10:05:28.980 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 10:05:28.980 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 10:05:28.980 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 10:05:58.982 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 10:05:58.983 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:56
+2023-08-06 10:05:58.983 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 10:05:58.983 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 10:05:58.983 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 10:06:28.986 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 10:06:28.986 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:58
+2023-08-06 10:06:28.986 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 10:06:28.988 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 10:06:28.988 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 10:06:58.988 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 10:06:58.988 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:60
+2023-08-06 10:06:58.988 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 10:06:58.989 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 10:06:58.989 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 10:07:28.991 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 10:07:28.991 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:62
+2023-08-06 10:07:28.991 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 10:07:28.992 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 10:07:28.992 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 10:07:58.993 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 10:07:58.994 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:64
+2023-08-06 10:07:58.994 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 10:07:58.994 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 10:07:58.994 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 10:08:28.997 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 10:08:28.998 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:66
+2023-08-06 10:08:28.998 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 10:08:28.998 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 10:08:28.998 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 10:08:59.000 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 10:08:59.000 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:68
+2023-08-06 10:08:59.000 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 10:08:59.001 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 10:08:59.001 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 10:09:29.002 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 10:09:29.002 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:70
+2023-08-06 10:09:29.002 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 10:09:29.002 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 10:09:29.002 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 10:09:59.005 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 10:09:59.005 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:72
+2023-08-06 10:09:59.005 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 10:09:59.006 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 10:09:59.006 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 10:10:29.007 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 10:10:29.007 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:74
+2023-08-06 10:10:29.008 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 10:10:29.008 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 10:10:29.008 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 10:10:59.009 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 10:10:59.010 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:76
+2023-08-06 10:10:59.010 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 10:10:59.010 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 10:10:59.010 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 10:11:29.011 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 10:11:29.011 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:78
+2023-08-06 10:11:29.011 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 10:11:29.012 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 10:11:29.012 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 10:11:59.013 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 10:11:59.014 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:80
+2023-08-06 10:11:59.014 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 10:11:59.014 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 10:11:59.014 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 10:12:29.015 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 10:12:29.016 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:82
+2023-08-06 10:12:29.016 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 10:12:29.016 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 10:12:29.016 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 10:12:59.017 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 10:12:59.018 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:84
+2023-08-06 10:12:59.018 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 10:12:59.018 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 10:12:59.019 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 10:13:29.020 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 10:13:29.020 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:86
+2023-08-06 10:13:29.020 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 10:13:29.020 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 10:13:29.021 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 10:13:59.023 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 10:13:59.024 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:88
+2023-08-06 10:13:59.024 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 10:13:59.024 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 10:13:59.024 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 10:14:29.026 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 10:14:29.027 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:90
+2023-08-06 10:14:29.027 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 10:14:29.027 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 10:14:29.027 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 10:14:59.028 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 10:14:59.029 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:92
+2023-08-06 10:14:59.029 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 10:14:59.029 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 10:14:59.029 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 10:15:29.031 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 10:15:29.031 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:94
+2023-08-06 10:15:29.031 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 10:15:29.031 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 10:15:29.031 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 10:15:59.033 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 10:15:59.033 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:96
+2023-08-06 10:15:59.033 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 10:15:59.033 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 10:15:59.033 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 10:16:29.035 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 10:16:29.035 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:98
+2023-08-06 10:16:29.036 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 10:16:29.036 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 10:16:29.036 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 10:16:59.038 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 10:16:59.038 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:100
+2023-08-06 10:16:59.038 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 10:16:59.038 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 10:16:59.038 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 10:17:29.040 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 10:17:29.041 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:102
+2023-08-06 10:17:29.041 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 10:17:29.041 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 10:17:29.041 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 10:17:59.043 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 10:17:59.044 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:104
+2023-08-06 10:17:59.044 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 10:17:59.044 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 10:17:59.044 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 10:18:29.057 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 10:18:29.057 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:106
+2023-08-06 10:18:29.057 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 10:18:29.058 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 10:18:29.058 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 10:18:59.067 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 10:18:59.067 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:108
+2023-08-06 10:18:59.067 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 10:18:59.067 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 10:18:59.068 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 10:19:29.070 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 10:19:29.070 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:110
+2023-08-06 10:19:29.070 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 10:19:29.070 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 10:19:29.071 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 10:19:59.073 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 10:19:59.074 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:112
+2023-08-06 10:19:59.074 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 10:19:59.074 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 10:19:59.074 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 10:20:29.076 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 10:20:29.077 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:114
+2023-08-06 10:20:29.077 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 10:20:29.077 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 10:20:29.077 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 10:20:59.079 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 10:20:59.079 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:116
+2023-08-06 10:20:59.079 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 10:20:59.079 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 10:20:59.079 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 10:21:29.081 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 10:21:29.082 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:118
+2023-08-06 10:21:29.082 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 10:21:29.082 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 10:21:29.082 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+2023-08-06 10:21:59.084 INFO [analytic_engine/src/compaction/scheduler.rs:412] Periodical compaction schedule start
+2023-08-06 10:21:59.085 INFO [analytic_engine/src/compaction/scheduler.rs:618] Period purge, table:sys_catalog, table_id:1099511627777, request_id:120
+2023-08-06 10:21:59.085 INFO [analytic_engine/src/compaction/scheduler.rs:416] Periodical compaction schedule end
+2023-08-06 10:21:59.085 INFO [analytic_engine/src/instance/flush_compaction.rs:695] Try do compaction for table:sys_catalog#1099511627777, estimated input files size:0, input files number:0
+2023-08-06 10:21:59.085 INFO [analytic_engine/src/manifest/details.rs:432] Manifest store update, request:MetaEditRequest { shard_info: TableShardInfo { shard_id: 0 }, meta_edit: Update(VersionEdit(VersionEditMeta { space_id: 1, table_id: TableId(1099511627777), flushed_sequence: 0, files_to_add: [], files_to_delete: [], mems_to_remove: [], max_file_id: 0 })) }
+killed
+
+Process finished with exit code 9

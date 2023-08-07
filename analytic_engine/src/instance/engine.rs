@@ -18,7 +18,7 @@ use wal::manager::WalLocation;
 use super::open::{TableContext, TablesOfShardContext};
 use crate::{
     engine::build_space_id,
-    instance::{close::Closer, drop::Dropper, open::OpenTablesOfShardResult, TableEngineInstance},
+    instance::{close::Closer, drop::Dropper, TableEngineInstance},
     space::{Space, SpaceAndTable, SpaceContext, SpaceId, SpaceRef},
 };
 
@@ -182,11 +182,7 @@ pub enum Error {
         source: GenericError,
     },
 
-    #[snafu(display(
-    "Table open failed and can not be created again, table:{}.\nBacktrace:\n{}",
-    table,
-    backtrace,
-    ))]
+    #[snafu(display("Table open failed and can not be created again, table:{}.\nBacktrace:\n{}", table, backtrace))]
     CreateOpenFailedTable { table: String, backtrace: Backtrace },
 
     #[snafu(display("Failed to open manifest, err:{}", source))]
@@ -254,30 +250,30 @@ impl From<Error> for table_engine::engine::Error {
 
 impl TableEngineInstance {
     /// Find space by name, create if the space is not exists
-    pub async fn find_or_create_space(self: &Arc<Self>,
-                                      space_id: SpaceId,
-                                      context: SpaceContext) -> Result<Arc<Space>> {
-        // Find space first
-        if let Some(space) = self.get_space_by_read_lock(space_id) {
-            return Ok(space);
+    pub async fn findOrCreateSpace(self: &Arc<Self>,
+                                   spaceId: SpaceId,
+                                   context: SpaceContext) -> Result<Arc<Space>> {
+        {
+            // find space
+            let spaces = self.space_store.spaces.read().unwrap();
+            if let Some(space) = spaces.get_by_id(spaceId) {
+                return Ok(space.clone());
+            }
         }
 
         let mut spaces = self.space_store.spaces.write().unwrap();
         // The space may already been created by other thread
-        if let Some(space) = spaces.get_by_id(space_id) {
+        if let Some(space) = spaces.get_by_id(spaceId) {
             return Ok(space.clone());
         }
 
-        // Now we are the one responsible to create and persist the space info into meta
-
-        // Create space
+        // create and persist the space info into meta
         let space = Arc::new(Space::new(
-            space_id,
+            spaceId,
             context,
             self.space_write_buffer_size,
             self.mem_usage_collector.clone(),
         ));
-
         spaces.insert(space.clone());
 
         Ok(space)
@@ -289,18 +285,17 @@ impl TableEngineInstance {
         spaces.get_by_id(space_id).cloned()
     }
 
-    /// Create a table under given space
-    pub async fn create_table(
-        self: &Arc<Self>,
-        space_id: SpaceId,
-        request: CreateTableRequest,
-    ) -> Result<SpaceAndTable> {
+    /// create a table under given space
+    pub async fn create_table(self: &Arc<Self>,
+                              spaceId: SpaceId,
+                              request: CreateTableRequest) -> Result<SpaceAndTable> {
         let context = SpaceContext {
             catalog_name: request.catalog_name.clone(),
             schema_name: request.schema_name.clone(),
         };
-        let space = self.find_or_create_space(space_id, context).await?;
-        let table_data = self.do_create_table(space.clone(), request).await?;
+
+        let space = self.findOrCreateSpace(spaceId, context).await?;
+        let table_data = self.doCreateTable(space.clone(), request).await?;
 
         Ok(SpaceAndTable::new(space, table_data))
     }
@@ -377,7 +372,7 @@ impl TableEngineInstance {
                 catalog_name: tableDef.catalog_name.clone(),
                 schema_name: tableDef.schema_name.clone(),
             };
-            let space = self.find_or_create_space(space_id, spaceContext).await?;
+            let space = self.findOrCreateSpace(space_id, spaceContext).await?;
 
             tableName_tableId_space.push(((tableDef.name.clone(), tableDef.id), space.clone()));
 

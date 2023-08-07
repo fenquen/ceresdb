@@ -29,7 +29,7 @@ use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{
     self,
     engine::{
-        CreateTableRequest, DropTableRequest, OpenTableRequest, TableEngineRef, TableRequestType,
+        CreateTableRequest, DropTableRequest, OpenTableRequest, TableRequestType,
         TableState,
     },
     predicate::PredicateBuilder,
@@ -220,7 +220,7 @@ pub const VALUE_COLUMN_NAME: &str = "value";
 pub const DEFAULT_ENABLE_TTL: &str = "false";
 
 // TODO(yingwen): Add a type column once support int8 type and maybe split key into multiple columns.
-/// 表的全名是  system.public.sys_catalog
+/// fenquen sysCatalogTable表的全名是  system.public.sys_catalog
 /// SysCatalogTable is a special table to keep tracks of the system information
 ///
 /// Similar to kudu's SysCatalogTable
@@ -265,7 +265,7 @@ impl SysCatalogTable {
         //let table_opt = tableEngine.open_table(open_request).await.context(OpenTable)?;
         match tableEngine.open_table(openTableRequest).await.context(OpenTable)? {
             Some(table) => {
-                info!("Sys catalog table open existing table");
+                info!("sys catalog table open existing table");
                 return Ok(Self {
                     table,
                     key_column_index,
@@ -273,13 +273,13 @@ impl SysCatalogTable {
                     update_table_lock: Mutex::new(()),
                 });
             }
-            None => info!("sys catalog table is not exists, try to create a new table"),
+            None => info!("sys catalog table not exist, try to create a new table"),
         }
 
         let mut options = HashMap::new();
         options.insert(common_types::OPTION_KEY_ENABLE_TTL.to_string(), DEFAULT_ENABLE_TTL.to_string());
 
-        let create_request = CreateTableRequest {
+        let createTableRequest = CreateTableRequest {
             catalog_name: consts::SYSTEM_CATALOG.to_string(),
             schema_name: consts::SYSTEM_CATALOG_SCHEMA.to_string(),
             schema_id: SYSTEM_SCHEMA_ID,
@@ -293,7 +293,7 @@ impl SysCatalogTable {
             shard_id: DEFAULT_SHARD_ID,
         };
 
-        let table = tableEngine.create_table(create_request).await.context(BuildTable)?;
+        let table = tableEngine.create_table(createTableRequest).await.context(BuildTable)?;
 
         Ok(Self {
             table,
@@ -495,12 +495,10 @@ impl SysCatalogTable {
 
     /// Visit all data in the sys catalog table
     // TODO(yingwen): Expose read options
-    pub async fn visit(
-        &self,
-        opts: ReadOptions,
-        visitor_inner: &mut dyn VisitorInner,
-        options: VisitOptions,
-    ) -> Result<()> {
+    pub async fn visit(&self,
+                       opts: ReadOptions,
+                       visitor_inner: &mut dyn VisitorInner,
+                       visitOptions: VisitOptions) -> Result<()> {
         let read_request = ReadRequest {
             request_id: RequestId::next_id(),
             opts,
@@ -509,13 +507,14 @@ impl SysCatalogTable {
             predicate: PredicateBuilder::default().build(),
             metrics_collector: MetricsCollector::default(),
         };
+
         let mut batch_stream = self.table.read(read_request).await.context(ReadTable)?;
 
         info!("batch_stream schema is:{:?}", batch_stream.schema());
         // TODO(yingwen): Check stream schema and table schema?
         let mut visitor = Visitor {
             inner: visitor_inner,
-            options,
+            options: visitOptions,
         };
 
         while let Some(batch) = batch_stream.try_next().await.context(ReadStream)? {

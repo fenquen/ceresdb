@@ -310,8 +310,8 @@ impl FlushTask {
                     options: new_table_opts.clone(),
                 });
                 MetaEditRequest {
-                    shard_info: table_data.shard_info,
-                    meta_edit: MetaEdit::Update(meta_update),
+                    tableShardInfo: table_data.shard_info,
+                    metaEdit: MetaEdit::Update(meta_update),
                 }
             };
             self.space_store
@@ -412,8 +412,8 @@ impl FlushTask {
             };
             let meta_update = MetaUpdate::VersionEdit(edit_meta);
             MetaEditRequest {
-                shard_info: self.table_data.shard_info,
-                meta_edit: MetaEdit::Update(meta_update),
+                tableShardInfo: self.table_data.shard_info,
+                metaEdit: MetaEdit::Update(meta_update),
             }
         };
         // Update manifest and remove immutable memtables
@@ -716,8 +716,8 @@ impl SpaceStore {
         let edit_req = {
             let meta_update = MetaUpdate::VersionEdit(edit_meta.clone());
             MetaEditRequest {
-                shard_info: table_data.shard_info,
-                meta_edit: MetaEdit::Update(meta_update),
+                tableShardInfo: table_data.shard_info,
+                metaEdit: MetaEdit::Update(meta_update),
             }
         };
         self.manifest

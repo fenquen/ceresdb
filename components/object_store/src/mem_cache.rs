@@ -81,24 +81,6 @@ impl MemCache {
         // don't care error now.
         _ = self.inner.lock(&key).put_with_weight(key, value);
     }
-
-    /// Give a description of the cache state.
-   // #[cfg(test)]
-    fn keys(&self, part: &CLruCache<String, Bytes, RandomState, CustomScale>) -> Vec<String> {
-        part.iter().map(|(key, _)| key).cloned().collect::<Vec<_>>()
-    }
-
-   // #[cfg(test)]
-    fn state_desc(&self) -> String {
-        self.inner
-            .get_all_partition()
-            .iter()
-            .map(|part| self.keys(&part.lock().unwrap()).join(","))
-            .enumerate()
-            .map(|(part_no, keys)| format!("{part_no}: [{keys}]"))
-            .collect::<Vec<_>>()
-            .join("\n")
-    }
 }
 
 impl Display for MemCache {

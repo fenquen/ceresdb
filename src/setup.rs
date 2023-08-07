@@ -12,7 +12,7 @@ use catalog::{manager::ManagerRef, schema::OpenOptions, table_operator::TableOpe
 use catalog_impls::{table_based::CatalogManagerTableBased, volatile, CatalogManagerDelegate};
 use cluster::{cluster_impl::ClusterImpl, config::ClusterConfig, shard_set::ShardSet};
 use df_operator::registry::FunctionRegistryImpl;
-use interpreters::table_manipulator::{catalog_based, meta_based};
+use interpreters::table_manipulator::meta_based;
 use log::info;
 use interpreters::table_manipulator::catalog_based::TableManipulatorCatalogBased;
 use logger::RuntimeLevel;
@@ -246,8 +246,8 @@ async fn build_without_meta<Executor: QueryExecutor + 'static, T: WalsOpener>(co
     let mut catalogManagerTableBased =
         CatalogManagerTableBased::new(tableEngineProxy.analyticTableEngine.clone()).await.expect("Failed to create catalog manager");
 
-    // Get collected table infos.
-    let table_infos = catalogManagerTableBased.fetch_table_infos().await.expect("Failed to fetch table infos for opening");
+    // Get collected table infos
+    let tableInfoVec = catalogManagerTableBased.getTableInfos().await.expect("Failed to fetch table infos for opening");
 
     let catalogManagerDelegate = Arc::new(CatalogManagerDelegate::new(Arc::new(catalogManagerTableBased)));
     let table_operator = TableOperator::new(catalogManagerDelegate.clone());
@@ -259,7 +259,7 @@ async fn build_without_meta<Executor: QueryExecutor + 'static, T: WalsOpener>(co
     };
 
     // Create local tables recoverer.
-    let local_tables_recoverer = LocalTablesRecoverer::new(table_infos, table_operator, open_opts);
+    let local_tables_recoverer = LocalTablesRecoverer::new(tableInfoVec, table_operator, open_opts);
 
     // Create schema in default catalog.
     create_static_topology_schema(catalogManagerDelegate.clone(),

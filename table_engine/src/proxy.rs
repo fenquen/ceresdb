@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use crate::{
     engine::{
         CloseShardRequest, CloseTableRequest, CreateTableRequest, DropTableRequest,
-        OpenShardRequest, OpenShardResult, OpenTableRequest, TableEngine, TableEngineRef,
+        OpenShardRequest, OpenShardResult, OpenTableRequest, TableEngine,
         UnknownEngineType,
     },
     memory::MemoryTableEngine,

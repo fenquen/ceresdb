@@ -488,8 +488,8 @@ impl<M: MessageQueue> Region<M> {
             "Begin to write to wal region, ctx:{:?}, region id:{}, location:{:?}, log_entries_num:{}",
             ctx,
             inner.region_context.region_id(),
-            log_batch.location,
-            log_batch.entries.len()
+            log_batch.walLocation,
+            log_batch.logWriteEntryVec.len()
         );
 
         inner.write(ctx, log_batch).await

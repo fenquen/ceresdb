@@ -21,7 +21,7 @@ use crate::{
         RouteTablesRequest, RouteTablesResponse, ShardInfo,
     },
     BadResponse, FailAllocSchemaId, FailConnect, FailCreateTable, FailDropTable, FailGetTables,
-    FailRouteTables, FailSendHeartbeat, MetaClient, MetaClientRef, MissingHeader, Result,
+    FailRouteTables, FailSendHeartbeat, MetaClient, MissingHeader, Result,
 };
 
 type MetaServiceGrpcClient = CeresmetaRpcServiceClient<tonic::transport::Channel>;

@@ -13,13 +13,9 @@ use crate::{
 
 #[derive(Debug, Snafu)]
 pub enum Error {
-    #[snafu(display(
-        "Apply update on non-exist table, meta update:{:?}\nBacktrace:\n{}",
-        update,
-        backtrace
-    ))]
+    #[snafu(display("Apply update on non-exist table, meta update:{:?}\nBacktrace:\n{}", metaUpdate, backtrace))]
     TableNotFound {
-        update: MetaUpdate,
+        metaUpdate: MetaUpdate,
         backtrace: Backtrace,
     },
 }
@@ -34,21 +30,21 @@ pub struct MetaSnapshot {
 
 #[derive(Clone, Debug, Default)]
 pub struct MetaSnapshotBuilder {
-    table_meta: Option<AddTableMeta>,
-    version_meta: Option<TableVersionMeta>,
+    addTableMeta: Option<AddTableMeta>,
+    tableVersionMeta: Option<TableVersionMeta>,
 }
 
 impl MetaSnapshotBuilder {
     pub fn new(table_meta: Option<AddTableMeta>, version_meta: Option<TableVersionMeta>) -> Self {
         Self {
-            table_meta,
-            version_meta,
+            addTableMeta: table_meta,
+            tableVersionMeta: version_meta,
         }
     }
 
     pub fn build(mut self) -> Option<MetaSnapshot> {
-        let version_meta = self.version_meta.take();
-        self.table_meta.map(|v| MetaSnapshot {
+        let version_meta = self.tableVersionMeta.take();
+        self.addTableMeta.map(|v| MetaSnapshot {
             table_meta: v,
             version_meta,
         })
@@ -56,46 +52,42 @@ impl MetaSnapshotBuilder {
 
     #[inline]
     pub fn is_table_exists(&self) -> bool {
-        self.table_meta.is_some()
+        self.addTableMeta.is_some()
     }
 
     /// Apply the meta update.
     ///
-    /// Any update except [`MetaUpdate::AddTable`] on a non-exist table will
-    /// fail.
-    pub fn apply_update(&mut self, update: MetaUpdate) -> Result<()> {
-        debug!("Apply meta update, update:{:?}", update);
+    /// Any update except [`MetaUpdate::AddTable`] on a non-exist table will fail.
+    pub fn apply_update(&mut self, metaUpdate: MetaUpdate) -> Result<()> {
+        debug!("Apply meta update, update:{:?}", metaUpdate);
 
-        if let MetaUpdate::AddTable(_) = &update {
+        if let MetaUpdate::AddTable(_) = &metaUpdate {
         } else {
-            ensure!(self.is_table_exists(), TableNotFound { update });
+            ensure!(self.is_table_exists(), TableNotFound { metaUpdate });
         }
 
-        match update {
+        match metaUpdate {
             MetaUpdate::AddTable(meta) => {
-                self.table_meta = Some(meta);
+                self.addTableMeta = Some(meta);
             }
             MetaUpdate::VersionEdit(meta) => {
                 let edit = meta.into_version_edit();
-                let mut version = self.version_meta.take().unwrap_or_default();
+                let mut version = self.tableVersionMeta.take().unwrap_or_default();
                 version.apply_edit(edit);
-                self.version_meta = Some(version);
+                self.tableVersionMeta = Some(version);
             }
             MetaUpdate::AlterSchema(meta) => {
-                let table_meta = self.table_meta.as_mut().unwrap();
+                let table_meta = self.addTableMeta.as_mut().unwrap();
                 table_meta.schema = meta.schema;
             }
             MetaUpdate::AlterOptions(meta) => {
-                let table_meta = self.table_meta.as_mut().unwrap();
+                let table_meta = self.addTableMeta.as_mut().unwrap();
                 table_meta.opts = meta.options;
             }
             MetaUpdate::DropTable(meta) => {
-                self.table_meta = None;
-                self.version_meta = None;
-                debug!(
-                    "Apply drop table meta update, removed table:{}",
-                    meta.table_name,
-                );
+                self.addTableMeta = None;
+                self.tableVersionMeta = None;
+                debug!("Apply drop table meta update, removed table:{}",meta.table_name,);
             }
         }
 

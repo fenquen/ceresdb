@@ -84,17 +84,14 @@ impl TableEngine for AnalyticTableEngine {
         Ok(())
     }
 
-    async fn create_table(&self, request: CreateTableRequest) -> Result<TableRef> {
-        let space_id = build_space_id(request.schema_id);
+    async fn create_table(&self, createTableRequest: CreateTableRequest) -> Result<TableRef> {
+        let space_id = build_space_id(createTableRequest.schema_id);
 
-        info!(
-            "Table engine impl create table, space_id:{}, request:{:?}",
-            space_id, request
-        );
+        info!("analytic table engine create table, space_id:{}, request:{:?}",space_id, createTableRequest);
 
-        let space_table = self.tableEngineInstance.create_table(space_id, request).await?;
+        let space_table = self.tableEngineInstance.create_table(space_id, createTableRequest).await?;
 
-        let table_impl: TableRef = Arc::new(TableImpl::new(self.tableEngineInstance.clone(), space_table));
+        let table_impl = Arc::new(TableImpl::new(self.tableEngineInstance.clone(), space_table));
 
         Ok(table_impl)
     }

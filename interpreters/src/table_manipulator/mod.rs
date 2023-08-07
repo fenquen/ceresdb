@@ -7,7 +7,7 @@ use generic_error::GenericError;
 use macros::define_result;
 use query_frontend::plan::{CreateTablePlan, DropTablePlan};
 use snafu::{Backtrace, Snafu};
-use table_engine::engine::{TableEngine, TableEngineRef};
+use table_engine::engine::TableEngine;
 
 use crate::{context::InterpreterContext, interpreter::Output};
 

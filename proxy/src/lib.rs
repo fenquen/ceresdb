@@ -4,7 +4,7 @@
 //! adapts to different protocols.
 
 #![feature(trait_alias)]
-
+#![allow(non_snake_case)]
 pub mod context;
 pub mod error;
 mod error_util;

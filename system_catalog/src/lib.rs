@@ -3,7 +3,7 @@
 //! System catalog implementations
 
 #![feature(const_option)]
-
+#![allow(non_snake_case)]
 use std::{
     collections::HashMap,
     fmt::Debug,

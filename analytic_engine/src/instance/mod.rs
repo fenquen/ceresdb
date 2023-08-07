@@ -254,14 +254,7 @@ impl TableEngineInstance {
 
 // TODO(yingwen): Instance builder
 impl TableEngineInstance {
-    /// Find space using read lock
-    fn get_space_by_read_lock(&self, space: SpaceId) -> Option<SpaceRef> {
-        let spaces = self.space_store.spaces.read().unwrap();
-        spaces.get_by_id(space).cloned()
-    }
-
-    /// Returns true when engine instance's total memtable memory usage reaches
-    /// db_write_buffer_size limit.
+    /// Returns true when engine instance's total memtable memory usage reaches db_write_buffer_size limit.
     #[inline]
     fn should_flush_instance(&self) -> bool {
         self.db_write_buffer_size > 0

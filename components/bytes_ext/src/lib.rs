@@ -155,16 +155,16 @@ impl<T> SafeBuf for T
 where
     T: Buf,
 {
-    fn try_advance(&mut self, cnt: usize) -> Result<()> {
-        ensure!(self.remaining() >= cnt, UnexpectedEof);
-        self.advance(cnt);
+    fn try_copy_to_slice(&mut self, dst: &mut [u8]) -> Result<()> {
+        ensure!(self.remaining() >= dst.len(), UnexpectedEof);
+        self.copy_to_slice(dst);
 
         Ok(())
     }
 
-    fn try_copy_to_slice(&mut self, dst: &mut [u8]) -> Result<()> {
-        ensure!(self.remaining() >= dst.len(), UnexpectedEof);
-        self.copy_to_slice(dst);
+    fn try_advance(&mut self, cnt: usize) -> Result<()> {
+        ensure!(self.remaining() >= cnt, UnexpectedEof);
+        self.advance(cnt);
 
         Ok(())
     }

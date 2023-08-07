@@ -52,15 +52,11 @@ enum TableKey<'a> {
 }
 
 impl TableMetaSetImpl {
-    fn find_table_and_apply_edit<F>(
-        &self,
-        space_id: SpaceId,
-        table_key: TableKey<'_>,
-        apply_edit: F,
-    ) -> crate::manifest::details::Result<TableDataRef>
-    where
-        F: FnOnce(SpaceRef, TableDataRef) -> crate::manifest::details::Result<()>,
-    {
+    fn find_table_and_apply_edit<F>(&self,
+                                    space_id: SpaceId,
+                                    table_key: TableKey<'_>,
+                                    apply_edit: F) -> crate::manifest::details::Result<TableDataRef>
+        where F: FnOnce(SpaceRef, TableDataRef) -> crate::manifest::details::Result<()>, {
         let spaces = self.spaces.read().unwrap();
         let space = spaces
             .get_by_id(space_id)
@@ -90,26 +86,19 @@ impl TableMetaSetImpl {
         Ok(table_data)
     }
 
-    fn apply_update(
-        &self,
-        meta_update: MetaUpdate,
-        shard_info: TableShardInfo,
-    ) -> crate::manifest::details::Result<TableDataRef> {
-        match meta_update {
+    fn apply_update(&self,
+                    metaUpdate: MetaUpdate,
+                    tableShardInfo: TableShardInfo) -> crate::manifest::details::Result<TableDataRef> {
+        match metaUpdate {
             MetaUpdate::AddTable(AddTableMeta {
-                space_id,
-                table_id,
-                table_name,
-                schema,
-                opts,
-            }) => {
+                                     space_id,
+                                     table_id,
+                                     table_name,
+                                     schema,
+                                     opts,
+                                 }) => {
                 let spaces = self.spaces.read().unwrap();
-                let space =
-                    spaces
-                        .get_by_id(space_id)
-                        .with_context(|| ApplyUpdateToTableNoCause {
-                            msg: format!("space not found, space_id:{space_id}"),
-                        })?;
+                let space = spaces.get_by_id(space_id).with_context(|| ApplyUpdateToTableNoCause { msg: format!("space not found, space_id:{space_id}") })?;
 
                 let table_data = Arc::new(
                     TableData::new(
@@ -117,19 +106,14 @@ impl TableMetaSetImpl {
                         table_id,
                         table_name,
                         schema,
-                        shard_info.shard_id,
+                        tableShardInfo.shard_id,
                         opts,
                         &self.file_purger,
                         self.preflush_write_buffer_size_ratio,
                         space.mem_usage_collector.clone(),
                         self.manifest_snapshot_every_n_updates,
-                    )
-                    .box_err()
-                    .with_context(|| ApplyUpdateToTableWithCause {
-                        msg: format!(
-                            "failed to new table data, space_id:{}, table_id:{}",
-                            space.id, table_id
-                        ),
+                    ).box_err().with_context(|| ApplyUpdateToTableWithCause {
+                        msg: format!("failed to new table data, space_id:{}, table_id:{}", space.id, table_id)
                     })?,
                 );
 
@@ -138,10 +122,10 @@ impl TableMetaSetImpl {
                 Ok(table_data)
             }
             MetaUpdate::DropTable(DropTableMeta {
-                space_id,
-                table_name,
-                ..
-            }) => {
+                                      space_id,
+                                      table_name,
+                                      ..
+                                  }) => {
                 let table_name = &table_name;
                 let drop_table = move |space: SpaceRef, table_data: TableDataRef| {
                     // Set the table dropped after finishing flushing and storing drop table meta
@@ -158,14 +142,14 @@ impl TableMetaSetImpl {
                 self.find_table_and_apply_edit(space_id, TableKey::Name(table_name), drop_table)
             }
             MetaUpdate::VersionEdit(VersionEditMeta {
-                space_id,
-                table_id,
-                flushed_sequence,
-                files_to_add,
-                files_to_delete,
-                mems_to_remove,
-                max_file_id,
-            }) => {
+                                        space_id,
+                                        table_id,
+                                        flushed_sequence,
+                                        files_to_add,
+                                        files_to_delete,
+                                        mems_to_remove,
+                                        max_file_id,
+                                    }) => {
                 let version_edit = move |_space: SpaceRef, table_data: TableDataRef| {
                     let edit = VersionEdit {
                         flushed_sequence,
@@ -182,11 +166,11 @@ impl TableMetaSetImpl {
                 self.find_table_and_apply_edit(space_id, TableKey::Id(table_id), version_edit)
             }
             MetaUpdate::AlterSchema(AlterSchemaMeta {
-                space_id,
-                table_id,
-                schema,
-                ..
-            }) => {
+                                        space_id,
+                                        table_id,
+                                        schema,
+                                        ..
+                                    }) => {
                 let alter_schema = move |_space: SpaceRef, table_data: TableDataRef| {
                     table_data.set_schema(schema);
 
@@ -196,10 +180,10 @@ impl TableMetaSetImpl {
                 self.find_table_and_apply_edit(space_id, TableKey::Id(table_id), alter_schema)
             }
             MetaUpdate::AlterOptions(AlterOptionsMeta {
-                space_id,
-                table_id,
-                options,
-            }) => {
+                                         space_id,
+                                         table_id,
+                                         options,
+                                     }) => {
                 let alter_option = move |_space: SpaceRef, table_data: TableDataRef| {
                     table_data.set_table_options(options);
 
@@ -251,13 +235,13 @@ impl TableMetaSetImpl {
                 allocator,
                 self.manifest_snapshot_every_n_updates,
             )
-            .box_err()
-            .with_context(|| ApplySnapshotToTableWithCause {
-                msg: format!(
-                    "failed to new table_data, space_id:{}, table_name:{}",
-                    space.id, table_name
-                ),
-            })?,
+                .box_err()
+                .with_context(|| ApplySnapshotToTableWithCause {
+                    msg: format!(
+                        "failed to new table_data, space_id:{}, table_name:{}",
+                        space.id, table_name
+                    ),
+                })?,
         );
 
         // Apply version meta to the table.
@@ -292,11 +276,11 @@ impl TableMetaSet for TableMetaSetImpl {
             spaces
                 .get_by_id(space_id)
                 .context(BuildSnapshotNoCause {
-                    msg: format!("space not exist, space_id:{space_id}, table_id:{table_id}",),
+                    msg: format!("space not exist, space_id:{space_id}, table_id:{table_id}", ),
                 })?
                 .find_table_by_id(table_id)
                 .context(BuildSnapshotNoCause {
-                    msg: format!("table data not exist, space_id:{space_id}, table_id:{table_id}",),
+                    msg: format!("table data not exist, space_id:{space_id}, table_id:{table_id}", ),
                 })?
         };
 
@@ -333,20 +317,15 @@ impl TableMetaSet for TableMetaSetImpl {
         Ok(table_manifest_data_opt)
     }
 
-    fn apply_edit_to_table(
-        &self,
-        request: crate::manifest::meta_edit::MetaEditRequest,
-    ) -> crate::manifest::details::Result<TableDataRef> {
+    fn apply_edit_to_table(&self, metaEditRequest: MetaEditRequest) -> crate::manifest::details::Result<TableDataRef> {
         let MetaEditRequest {
-            shard_info,
-            meta_edit,
-        } = request;
+            tableShardInfo,
+            metaEdit,
+        } = metaEditRequest;
 
-        match meta_edit {
-            meta_edit::MetaEdit::Update(update) => self.apply_update(update, shard_info),
-            meta_edit::MetaEdit::Snapshot(manifest_data) => {
-                self.apply_snapshot(manifest_data, shard_info)
-            }
+        match metaEdit {
+            meta_edit::MetaEdit::Update(metaUpdate) => self.apply_update(metaUpdate, tableShardInfo),
+            meta_edit::MetaEdit::Snapshot(manifest_data) => self.apply_snapshot(manifest_data, tableShardInfo),
         }
     }
 }

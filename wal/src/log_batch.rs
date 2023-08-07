@@ -34,8 +34,8 @@ pub struct LogWriteEntry {
 /// A batch of `LogWriteEntry`s.
 #[derive(Debug)]
 pub struct LogWriteBatch {
-    pub(crate) location: WalLocation,
-    pub(crate) entries: Vec<LogWriteEntry>,
+    pub(crate) walLocation: WalLocation,
+    pub(crate) logWriteEntryVec: Vec<LogWriteEntry>,
 }
 
 impl LogWriteBatch {
@@ -45,29 +45,29 @@ impl LogWriteBatch {
 
     pub fn with_capacity(location: WalLocation, cap: usize) -> Self {
         Self {
-            location,
-            entries: Vec::with_capacity(cap),
+            walLocation: location,
+            logWriteEntryVec: Vec::with_capacity(cap),
         }
     }
 
     #[inline]
     pub fn push(&mut self, entry: LogWriteEntry) {
-        self.entries.push(entry)
+        self.logWriteEntryVec.push(entry)
     }
 
     #[inline]
     pub fn len(&self) -> usize {
-        self.entries.len()
+        self.logWriteEntryVec.len()
     }
 
     #[inline]
     pub fn is_empty(&self) -> bool {
-        self.entries.is_empty()
+        self.logWriteEntryVec.is_empty()
     }
 
     #[inline]
     pub fn clear(&mut self) {
-        self.entries.clear()
+        self.logWriteEntryVec.clear()
     }
 }
 

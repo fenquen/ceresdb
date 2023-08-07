@@ -60,10 +60,10 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to find or create memtable, timestamp overflow, timestamp:{:?}, duration:{:?}.\nBacktrace:\n{}",
-        timestamp,
-        duration,
-        backtrace,
+    "Failed to find or create memtable, timestamp overflow, timestamp:{:?}, duration:{:?}.\nBacktrace:\n{}",
+    timestamp,
+    duration,
+    backtrace,
     ))]
     TimestampOverflow {
         timestamp: Timestamp,
@@ -97,7 +97,7 @@ impl TableShardInfo {
     }
 }
 
-/// Data of a table
+/// TableData是表的元数据在内存中的表示 fenquen
 pub struct TableData {
     /// Id of this table
     pub id: TableId,
@@ -122,7 +122,7 @@ pub struct TableData {
     opts: ArcSwap<TableOptions>,
     /// MemTable factory of this table
     memtable_factory: MemTableFactoryRef,
-    /// Space memtable memory usage collector
+    /// 来源space
     mem_usage_collector: CollectorRef,
 
     /// Current table version
@@ -191,10 +191,8 @@ impl Drop for TableData {
 }
 
 #[inline]
-fn compute_mutable_limit(
-    write_buffer_size: u32,
-    mutable_limit_write_buffer_size_ratio: f32,
-) -> u32 {
+fn compute_mutable_limit(write_buffer_size: u32,
+                         mutable_limit_write_buffer_size_ratio: f32) -> u32 {
     assert!((0.0..=1.0).contains(&mutable_limit_write_buffer_size_ratio));
 
     let limit = write_buffer_size as f32 * mutable_limit_write_buffer_size_ratio;
@@ -208,18 +206,16 @@ impl TableData {
     /// This function should only be called when a new table is creating and
     /// there is no existing data of the table
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        space_id: SpaceId,
-        table_id: TableId,
-        table_name: String,
-        table_schema: Schema,
-        shard_id: ShardId,
-        table_opts: TableOptions,
-        purger: &FilePurger,
-        preflush_write_buffer_size_ratio: f32,
-        mem_usage_collector: CollectorRef,
-        manifest_snapshot_every_n_updates: NonZeroUsize,
-    ) -> Result<Self> {
+    pub fn new(space_id: SpaceId,
+               table_id: TableId,
+               table_name: String,
+               table_schema: Schema,
+               shard_id: ShardId,
+               table_opts: TableOptions,
+               purger: &FilePurger,
+               preflush_write_buffer_size_ratio: f32,
+               mem_usage_collector: CollectorRef,
+               manifest_snapshot_every_n_updates: NonZeroUsize) -> Result<Self> {
         // FIXME(yingwen): Validate TableOptions, such as bucket_duration >=
         // segment_duration and bucket_duration is aligned to segment_duration
 
@@ -531,8 +527,8 @@ impl TableData {
         let edit_req = {
             let meta_update = MetaUpdate::VersionEdit(manifest_update);
             MetaEditRequest {
-                shard_info: self.shard_info,
-                meta_edit: MetaEdit::Update(meta_update),
+                tableShardInfo: self.shard_info,
+                metaEdit: MetaEdit::Update(meta_update),
             }
         };
         // table version's max file id will be update when apply this meta update.
@@ -595,7 +591,7 @@ pub struct TableLocation {
 /// Table data reference
 pub type TableDataRef = Arc<TableData>;
 
-/// Manages TableDataRef
+/// 包含 tableName_tableData tableId_tableData
 #[derive(Debug, Default)]
 pub struct TableDataSet {
     tableName_tableData: HashMap<String, TableDataRef>,
@@ -615,8 +611,7 @@ impl TableDataSet {
         if self.tableName_tableData.contains_key(table_name) {
             return false;
         }
-        self.tableName_tableData
-            .insert(table_name.to_string(), table_data_ref.clone());
+        self.tableName_tableData.insert(table_name.to_string(), table_data_ref.clone());
         self.tableId_tableData.insert(table_data_ref.id, table_data_ref);
         true
     }

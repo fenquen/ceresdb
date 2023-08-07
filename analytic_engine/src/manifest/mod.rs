@@ -27,7 +27,7 @@ pub type SnapshotRequest = LoadRequest;
 #[async_trait]
 pub trait Manifest: Send + Sync + fmt::Debug {
     /// Apply edit to table metas, store it to storage.
-    async fn apply_edit(&self, request: MetaEditRequest) -> GenericResult<()>;
+    async fn apply_edit(&self, metaEditRequest: MetaEditRequest) -> GenericResult<()>;
 
     /// Recover table metas from storage.
     async fn recover(&self, loadRequest: &LoadRequest) -> GenericResult<()>;

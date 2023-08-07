@@ -79,36 +79,36 @@ pub enum Error {
         backtrace: Backtrace,
     },
     #[snafu(display(
-        "Failed to parse update mode, raw str:{}.\nBacktrace:\n{}",
-        s,
-        backtrace
+    "Failed to parse update mode, raw str:{}.\nBacktrace:\n{}",
+    s,
+    backtrace
     ))]
     ParseUpdateMode { s: String, backtrace: Backtrace },
     #[snafu(display(
-        "Failed to parse compression, name:{}.\nBacktrace:\n{}",
-        name,
-        backtrace
+    "Failed to parse compression, name:{}.\nBacktrace:\n{}",
+    name,
+    backtrace
     ))]
     ParseCompressionName { name: String, backtrace: Backtrace },
 
     #[snafu(display(
-        "Unknown storage format. value:{:?}.\nBacktrace:\n{}",
-        value,
-        backtrace
+    "Unknown storage format. value:{:?}.\nBacktrace:\n{}",
+    value,
+    backtrace
     ))]
     UnknownStorageFormat { value: String, backtrace: Backtrace },
 
     #[snafu(display(
-        "Unknown storage format. value:{:?}.\nBacktrace:\n{}",
-        value,
-        backtrace
+    "Unknown storage format. value:{:?}.\nBacktrace:\n{}",
+    value,
+    backtrace
     ))]
     UnknownStorageFormatType { value: i32, backtrace: Backtrace },
 
     #[snafu(display(
-        "Unknown storage format hint. value:{:?}.\nBacktrace:\n{}",
-        value,
-        backtrace
+    "Unknown storage format hint. value:{:?}.\nBacktrace:\n{}",
+    value,
+    backtrace
     ))]
     UnknownStorageFormatHint { value: String, backtrace: Backtrace },
 
@@ -357,7 +357,7 @@ impl ToString for StorageFormat {
             Self::Columnar => STORAGE_FORMAT_COLUMNAR,
             Self::Hybrid => STORAGE_FORMAT_HYBRID,
         }
-        .to_string()
+            .to_string()
     }
 }
 
@@ -367,7 +367,6 @@ impl Default for StorageFormat {
     }
 }
 
-/// Options for a table.
 #[derive(Debug, Clone, Deserialize, PartialEq, Serialize)]
 #[serde(default)]
 pub struct TableOptions {
@@ -444,8 +443,8 @@ impl TableOptions {
                 self.storage_format_hint.to_string(),
             ),
         ]
-        .into_iter()
-        .collect();
+            .into_iter()
+            .collect();
         self.compaction_strategy.fill_raw_map(&mut m);
 
         m
@@ -677,26 +676,20 @@ impl Default for TableOptions {
     }
 }
 
-pub fn merge_table_options_for_create(
-    options: &HashMap<String, String>,
-    table_opts: &TableOptions,
-) -> Result<TableOptions> {
+pub fn merge_table_options_for_create(options: &HashMap<String, String>,
+                                      table_opts: &TableOptions) -> Result<TableOptions> {
     merge_table_options(options, table_opts, true)
 }
 
-pub fn merge_table_options_for_alter(
-    options: &HashMap<String, String>,
-    table_opts: &TableOptions,
-) -> Result<TableOptions> {
+pub fn merge_table_options_for_alter(options: &HashMap<String, String>,
+                                     table_opts: &TableOptions) -> Result<TableOptions> {
     merge_table_options(options, table_opts, false)
 }
 
 /// The options will override the old options.
-fn merge_table_options(
-    options: &HashMap<String, String>,
-    table_old_opts: &TableOptions,
-    is_create: bool,
-) -> Result<TableOptions> {
+fn merge_table_options(options: &HashMap<String, String>,
+                       table_old_opts: &TableOptions,
+                       is_create: bool) -> Result<TableOptions> {
     let mut table_opts = table_old_opts.clone();
     if is_create {
         if let Some(v) = options.get(SEGMENT_DURATION) {

@@ -148,13 +148,10 @@ impl TryFrom<manifest_pb::MetaUpdate> for MetaUpdate {
 /// Meta data for a new table
 #[derive(Debug, Clone, PartialEq)]
 pub struct AddTableMeta {
-    /// Space id of the table
     pub space_id: SpaceId,
     pub table_id: TableId,
     pub table_name: String,
-    /// Schema of the table
     pub schema: Schema,
-    // Options needed to persist
     pub opts: TableOptions,
 }
 
@@ -491,10 +488,7 @@ impl TryFrom<MetaEdit> for MetaUpdate {
         if let MetaEdit::Update(update) = value {
             Ok(update)
         } else {
-            ConvertMetaEdit {
-                msg: "it is not the update type meta edit",
-            }
-            .fail()
+            ConvertMetaEdit { msg: "it is not the update type meta edit", }.fail()
         }
     }
 }
@@ -506,16 +500,13 @@ impl TryFrom<MetaEdit> for MetaSnapshot {
         if let MetaEdit::Snapshot(table_manifest_data) = value {
             Ok(table_manifest_data)
         } else {
-            ConvertMetaEdit {
-                msg: "it is not the snapshot type meta edit",
-            }
-            .fail()
+            ConvertMetaEdit { msg: "it is not the snapshot type meta edit"}.fail()
         }
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct MetaEditRequest {
-    pub shard_info: TableShardInfo,
-    pub meta_edit: MetaEdit,
+    pub tableShardInfo: TableShardInfo,
+    pub metaEdit: MetaEdit,
 }

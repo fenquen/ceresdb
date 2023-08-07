@@ -2,6 +2,7 @@
 
 //! Write Ahead Log
 
+#![allow(non_snake_case)]
 pub mod kv_encoder;
 pub mod log_batch;
 pub mod manager;

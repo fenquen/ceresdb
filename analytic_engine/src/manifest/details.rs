@@ -185,7 +185,7 @@ pub(crate) trait TableMetaSet: fmt::Debug + Send + Sync {
                           table_id: TableId) -> Result<Option<MetaSnapshot>>;
 
     // Apply update to `TableData` and return it.
-    fn apply_edit_to_table(&self, update: MetaEditRequest) -> Result<TableDataRef>;
+    fn apply_edit_to_table(&self, metaEditRequest: MetaEditRequest) -> Result<TableDataRef>;
 }
 
 /// Snapshot recoverer
@@ -244,9 +244,9 @@ impl<LogStore, SnapshotStore> SnapshotRecoverer<LogStore, SnapshotStore> where L
         let mut manifest_data_builder = MetaSnapshotBuilder::default();
         let mut has_logs = false;
 
-        while let Some((seq, update)) = iter.next_update().await? {
+        while let Some((seq, metaUpdate)) = iter.next_update().await? {
             latest_seq = seq;
-            manifest_data_builder.apply_update(update).context(ApplyUpdate)?;
+            manifest_data_builder.apply_update(metaUpdate).context(ApplyUpdate)?;
             has_logs = true;
         }
 
@@ -256,7 +256,7 @@ impl<LogStore, SnapshotStore> SnapshotRecoverer<LogStore, SnapshotStore> where L
                 data: manifest_data_builder.build(),
             }))
         } else {
-            debug!("Manifest recover nothing, table_id:{}, space_id:{}",self.table_id, self.space_id);
+            info!("manifest recover nothing, table_id:{}, space_id:{}",self.table_id, self.space_id);
             Ok(None)
         }
     }
@@ -278,17 +278,13 @@ struct Snapshotter<LogStore, SnapshotStore> {
     table_id: TableId,
 }
 
-impl<LogStore, SnapshotStore> Snapshotter<LogStore, SnapshotStore>
-    where
-        LogStore: MetaUpdateLogStore + Send + Sync,
-        SnapshotStore: MetaUpdateSnapshotStore + Send + Sync,
-{
+impl<LogStore, SnapshotStore> Snapshotter<LogStore, SnapshotStore> where LogStore: MetaUpdateLogStore + Send + Sync,
+                                                                         SnapshotStore: MetaUpdateSnapshotStore + Send + Sync {
     /// Create a latest snapshot of the current logs.
     async fn snapshot(&self) -> Result<Option<Snapshot>> {
         // Get snapshot data from memory.
-        let table_snapshot_opt = self
-            .snapshot_data_provider
-            .get_table_snapshot(self.space_id, self.table_id)?;
+        let table_snapshot_opt = self.snapshot_data_provider.get_table_snapshot(self.space_id, self.table_id)?;
+
         let snapshot = Snapshot {
             end_seq: self.end_seq,
             data: table_snapshot_opt,
@@ -296,9 +292,9 @@ impl<LogStore, SnapshotStore> Snapshotter<LogStore, SnapshotStore>
 
         // Update the current snapshot to the new one.
         self.snapshot_store.store(&snapshot).await?;
+
         // Delete the expired logs after saving the snapshot.
-        // TODO: Actually this operation can be performed background, and the failure of
-        // it can be ignored.
+        // TODO: Actually this operation can be performed background, and the failure of it can be ignored.
         self.log_store.delete_up_to(snapshot.end_seq).await?;
 
         Ok(Some(snapshot))
@@ -351,7 +347,7 @@ pub struct ManifestImpl {
     /// contains io operations.
     snapshot_write_guard: Arc<Mutex<()>>,
 
-    table_meta_set: Arc<dyn TableMetaSet>,
+    tableMetaSet: Arc<dyn TableMetaSet>,
 }
 
 impl ManifestImpl {
@@ -367,25 +363,22 @@ impl ManifestImpl {
             store,
             num_updates_since_snapshot: Arc::new(AtomicUsize::new(0)),
             snapshot_write_guard: Arc::new(Mutex::new(())),
-            table_meta_set,
+            tableMetaSet: table_meta_set,
         };
 
         Ok(manifest)
     }
 
-    async fn store_update_to_wal(
-        &self,
-        meta_update: MetaUpdate,
-        location: WalLocation,
-    ) -> Result<SequenceNumber> {
-        let log_store = MetaUpdateLogStoreWalBased {
+    async fn store_update_to_wal(&self,
+                                 metaUpdate: MetaUpdate,
+                                 walLocation: WalLocation) -> Result<SequenceNumber> {
+        let metaUpdateLogStoreWalBased = MetaUpdateLogStoreWalBased {
             opts: self.opts.clone(),
-            location,
+            location: walLocation,
             wal_manager: self.wal_manager.clone(),
         };
-        let latest_sequence = log_store.append(meta_update).await?;
-        self.num_updates_since_snapshot
-            .fetch_add(1, Ordering::Relaxed);
+        let latest_sequence = metaUpdateLogStoreWalBased.append(metaUpdate).await?;
+        self.num_updates_since_snapshot.fetch_add(1, Ordering::Relaxed);
 
         Ok(latest_sequence)
     }
@@ -393,12 +386,10 @@ impl ManifestImpl {
     /// Do snapshot if no other snapshot is triggered.
     ///
     /// Returns the latest snapshot if snapshot is done.
-    async fn do_snapshot_internal(
-        &self,
-        space_id: SpaceId,
-        table_id: TableId,
-        location: WalLocation,
-    ) -> Result<Option<Snapshot>> {
+    async fn do_snapshot_internal(&self,
+                                  space_id: SpaceId,
+                                  table_id: TableId,
+                                  location: WalLocation, ) -> Result<Option<Snapshot>> {
         if let Ok(_guard) = self.snapshot_write_guard.try_lock() {
             let log_store = MetaUpdateLogStoreWalBased {
                 opts: self.opts.clone(),
@@ -412,7 +403,7 @@ impl ManifestImpl {
                 log_store,
                 snapshot_store,
                 end_seq,
-                snapshot_data_provider: self.table_meta_set.clone(),
+                snapshot_data_provider: self.tableMetaSet.clone(),
                 space_id,
                 table_id,
             };
@@ -420,7 +411,7 @@ impl ManifestImpl {
             let snapshot = snapshotter.snapshot().await?;
             Ok(snapshot)
         } else {
-            debug!("Avoid concurrent snapshot");
+            debug!("avoid concurrent snapshot");
             Ok(None)
         }
     }
@@ -428,32 +419,32 @@ impl ManifestImpl {
 
 #[async_trait]
 impl Manifest for ManifestImpl {
-    async fn apply_edit(&self, request: MetaEditRequest) -> GenericResult<()> {
-        info!("Manifest store update, request:{:?}", request);
+    async fn apply_edit(&self, metaEditRequest: MetaEditRequest) -> GenericResult<()> {
+        info!("manifest store update, request:{:?}", metaEditRequest);
 
-        // Update storage.
         let MetaEditRequest {
-            shard_info,
-            meta_edit,
-        } = request.clone();
+            tableShardInfo: shard_info,
+            metaEdit: meta_edit,
+        } = metaEditRequest.clone();
 
         let meta_update = MetaUpdate::try_from(meta_edit).box_err()?;
         let table_id = meta_update.table_id();
         let shard_id = shard_info.shard_id;
-        let location = WalLocation::new(shard_id as u64, table_id.as_u64());
+        let walLocation = WalLocation::new(shard_id as u64, table_id.as_u64());
         let space_id = meta_update.space_id();
 
-        self.store_update_to_wal(meta_update, location).await?;
+        // 落实到wal算是硬盘上的
+        self.store_update_to_wal(meta_update, walLocation).await?;
 
-        // Update memory.
-        let table_data = self.table_meta_set.apply_edit_to_table(request).box_err()?;
+        // 内存上的update
+        let table_data = self.tableMetaSet.apply_edit_to_table(metaEditRequest).box_err()?;
 
         // Update manifest updates count.
         table_data.increase_manifest_updates(1);
+
         // Judge if snapshot is needed.
         if table_data.should_do_manifest_snapshot() {
-            self.do_snapshot_internal(space_id, table_id, location)
-                .await?;
+            self.do_snapshot_internal(space_id, table_id, walLocation).await?;
             table_data.reset_manifest_updates();
         }
 
@@ -491,10 +482,10 @@ impl Manifest for ManifestImpl {
         if let Some(snapshot) = meta_snapshot_opt {
             let meta_edit = MetaEdit::Snapshot(snapshot);
             let request = MetaEditRequest {
-                shard_info: TableShardInfo::new(load_req.shard_id),
-                meta_edit,
+                tableShardInfo: TableShardInfo::new(load_req.shard_id),
+                metaEdit: meta_edit,
             };
-            self.table_meta_set.apply_edit_to_table(request)?;
+            self.tableMetaSet.apply_edit_to_table(request)?;
         }
 
         info!("Manifest recover finish, request:{load_req:?}");
@@ -568,10 +559,7 @@ impl MetaUpdateSnapshotStore for MetaUpdateSnapshotStoreObjectStoreBased {
         let snapshot_pb = manifest_pb::Snapshot::from(snapshot.clone());
         let payload = snapshot_pb.encode_to_vec();
         // The atomic write is ensured by the [`ObjectStore`] implementation.
-        self.store
-            .put(&self.snapshot_path, payload.into())
-            .await
-            .context(StoreSnapshot)?;
+        self.store.put(&self.snapshot_path, payload.into()).await.context(StoreSnapshot)?;
 
         Ok(())
     }
@@ -646,20 +634,16 @@ impl MetaUpdateLogStore for MetaUpdateLogStoreWalBased {
     }
 
     async fn append(&self, meta_update: MetaUpdate) -> Result<SequenceNumber> {
+        // fenquen meta的变化使用proto来序列化然后记录
         let payload = MetaUpdatePayload::from(meta_update);
-        let log_batch_encoder = LogBatchEncoder::create(self.location);
-        let log_batch = log_batch_encoder.encode(&payload).context(EncodePayloads {
+        let logBatchEncoder = LogBatchEncoder::create(self.location);
+        let logWriteBatch = logBatchEncoder.encode(&payload).context(EncodePayloads {
             wal_location: self.location,
         })?;
 
-        let write_ctx = WriteContext {
-            timeout: self.opts.store_timeout.0,
-        };
+        let write_ctx = WriteContext { timeout: self.opts.store_timeout.0 };
 
-        self.wal_manager
-            .write(&write_ctx, &log_batch)
-            .await
-            .context(WriteWal)
+        self.wal_manager.write(&write_ctx, &logWriteBatch).await.context(WriteWal)
     }
 
     async fn delete_up_to(&self, inclusive_end: SequenceNumber) -> Result<()> {

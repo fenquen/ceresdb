@@ -2,6 +2,7 @@
 
 //! Re-export of [object_store] crate.
 
+#![allow(non_snake_case)]
 use std::sync::Arc;
 
 pub use upstream::{

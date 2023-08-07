@@ -2,6 +2,7 @@
 
 //! Contains common types
 
+#![allow(non_snake_case)]
 pub mod column;
 pub mod column_schema;
 pub mod datum;
