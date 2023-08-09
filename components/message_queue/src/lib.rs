@@ -3,8 +3,6 @@
 //! Message queue component
 
 pub mod kafka;
-#[cfg(any(test, feature = "test"))]
-pub mod tests;
 
 use std::{
     collections::BTreeMap,
