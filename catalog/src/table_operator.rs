@@ -248,17 +248,13 @@ impl TableOperator {
     fn schema_by_name(&self, catalogName: &str, schemaName: &str) -> Result<SchemaRef> {
         let catalog =
             self.catalog_manager.catalog_by_name(catalogName).box_err()
-                .context(TableOperatorWithCause { msg: format!("failed to find catalog, catalog_name:{catalog_name}") })?
-                .context(TableOperatorNoCause { msg: format!("catalog not found, catalog_name:{catalog_name}") })?;
+                .context(TableOperatorWithCause { msg: format!("failed to find catalog, catalog_name:{}", catalogName) })?
+                .context(TableOperatorNoCause { msg: format!("catalog not found, catalog_name:{}", catalogName) })?;
 
         catalog
             .schema_by_name(schemaName)
             .box_err()
-            .context(TableOperatorWithCause {
-                msg: format!("failed to find schema, schema_name:{schema_name}"),
-            })?
-            .context(TableOperatorNoCause {
-                msg: format!("schema not found, schema_name:{schema_name}"),
-            })
+            .context(TableOperatorWithCause { msg: format!("failed to find schema, schema_name:{}", schemaName)})?
+            .context(TableOperatorNoCause { msg: format!("schema not found, schema_name:{}", schemaName)})
     }
 }

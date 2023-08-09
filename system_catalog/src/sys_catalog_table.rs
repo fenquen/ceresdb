@@ -761,18 +761,14 @@ impl<'a> Encoder<TableKey<'a>> for EntryKeyEncoder {
     type Error = Error;
 
     fn encode<B: BufMut>(&self, buf: &mut B, value: &TableKey) -> Result<()> {
-        buf.try_put_u8(KeyType::TableEntry.to_u8())
-            .context(EncodeKeyHeader)?;
+        buf.try_put_u8(KeyType::TableEntry.to_u8()).context(EncodeKeyHeader)?;
+
         let encoder = MemComparable;
-        encoder
-            .encode(buf, value.catalog.as_bytes())
-            .context(EncodeKeyBody)?;
-        encoder
-            .encode(buf, value.schema.as_bytes())
-            .context(EncodeKeyBody)?;
-        encoder
-            .encode(buf, value.table.as_bytes())
-            .context(EncodeKeyBody)?;
+
+        encoder.encode(buf, value.catalog.as_bytes()).context(EncodeKeyBody)?;
+        encoder.encode(buf, value.schema.as_bytes()).context(EncodeKeyBody)?;
+        encoder.encode(buf, value.table.as_bytes()).context(EncodeKeyBody)?;
+
         Ok(())
     }
 
