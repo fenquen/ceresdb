@@ -4,7 +4,6 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use size_ext::ReadableSize;
-use table_kv::config::ObkvConfig;
 use time_ext::ReadableDuration;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

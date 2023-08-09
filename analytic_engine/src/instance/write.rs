@@ -206,8 +206,7 @@ impl WriteRowGroupSplitter {
         }
     }
 
-    /// Compute the end row indexes in the original `encoded_rows` of each
-    /// batch.
+    /// Compute the end row indexes in the original `encoded_rows` of each batch.
     fn compute_batches(&self, encoded_rows: &[ByteVec]) -> Vec<usize> {
         let mut current_batch_size = 0;
         let mut end_row_indexes = Vec::new();
@@ -494,7 +493,7 @@ impl<'a> Writer<'a> {
     async fn write2Wal(&self, encoded_rows: Vec<ByteVec>) -> Result<SequenceNumber> {
         let _timer = self.tableData.metrics.start_table_write_wal_timer();
 
-        // Convert into pb
+        // convert into pb
         let writeRequestPb = table_requests::WriteRequest {
             // FIXME: Shall we avoid the magic number here?
             version: 0,
@@ -515,7 +514,7 @@ impl<'a> Writer<'a> {
 
         // Write to wal manager
         let write_ctx = WriteContext::default();
-        let sequence = self.instance.spaceStore.walManager.write(&write_ctx, &log_batch).await.context(WriteLogBatch { table: &self.tableData.name})?;
+        let sequence = self.instance.spaceStore.walManager.write(&write_ctx, &log_batch).await.context(WriteLogBatch { table: &self.tableData.name })?;
 
         Ok(sequence)
     }
@@ -531,38 +530,26 @@ impl<'a> Writer<'a> {
             res_sender: None,
             max_retry_flush_limit: self.instance.max_retry_flush_limit(),
         };
+
         let flusher = self.instance.make_flusher();
+
         if table_data.id == self.tableData.id {
             let flush_scheduler = self.serial_exec.flush_scheduler();
             // Set `block_on_write_thread` to false and let flush do in background.
-            return flusher
-                .scheduleFlush(flush_scheduler, table_data, opts)
-                .await
-                .context(FlushTable {
-                    table: &table_data.name,
-                });
+            return flusher.scheduleFlush(flush_scheduler, table_data, opts).await.context(FlushTable { table: &table_data.name });
         }
 
-        debug!(
-            "Try to trigger flush of other table:{} from the write procedure of table:{}",
-            table_data.name, self.tableData.name
-        );
+        debug!("try to trigger flush of other table:{} from the write procedure of table:{}",
+            table_data.name, self.tableData.name);
+
         match table_data.tableOpSerialExecutor.try_lock() {
             Ok(mut serial_exec) => {
                 let flush_scheduler = serial_exec.flush_scheduler();
                 // Set `block_on_write_thread` to false and let flush do in background.
-                flusher
-                    .scheduleFlush(flush_scheduler, table_data, opts)
-                    .await
-                    .context(FlushTable {
-                        table: &table_data.name,
-                    })
+                flusher.scheduleFlush(flush_scheduler, table_data, opts).await.context(FlushTable { table: &table_data.name })
             }
             Err(_) => {
-                warn!(
-                    "Failed to acquire write lock for flush table:{}",
-                    table_data.name,
-                );
+                warn!("Failed to acquire write lock for flush table:{}",table_data.name);
                 Ok(())
             }
         }

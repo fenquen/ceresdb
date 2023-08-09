@@ -1,6 +1,5 @@
 // Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
-//! Http service
 
 use std::{
     collections::HashMap, convert::Infallible, error::Error as StdError, net::IpAddr, sync::Arc,
@@ -780,9 +779,7 @@ fn error_to_status_code(err: &Error) -> StatusCode {
     }
 }
 
-async fn handle_rejection(
-    rejection: warp::Rejection,
-) -> std::result::Result<(impl warp::Reply, ), Infallible> {
+async fn handle_rejection(rejection: Rejection) -> std::result::Result<(impl Reply, ), Infallible> {
     let code;
     let message;
 

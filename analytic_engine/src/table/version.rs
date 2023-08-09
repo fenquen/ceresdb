@@ -435,7 +435,7 @@ impl MutableMemTableSet {
     fn memtables_for_read(&self, time_range: TimeRange, mems: &mut MemTableVec) {
         // seek to first memtable whose end time (exclusive) > time_range.start
         let iter = self.0.range((Bound::Excluded(time_range.inclusive_start), Bound::Unbounded));
-        for (endTs, memTableState) in iter {
+        for (_endTs, memTableState) in iter {
             // We need to iterate all candidate memtables as their start time is unspecific
             if memTableState.time_range.intersect_with(time_range) {
                 mems.push(memTableState.clone());
