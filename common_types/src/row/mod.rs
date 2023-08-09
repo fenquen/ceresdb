@@ -23,10 +23,10 @@ pub mod contiguous;
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display(
-        "Column out of bound, len:{}, given:{}.\nBacktrace:\n{}",
-        len,
-        given,
-        backtrace
+    "Column out of bound, len:{}, given:{}.\nBacktrace:\n{}",
+    len,
+    given,
+    backtrace
     ))]
     ColumnOutOfBound {
         len: usize,
@@ -35,10 +35,10 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Invalid column num of row, expect:{}, given:{}.\nBacktrace:\n{}",
-        expect,
-        given,
-        backtrace
+    "Invalid column num of row, expect:{}, given:{}.\nBacktrace:\n{}",
+    expect,
+    given,
+    backtrace
     ))]
     InvalidColumnNum {
         expect: usize,
@@ -53,11 +53,11 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Column type mismatch, name:{}, expect:{:?}, given:{:?}.\nBacktrace:\n{}",
-        column,
-        expect,
-        given,
-        backtrace
+    "Column type mismatch, name:{}, expect:{:?}, given:{:?}.\nBacktrace:\n{}",
+    column,
+    expect,
+    given,
+    backtrace
     ))]
     TypeMismatch {
         column: String,
@@ -75,13 +75,13 @@ pub enum Error {
         source: crate::datum::Error,
     },
 
-    #[snafu(display("Column in the schema is not found, column_name:{}", column,))]
+    #[snafu(display("Column in the schema is not found, column_name:{}", column, ))]
     ColumnNameNotFound { column: String },
 
     #[snafu(display(
-        "Column in the schema is not found, column_name:{}.\nBacktrace:\n{}",
-        column,
-        backtrace
+    "Column in the schema is not found, column_name:{}.\nBacktrace:\n{}",
+    column,
+    backtrace
     ))]
     ColumnNotFoundInSchema {
         column: String,
@@ -554,10 +554,7 @@ impl<'a> RowBuilder<'a> {
 
     /// Finish building this row and append this row into the row group
     pub fn finish(self) -> Result<()> {
-        ensure!(
-            self.cols.len() == self.group_builder.schema.num_columns(),
-            MissingColumns
-        );
+        ensure!(self.cols.len() == self.group_builder.schema.num_columns(),MissingColumns);
 
         self.group_builder.push_checked_row(Row { cols: self.cols });
         Ok(())

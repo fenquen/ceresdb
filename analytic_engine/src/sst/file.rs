@@ -88,37 +88,37 @@ impl fmt::Display for Level {
 pub struct LevelHandler {
     pub level: Level,
     /// All files in current level.
-    files: FileHandleSet,
+    fileHandleSet: FileHandleSet,
 }
 
 impl LevelHandler {
     pub fn new(level: Level) -> Self {
         Self {
             level,
-            files: FileHandleSet::default(),
+            fileHandleSet: FileHandleSet::default(),
         }
     }
 
     #[inline]
     pub fn insert(&mut self, file: FileHandle) {
-        self.files.insert(file);
+        self.fileHandleSet.insert(file);
     }
 
     pub fn latest_sst(&self) -> Option<FileHandle> {
-        self.files.latest()
+        self.fileHandleSet.latest()
     }
 
     pub fn pick_ssts(&self, time_range: TimeRange) -> Vec<FileHandle> {
-        self.files.files_by_time_range(time_range)
+        self.fileHandleSet.files_by_time_range(time_range)
     }
 
     #[inline]
     pub fn remove_ssts(&mut self, file_ids: &[FileId]) {
-        self.files.remove_by_ids(file_ids);
+        self.fileHandleSet.remove_by_ids(file_ids);
     }
 
     pub fn iter_ssts(&self) -> Iter {
-        let iter = self.files.file_map.values();
+        let iter = self.fileHandleSet.file_map.values();
         Iter(iter)
     }
 
@@ -128,12 +128,12 @@ impl LevelHandler {
         expire_time: Option<Timestamp>,
         expired_files: &mut Vec<FileHandle>,
     ) {
-        self.files.collect_expired(expire_time, expired_files);
+        self.fileHandleSet.collect_expired(expire_time, expired_files);
     }
 
     #[inline]
     pub fn has_expired_sst(&self, expire_time: Option<Timestamp>) -> bool {
-        self.files.has_expired_sst(expire_time)
+        self.fileHandleSet.has_expired_sst(expire_time)
     }
 }
 
@@ -149,7 +149,7 @@ impl<'a> Iterator for Iter<'a> {
 
 #[derive(Clone)]
 pub struct FileHandle {
-    inner: Arc<FileHandleInner>,
+    fileHandleInner: Arc<FileHandleInner>,
 }
 
 impl PartialEq for FileHandle {
@@ -169,7 +169,7 @@ impl Hash for FileHandle {
 impl FileHandle {
     pub fn new(meta: FileMeta, purge_queue: FilePurgeQueue) -> Self {
         Self {
-            inner: Arc::new(FileHandleInner {
+            fileHandleInner: Arc::new(FileHandleInner {
                 meta,
                 purge_queue,
                 being_compacted: AtomicBool::new(false),
@@ -180,74 +180,74 @@ impl FileHandle {
 
     #[inline]
     pub fn read_meter(&self) -> Arc<Meter> {
-        self.inner.metrics.read_meter.clone()
+        self.fileHandleInner.metrics.read_meter.clone()
     }
 
     #[inline]
     pub fn row_num(&self) -> u64 {
-        self.inner.meta.row_num
+        self.fileHandleInner.meta.row_num
     }
 
     #[inline]
     pub fn id(&self) -> FileId {
-        self.inner.meta.id
+        self.fileHandleInner.meta.id
     }
 
     #[inline]
     pub fn id_ref(&self) -> &FileId {
-        &self.inner.meta.id
+        &self.fileHandleInner.meta.id
     }
 
     #[inline]
     pub fn intersect_with_time_range(&self, time_range: TimeRange) -> bool {
-        self.inner.meta.intersect_with_time_range(time_range)
+        self.fileHandleInner.meta.intersect_with_time_range(time_range)
     }
 
     #[inline]
     pub fn time_range(&self) -> TimeRange {
-        self.inner.meta.time_range
+        self.fileHandleInner.meta.time_range
     }
 
     #[inline]
     pub fn time_range_ref(&self) -> &TimeRange {
-        &self.inner.meta.time_range
+        &self.fileHandleInner.meta.time_range
     }
 
     #[inline]
     pub fn max_sequence(&self) -> SequenceNumber {
-        self.inner.meta.max_seq
+        self.fileHandleInner.meta.max_seq
     }
 
     #[inline]
     pub fn being_compacted(&self) -> bool {
-        self.inner.being_compacted.load(Ordering::Relaxed)
+        self.fileHandleInner.being_compacted.load(Ordering::Relaxed)
     }
 
     #[inline]
     pub fn size(&self) -> u64 {
-        self.inner.meta.size
+        self.fileHandleInner.meta.size
     }
 
     #[inline]
     pub fn set_being_compacted(&self, value: bool) {
-        self.inner.being_compacted.store(value, Ordering::Relaxed);
+        self.fileHandleInner.being_compacted.store(value, Ordering::Relaxed);
     }
 
     #[inline]
     pub fn storage_format(&self) -> StorageFormat {
-        self.inner.meta.storage_format
+        self.fileHandleInner.meta.storage_format
     }
 
     #[inline]
     pub fn meta(&self) -> FileMeta {
-        self.inner.meta.clone()
+        self.fileHandleInner.meta.clone()
     }
 }
 
 impl fmt::Debug for FileHandle {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("FileHandle")
-            .field("meta", &self.inner.meta)
+            .field("meta", &self.fileHandleInner.meta)
             .field("being_compacted", &self.being_compacted())
             .finish()
     }
@@ -312,8 +312,8 @@ impl FileOrdKey {
 
     fn key_of(file: &FileHandle) -> Self {
         Self {
-            exclusive_end: file.time_range().exclusive_end(),
-            inclusive_start: file.time_range().inclusive_start(),
+            exclusive_end: file.time_range().exclusive_end,
+            inclusive_start: file.time_range().inclusive_start,
             file_id: file.id(),
         }
     }
@@ -362,21 +362,17 @@ impl FileHandleSet {
     fn files_by_time_range(&self, time_range: TimeRange) -> Vec<FileHandle> {
         // Seek to first sst whose end time >= time_range.inclusive_start().
         let seek_key = FileOrdKey::for_seek(time_range.inclusive_start());
-        self.file_map
-            .range(seek_key..)
-            .filter_map(|(_key, file)| {
-                if file.intersect_with_time_range(time_range) {
-                    Some(file.clone())
-                } else {
-                    None
-                }
-            })
-            .collect()
+        self.file_map.range(seek_key..).filter_map(|(_key, fileHandle)| {
+            if fileHandle.intersect_with_time_range(time_range) {
+                Some(fileHandle.clone())
+            } else {
+                None
+            }
+        }).collect()
     }
 
     fn insert(&mut self, file: FileHandle) {
-        self.file_map
-            .insert(FileOrdKey::key_of(&file), file.clone());
+        self.file_map.insert(FileOrdKey::key_of(&file), file.clone());
         self.id_to_files.insert(FileHandleHash(file));
     }
 

@@ -233,8 +233,8 @@ impl ShardOperator {
 
         // Build create table request and options.
         let create_table_request = CreateTableRequest {
-            catalog_name: ctx.catalog,
-            schema_name: table_info.schema_name.clone(),
+            catalogName: ctx.catalog,
+            schemaName: table_info.schema_name.clone(),
             table_name: table_info.name.clone(),
             table_id: Some(TableId::new(table_info.id)),
             table_schema: ctx.table_schema,
@@ -246,7 +246,7 @@ impl ShardOperator {
         };
 
         let create_opts = CreateOptions {
-            table_engine,
+            tableEngine: table_engine,
             create_if_not_exists: ctx.create_if_not_exist,
         };
 

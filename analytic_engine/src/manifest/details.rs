@@ -634,9 +634,10 @@ impl MetaUpdateLogStore for MetaUpdateLogStoreWalBased {
     }
 
     async fn append(&self, meta_update: MetaUpdate) -> Result<SequenceNumber> {
-        // fenquen meta的变化使用proto来序列化然后记录
         let payload = MetaUpdatePayload::from(meta_update);
         let logBatchEncoder = LogBatchEncoder::create(self.location);
+
+        // fenquen 表的生成等使用proto来序列化 对应的byte变为后续的kv中的value
         let logWriteBatch = logBatchEncoder.encode(&payload).context(EncodePayloads {
             wal_location: self.location,
         })?;

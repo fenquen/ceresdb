@@ -157,7 +157,7 @@ pub struct AddTableMeta {
 
 impl From<AddTableMeta> for manifest_pb::AddTableMeta {
     fn from(v: AddTableMeta) -> Self {
-        manifest_pb::AddTableMeta {
+        Self {
             space_id: v.space_id,
             table_id: v.table_id.as_u64(),
             table_name: v.table_name,
@@ -488,7 +488,7 @@ impl TryFrom<MetaEdit> for MetaUpdate {
         if let MetaEdit::Update(update) = value {
             Ok(update)
         } else {
-            ConvertMetaEdit { msg: "it is not the update type meta edit", }.fail()
+            ConvertMetaEdit { msg: "it is not the update type meta edit" }.fail()
         }
     }
 }
@@ -500,7 +500,7 @@ impl TryFrom<MetaEdit> for MetaSnapshot {
         if let MetaEdit::Snapshot(table_manifest_data) = value {
             Ok(table_manifest_data)
         } else {
-            ConvertMetaEdit { msg: "it is not the snapshot type meta edit"}.fail()
+            ConvertMetaEdit { msg: "it is not the snapshot type meta edit" }.fail()
         }
     }
 }

@@ -125,10 +125,7 @@ impl RecordBatchData {
     }
 
     fn num_rows(&self) -> usize {
-        self.column_blocks
-            .first()
-            .map(|column| column.num_rows())
-            .unwrap_or(0)
+        self.column_blocks.first().map(|column| column.num_rows()).unwrap_or(0)
     }
 
     fn take_column_block(&mut self, index: usize) -> ColumnBlock {
@@ -139,8 +136,7 @@ impl RecordBatchData {
         )
     }
 
-    /// Returns a zero-copy slice of this array with the indicated offset and
-    /// length.
+    /// Returns a zero-copy slice of this array with the indicated offset and length.
     ///
     /// Panics if offset with length is greater than column length.
     fn slice(&self, offset: usize, length: usize) -> Self {

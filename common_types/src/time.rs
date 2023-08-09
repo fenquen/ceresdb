@@ -158,10 +158,8 @@ impl From<&i64> for Timestamp {
 /// The range is empty if start equals end.
 #[derive(Default, Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub struct TimeRange {
-    /// The start timestamp (inclusive)
-    inclusive_start: Timestamp,
-    /// The end timestamp (exclusive)
-    exclusive_end: Timestamp,
+    pub inclusive_start: Timestamp,
+    pub exclusive_end: Timestamp,
 }
 
 impl TimeRange {
@@ -193,8 +191,7 @@ impl TimeRange {
 
     /// Create a time range only including the single timestamp.
     pub fn from_timestamp(t: Timestamp) -> Self {
-        // FIXME(xikai): now the time range can not express the `exclusive_end` as
-        //  infinite.
+        // FIXME(xikai): now the time range can not express the `exclusive_end` as infinite.
         let end = t.checked_add_i64(1).unwrap_or(t);
         Self::new(t, end).unwrap()
     }

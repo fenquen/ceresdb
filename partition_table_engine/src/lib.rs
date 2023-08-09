@@ -45,7 +45,7 @@ impl TableEngine for PartitionTableEngine {
         Ok(())
     }
 
-    async fn create_table(&self, request: CreateTableRequest) -> Result<TableRef> {
+    async fn createTable(&self, request: CreateTableRequest) -> Result<TableRef> {
         let table_data = TableData {
             catalog_name: request.catalog_name,
             schema_name: request.schema_name,

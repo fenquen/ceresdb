@@ -783,7 +783,7 @@ fn write_entry_to_rows(
     // Init all columns by null.
     let mut rows = vec![
         Row::from_datums(vec![Datum::Null; schema.num_columns()]);
-        write_series_entry.field_groups.len(),
+        write_series_entry.field_groups.len()
     ];
 
     // Fill tsid by default value.

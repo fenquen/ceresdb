@@ -194,7 +194,7 @@ impl CatalogManagerTableBased {
             id: schema_id,
             tables: RwLock::new(tables),
             mutex: Mutex::new(()),
-            catalog_table: self.sysCatalogTable.clone(),
+            sysCatalogTable: self.sysCatalogTable.clone(),
             table_seq_generator: TableSeqGenerator::default(),
         });
         // Use table seq of `sys_catalog` table as last table seq.
@@ -523,8 +523,7 @@ struct SchemaTableBased {
     /// - add/drop/alter table
     /// - persist to sys catalog table
     mutex: Mutex<()>,
-    /// Sys catalog table
-    catalog_table: Arc<SysCatalogTable>,
+    sysCatalogTable: Arc<SysCatalogTable>,
     table_seq_generator: TableSeqGenerator,
 }
 
@@ -541,7 +540,7 @@ impl SchemaTableBased {
             id: schema_id,
             tables: RwLock::new(SchemaTables::default()),
             mutex: Mutex::new(()),
-            catalog_table,
+            sysCatalogTable: catalog_table,
             table_seq_generator: TableSeqGenerator::default(),
         }
     }
@@ -582,11 +581,9 @@ impl SchemaTableBased {
     /// If table exists:
     /// - if create_if_not_exists is true, return Ok
     /// - if create_if_not_exists is false, return Error
-    fn check_create_table_read(
-        &self,
-        table_name: &str,
-        create_if_not_exists: bool,
-    ) -> schema::Result<Option<TableRef>> {
+    fn check_create_table_read(&self,
+                               table_name: &str,
+                               create_if_not_exists: bool) -> schema::Result<Option<TableRef>> {
         let tables = self.tables.read().unwrap();
         if let Some(table) = tables.tables_by_name.get(table_name) {
             // Already exists
@@ -611,13 +608,12 @@ impl SchemaTableBased {
     }
 
     async fn alloc_table_id<'a>(&self, name: NameRef<'a>) -> schema::Result<TableId> {
-        let table_seq = self
-            .table_seq_generator
-            .alloc_table_seq()
-            .context(TooManyTable {
-                schema: &self.name,
-                table: name,
-            })?;
+        let table_seq =
+            self.table_seq_generator.alloc_table_seq()
+                .context(TooManyTable {
+                    schema: &self.name,
+                    table: name,
+                })?;
 
         TableId::with_seq(self.id, table_seq)
             .context(InvalidSchemaIdAndTableSeq {
@@ -675,52 +671,36 @@ impl Schema for SchemaTableBased {
 
     // TODO(yingwen): Do not persist if engine is memory engine.
     async fn create_table(&self,
-                          request: CreateTableRequest,
+                          createTableRequest: CreateTableRequest,
                           opts: CreateOptions) -> schema::Result<TableRef> {
-        info!("Table based catalog manager create table, request:{:?}",request);
+        info!("table based catalog manager create table, request:{:?}",createTableRequest);
 
-        self.validate_schema_info(&request.catalog_name, &request.schema_name)?;
+        self.validate_schema_info(&createTableRequest.catalogName, &createTableRequest.schemaName)?;
 
         // TODO(yingwen): Validate table id is unique.
 
-        // Check table existence
-        if let Some(table) =
-            self.check_create_table_read(&request.table_name, opts.create_if_not_exists)?
-        {
+        // 要表已经有
+        if let Some(table) = self.check_create_table_read(&createTableRequest.table_name, opts.create_if_not_exists)? {
             return Ok(table);
         }
 
         // Lock schema and persist table to sys catalog table
         let _lock = self.mutex.lock().await;
-        // Check again
-        if let Some(table) =
-            self.check_create_table_read(&request.table_name, opts.create_if_not_exists)?
-        {
+
+        // again
+        if let Some(table) = self.check_create_table_read(&createTableRequest.table_name, opts.create_if_not_exists)? {
             return Ok(table);
         }
 
-        // Create table
-        let table_id = self.alloc_table_id(&request.table_name).await?;
-        let request = request.into_engine_create_request(Some(table_id), self.id);
-        let table_name = request.table_name.clone();
-        let table = opts
-            .table_engine
-            .create_table(request.clone())
-            .await
-            .box_err()
-            .context(CreateTableWithCause)?;
-        assert_eq!(table_name, table.name());
+        let table_id = self.alloc_table_id(&createTableRequest.table_name).await?;
+        let request = createTableRequest.into_engine_create_request(Some(table_id), self.id);
+        let table = opts.tableEngine.createTable(request.clone()).await.box_err().context(CreateTableWithCause)?;
 
-        self.catalog_table
-            .create_table(request.clone().into())
-            .await
-            .box_err()
-            .context(WriteTableMeta {
-                table: &request.table_name,
-            })?;
+        self.sysCatalogTable.createTable(request.clone().into()).await
+            .box_err().context(WriteTableMeta { table: &request.table_name })?;
 
         {
-            // Insert into memory
+            // insert into memory
             let mut tables = self.tables.write().unwrap();
             tables.insert(request.table_id, table.clone());
         }
@@ -728,15 +708,10 @@ impl Schema for SchemaTableBased {
         Ok(table)
     }
 
-    async fn drop_table(
-        &self,
-        mut request: DropTableRequest,
-        opts: DropOptions,
-    ) -> schema::Result<bool> {
-        info!(
-            "Table based catalog manager drop table, request:{:?}",
-            request
-        );
+    async fn drop_table(&self,
+                        mut request: DropTableRequest,
+                        opts: DropOptions) -> schema::Result<bool> {
+        info!("table based catalog manager drop table, request:{:?}",request);
 
         self.validate_schema_info(&request.catalog_name, &request.schema_name)?;
 
@@ -757,7 +732,7 @@ impl Schema for SchemaTableBased {
         let request = request.into_engine_drop_request(self.id);
 
         // Prepare to drop table info in the sys_catalog.
-        self.catalog_table
+        self.sysCatalogTable
             .prepare_drop_table(request.clone())
             .await
             .box_err()
@@ -778,7 +753,7 @@ impl Schema for SchemaTableBased {
         );
 
         // Update the drop table record into the sys_catalog_table.
-        self.catalog_table
+        self.sysCatalogTable
             .drop_table(request.clone())
             .await
             .box_err()

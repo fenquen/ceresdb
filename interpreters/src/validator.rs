@@ -58,7 +58,7 @@ impl Validator {
             }
 
             Plan::Create(plan) => {
-                is_sub_table!(&plan.table)
+                is_sub_table!(&plan.tableName)
             }
 
             Plan::Drop(plan) => {

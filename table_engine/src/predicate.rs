@@ -51,8 +51,7 @@ define_result!(Error);
 /// Predicate helps determine whether specific row group should be read.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Predicate {
-    /// Predicates in the query for filter out the columns that meet all the
-    /// exprs.
+    /// Predicates in the query for filter out the columns that meet all the exprs.
     exprs: Vec<Expr>,
     /// The time range involved by the query.
     time_range: TimeRange,

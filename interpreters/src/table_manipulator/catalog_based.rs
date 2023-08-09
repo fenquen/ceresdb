@@ -30,22 +30,18 @@ impl TableManipulatorCatalogBased {
 
 #[async_trait]
 impl TableManipulator for TableManipulatorCatalogBased {
-    async fn create_table(
-        &self,
-        ctx: InterpreterContext,
-        plan: CreateTablePlan,
-        table_engine: TableEngineRef,
-    ) -> Result<Output> {
-        ensure!(
-            plan.partition_info.is_none(),
-            PartitionTableNotSupported { table: plan.table }
-        );
+    async fn createTable(&self,
+                         ctx: InterpreterContext,
+                         plan: CreateTablePlan,
+                         table_engine: TableEngineRef) -> Result<Output> {
+        ensure!(plan.partition_info.is_none(),PartitionTableNotSupported { table: plan.tableName });
+
         let default_catalog = ctx.default_catalog();
         let default_schema = ctx.default_schema();
 
         let CreateTablePlan {
             engine,
-            table,
+            tableName: table,
             table_schema,
             if_not_exists,
             options,
@@ -53,8 +49,8 @@ impl TableManipulator for TableManipulatorCatalogBased {
         } = plan;
 
         let request = CreateTableRequest {
-            catalog_name: default_catalog.to_string(),
-            schema_name: default_schema.to_string(),
+            catalogName: default_catalog.to_string(),
+            schemaName: default_schema.to_string(),
             table_name: table.clone(),
             table_id: None,
             table_schema,
@@ -66,25 +62,19 @@ impl TableManipulator for TableManipulatorCatalogBased {
         };
 
         let opts = CreateOptions {
-            table_engine,
+            tableEngine: table_engine,
             create_if_not_exists: if_not_exists,
         };
 
-        let _ = self
-            .table_operator
-            .create_table_on_shard(request, opts)
-            .await
-            .context(TableOperatorErr)?;
+        let _ = self.table_operator.create_table_on_shard(request, opts).await.context(TableOperatorErr)?;
 
         Ok(Output::AffectedRows(0))
     }
 
-    async fn drop_table(
-        &self,
-        ctx: InterpreterContext,
-        plan: DropTablePlan,
-        table_engine: TableEngineRef,
-    ) -> Result<Output> {
+    async fn drop_table(&self,
+                        ctx: InterpreterContext,
+                        plan: DropTablePlan,
+                        table_engine: TableEngineRef, ) -> Result<Output> {
         let default_catalog = ctx.default_catalog();
         let default_schema = ctx.default_schema();
 
@@ -98,10 +88,7 @@ impl TableManipulator for TableManipulatorCatalogBased {
 
         let opts = DropOptions { table_engine };
 
-        self.table_operator
-            .drop_table_on_shard(request, opts)
-            .await
-            .context(TableOperatorErr)?;
+        self.table_operator.drop_table_on_shard(request, opts).await.context(TableOperatorErr)?;
 
         Ok(Output::AffectedRows(0))
     }

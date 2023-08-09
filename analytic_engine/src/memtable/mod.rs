@@ -149,8 +149,7 @@ pub trait MemTable {
     /// Schema of this memtable
     ///
     /// The schema of a memtable is not allowed to change now. Modifying the
-    /// schema of a table requires a memtable switch and external
-    /// synchronization
+    /// schema of a table requires a memtable switch and external synchronization
     fn schema(&self) -> &Schema;
 
     /// Peek the min key of this memtable.

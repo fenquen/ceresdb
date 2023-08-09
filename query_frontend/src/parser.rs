@@ -390,19 +390,17 @@ impl<'a> Parser<'a> {
             } else if let Token::Word(_) = self.dfSqlParser.peek_token().token {
                 columns.push(self.parse_column_def()?);
             } else {
-                return self.expected(
-                    "column name or constraint definition",
-                    self.dfSqlParser.peek_token().token,
-                );
+                return self.expected("column name or constraint definition",
+                                     self.dfSqlParser.peek_token().token, );
             }
+
             let comma = self.dfSqlParser.consume_token(&Token::Comma);
             if self.dfSqlParser.consume_token(&Token::RParen) {
                 // allow a trailing comma, even though it's not in standard
                 break;
             } else if !comma {
-                return self.expected(
-                    "',' or ')' after column definition",
-                    self.dfSqlParser.peek_token().token,
+                return self.expected("',' or ')' after column definition",
+                                     self.dfSqlParser.peek_token().token,
                 );
             }
         }
@@ -423,7 +421,7 @@ impl<'a> Parser<'a> {
 
         match self.dfSqlParser.next_token().token {
             Token::Word(w) => Ok(w.value),
-            unexpected => self.expected("Engine is missing", unexpected),
+            unexpected => self.expected("engine is missing", unexpected),
         }
     }
 

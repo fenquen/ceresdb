@@ -22,10 +22,10 @@ pub enum Error {
     UnSupported { msg: String, backtrace: Backtrace },
 
     #[snafu(display(
-        "Failed to allocate table id, schema:{}, table:{}, err:{}",
-        schema,
-        table,
-        source
+    "Failed to allocate table id, schema:{}, table:{}, err:{}",
+    schema,
+    table,
+    source
     ))]
     AllocateTableId {
         schema: String,
@@ -34,11 +34,11 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to invalidate table id, schema:{}, table:{}, table_id:{}, err:{}",
-        schema,
-        table_name,
-        table_id,
-        source
+    "Failed to invalidate table id, schema:{}, table:{}, table_id:{}, err:{}",
+    schema,
+    table_name,
+    table_id,
+    source
     ))]
     InvalidateTableId {
         schema: String,
@@ -48,10 +48,10 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to create table, request:{:?}, msg:{}.\nBacktrace:\n{}",
-        request,
-        msg,
-        backtrace
+    "Failed to create table, request:{:?}, msg:{}.\nBacktrace:\n{}",
+    request,
+    msg,
+    backtrace
     ))]
     CreateTable {
         request: CreateTableRequest,
@@ -63,10 +63,10 @@ pub enum Error {
     CreateTableWithCause { source: GenericError },
 
     #[snafu(display(
-        "Failed to drop table, request:{:?}, msg:{}.\nBacktrace:\n{}",
-        request,
-        msg,
-        backtrace
+    "Failed to drop table, request:{:?}, msg:{}.\nBacktrace:\n{}",
+    request,
+    msg,
+    backtrace
     ))]
     DropTable {
         request: DropTableRequest,
@@ -78,10 +78,10 @@ pub enum Error {
     DropTableWithCause { source: GenericError },
 
     #[snafu(display(
-        "Failed to open table, request:{:?}, msg:{}.\nBacktrace:\n{}",
-        request,
-        msg,
-        backtrace
+    "Failed to open table, request:{:?}, msg:{}.\nBacktrace:\n{}",
+    request,
+    msg,
+    backtrace
     ))]
     OpenTable {
         request: OpenTableRequest,
@@ -93,10 +93,10 @@ pub enum Error {
     OpenTableWithCause { source: GenericError },
 
     #[snafu(display(
-        "Failed to close table, request:{:?}, msg:{}.\nBacktrace:\n{}",
-        request,
-        msg,
-        backtrace
+    "Failed to close table, request:{:?}, msg:{}.\nBacktrace:\n{}",
+    request,
+    msg,
+    backtrace
     ))]
     CloseTable {
         request: CloseTableRequest,
@@ -107,25 +107,17 @@ pub enum Error {
     #[snafu(display("Failed to close table, source:{}", source))]
     CloseTableWithCause { source: GenericError },
 
-    #[snafu(display(
-        "Failed to create table, table already exists, table:{}.\nBacktrace:\n{}",
-        table,
-        backtrace
-    ))]
+    #[snafu(display("Failed to create table, table already exists, table:{}.\nBacktrace:\n{}", table, backtrace))]
     CreateExistTable { table: String, backtrace: Backtrace },
 
-    #[snafu(display(
-        "Failed to create table, cannot persist meta, table:{}, err:{}",
-        table,
-        source
-    ))]
+    #[snafu(display("Failed to create table, cannot persist meta, table:{}, err:{}", table, source))]
     WriteTableMeta { table: String, source: GenericError },
 
     #[snafu(display(
-        "Catalog mismatch, expect:{}, given:{}.\nBacktrace:\n{}",
-        expect,
-        given,
-        backtrace
+    "Catalog mismatch, expect:{}, given:{}.\nBacktrace:\n{}",
+    expect,
+    given,
+    backtrace
     ))]
     CatalogMismatch {
         expect: String,
@@ -134,10 +126,10 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Schema mismatch, expect:{}, given:{}.\nBacktrace:\n{}",
-        expect,
-        given,
-        backtrace
+    "Schema mismatch, expect:{}, given:{}.\nBacktrace:\n{}",
+    expect,
+    given,
+    backtrace
     ))]
     SchemaMismatch {
         expect: String,
@@ -146,10 +138,10 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Invalid table id, msg:{}, table_id:{}.\nBacktrace:\n{}",
-        msg,
-        table_id,
-        backtrace
+    "Invalid table id, msg:{}, table_id:{}.\nBacktrace:\n{}",
+    msg,
+    table_id,
+    backtrace
     ))]
     InvalidTableId {
         msg: &'static str,
@@ -164,10 +156,10 @@ pub enum Error {
     AlterTable { source: GenericError },
 
     #[snafu(display(
-        "Too many table, cannot create table, schema:{}, table:{}.\nBacktrace:\n{}",
-        schema,
-        table,
-        backtrace
+    "Too many table, cannot create table, schema:{}, table:{}.\nBacktrace:\n{}",
+    schema,
+    table,
+    backtrace
     ))]
     TooManyTable {
         schema: String,
@@ -187,9 +179,9 @@ pub type SchemaRef = Arc<dyn Schema + Send + Sync>;
 #[derive(Debug, Clone)]
 pub struct CreateTableRequest {
     /// Catalog name
-    pub catalog_name: String,
+    pub catalogName: String,
     /// Schema name
-    pub schema_name: String,
+    pub schemaName: String,
     /// Table name
     pub table_name: String,
     /// Table id
@@ -210,16 +202,14 @@ pub struct CreateTableRequest {
 }
 
 impl CreateTableRequest {
-    pub fn into_engine_create_request(
-        self,
-        table_id: Option<TableId>,
-        schema_id: SchemaId,
-    ) -> engine::CreateTableRequest {
+    pub fn into_engine_create_request(self,
+                                      table_id: Option<TableId>,
+                                      schema_id: SchemaId) -> engine::CreateTableRequest {
         let table_id = self.table_id.unwrap_or(table_id.unwrap_or(TableId::MIN));
 
         engine::CreateTableRequest {
-            catalog_name: self.catalog_name,
-            schema_name: self.schema_name,
+            catalog_name: self.catalogName,
+            schema_name: self.schemaName,
             schema_id,
             table_name: self.table_name,
             table_id,
@@ -238,7 +228,7 @@ impl CreateTableRequest {
 pub struct CreateOptions {
     /// Table engine
     // FIXME(yingwen): We have engine type in create request, remove this
-    pub table_engine: TableEngineRef,
+    pub tableEngine: TableEngineRef,
     /// Create if not exists, if table already exists, wont return error
     // TODO(yingwen): Maybe remove this?
     pub create_if_not_exists: bool,
@@ -268,6 +258,7 @@ impl DropTableRequest {
         }
     }
 }
+
 /// Drop table options
 #[derive(Clone)]
 pub struct DropOptions {
@@ -305,6 +296,7 @@ impl OpenTableRequest {
         }
     }
 }
+
 /// Open table options.
 #[derive(Clone)]
 pub struct OpenOptions {
@@ -411,11 +403,9 @@ pub trait Schema {
 
     /// TODO: remove this method afterwards.
     /// Create table according to `request`.
-    async fn create_table(
-        &self,
-        request: CreateTableRequest,
-        opts: CreateOptions,
-    ) -> Result<TableRef>;
+    async fn create_table(&self,
+                          request: CreateTableRequest,
+                          opts: CreateOptions) -> Result<TableRef>;
 
     /// TODO: remove this method afterwards.
     /// Drop table according to `request`.

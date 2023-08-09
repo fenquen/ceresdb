@@ -124,18 +124,16 @@ impl<P> Frontend<P> {
 
 impl<P: MetaProvider> Frontend<P> {
     /// Create logical plan for the statement
-    pub fn statement_to_plan(&self, ctx: &mut Context, statement: Statement) -> Result<Plan> {
+    pub fn statementToPlan(&self, ctx: &mut Context, statement: Statement) -> Result<Plan> {
         let planner = Planner::new(&self.provider, ctx.request_id, ctx.read_parallelism);
 
-        planner.statement_to_plan(statement).context(CreatePlan)
+        planner.statementToPlan(statement).context(CreatePlan)
     }
 
     /// Experimental native promql support, not used in production yet.
-    pub fn promql_expr_to_plan(
-        &self,
-        ctx: &mut Context,
-        expr: Expr,
-    ) -> Result<(Plan, Arc<ColumnNames>)> {
+    pub fn promql_expr_to_plan(&self,
+                               ctx: &mut Context,
+                               expr: Expr) -> Result<(Plan, Arc<ColumnNames>)> {
         let planner = Planner::new(&self.provider, ctx.request_id, ctx.read_parallelism);
 
         planner.promql_expr_to_plan(expr).context(CreatePlan)

@@ -244,29 +244,29 @@ struct MemTableView {
     ///
     /// This memtable is special and may contains data in differnt segment, so
     /// can not be moved into immutable memtable set.
-    sampling_mem: Option<SamplingMemTable>,
+    samplingMemTable: Option<SamplingMemTable>,
 
     /// Mutable memtables arranged by its time range.
-    mutables: MutableMemTableSet,
+    mutableMemTableSet: MutableMemTableSet,
 
     /// Immutable memtables set, lookup by memtable id is fast.
-    immutables: ImmutableMemTableSet,
+    immutableMemTableSet: ImmutableMemTableSet,
 }
 
 impl MemTableView {
     fn new() -> Self {
         Self {
-            sampling_mem: None,
-            mutables: MutableMemTableSet::new(),
-            immutables: ImmutableMemTableSet(BTreeMap::new()),
+            samplingMemTable: None,
+            mutableMemTableSet: MutableMemTableSet::new(),
+            immutableMemTableSet: ImmutableMemTableSet(BTreeMap::new()),
         }
     }
 
     /// Get the memory usage of mutable memtables.
     fn mutable_memory_usage(&self) -> usize {
-        self.mutables.memory_usage()
+        self.mutableMemTableSet.memory_usage()
             + self
-            .sampling_mem
+            .samplingMemTable
             .as_ref()
             .map(|v| v.memory_usage())
             .unwrap_or(0)
@@ -275,7 +275,7 @@ impl MemTableView {
     /// Get the total memory usage of mutable and immutable memtables.
     fn total_memory_usage(&self) -> usize {
         let mutable_usage = self.mutable_memory_usage();
-        let immutable_usage = self.immutables.memory_usage();
+        let immutable_usage = self.immutableMemTableSet.memory_usage();
 
         mutable_usage + immutable_usage
     }
@@ -284,7 +284,7 @@ impl MemTableView {
     /// old memtable to immutable memtables and left mutable memtables
     /// empty. New mutable memtable will be constructed via put request.
     fn switch_memtables(&mut self) -> Option<SequenceNumber> {
-        self.mutables.move_to_inmem(&mut self.immutables)
+        self.mutableMemTableSet.move_to_inmem(&mut self.immutableMemTableSet)
     }
 
     /// Sample the segment duration.
@@ -293,11 +293,11 @@ impl MemTableView {
     /// duration or move all mutable memtables into immutable memtables if
     /// the sampling memtable is freezed and returns None.
     fn suggest_duration(&mut self) -> Option<Duration> {
-        if let Some(v) = &mut self.sampling_mem {
+        if let Some(v) = &mut self.samplingMemTable {
             if !v.freezed {
                 // Other memtable should be empty during sampling phase.
-                assert!(self.mutables.is_empty());
-                assert!(self.immutables.is_empty());
+                assert!(self.mutableMemTableSet.is_empty());
+                assert!(self.immutableMemTableSet.is_empty());
 
                 // The sampling memtable is still active, we need to compute the
                 // segment duration and then freeze the memtable.
@@ -313,7 +313,7 @@ impl MemTableView {
     }
 
     fn freeze_sampling_memtable(&mut self) -> Option<SequenceNumber> {
-        if let Some(v) = &mut self.sampling_mem {
+        if let Some(v) = &mut self.samplingMemTable {
             v.freezed = true;
             return Some(v.mem.last_sequence());
         }
@@ -329,13 +329,13 @@ impl MemTableView {
     fn pick_memtables_to_flush(&self, last_sequence: SequenceNumber) -> FlushableMemTables {
         let mut mems = FlushableMemTables::default();
 
-        if let Some(v) = &self.sampling_mem {
+        if let Some(v) = &self.samplingMemTable {
             if v.last_sequence() <= last_sequence {
                 mems.sampling_mem = Some(v.clone());
             }
         }
 
-        for mem in self.immutables.0.values() {
+        for mem in self.immutableMemTableSet.0.values() {
             if mem.last_sequence() <= last_sequence {
                 mems.memtables.push(mem.clone());
             }
@@ -347,28 +347,25 @@ impl MemTableView {
     /// Remove memtable from immutables or sampling memtable.
     #[inline]
     fn remove_immutable_or_sampling(&mut self, id: MemTableId) {
-        if let Some(v) = &self.sampling_mem {
+        if let Some(v) = &self.samplingMemTable {
             if v.id == id {
-                self.sampling_mem = None;
+                self.samplingMemTable = None;
                 return;
             }
         }
 
-        self.immutables.0.remove(&id);
+        self.immutableMemTableSet.0.remove(&id);
     }
 
     /// Collect memtables itersect with `time_range`
-    fn memtables_for_read(
-        &self,
-        time_range: TimeRange,
-        mems: &mut MemTableVec,
-        sampling_mem: &mut Option<SamplingMemTable>,
-    ) {
-        self.mutables.memtables_for_read(time_range, mems);
+    fn memtables_for_read(&self,
+                          time_range: TimeRange,
+                          mems: &mut MemTableVec,
+                          sampling_mem: &mut Option<SamplingMemTable>) {
+        self.mutableMemTableSet.memtables_for_read(time_range, mems);
+        self.immutableMemTableSet.memtables_for_read(time_range, mems);
 
-        self.immutables.memtables_for_read(time_range, mems);
-
-        *sampling_mem = self.sampling_mem.clone();
+        *sampling_mem = self.samplingMemTable.clone();
     }
 }
 
@@ -436,15 +433,12 @@ impl MutableMemTableSet {
     }
 
     fn memtables_for_read(&self, time_range: TimeRange, mems: &mut MemTableVec) {
-        // Seek to first memtable whose end time (exclusive) > time_range.start
-        let inclusive_start = time_range.inclusive_start();
-        let iter = self
-            .0
-            .range((Bound::Excluded(inclusive_start), Bound::Unbounded));
-        for (_end_ts, mem) in iter {
+        // seek to first memtable whose end time (exclusive) > time_range.start
+        let iter = self.0.range((Bound::Excluded(time_range.inclusive_start), Bound::Unbounded));
+        for (endTs, memTableState) in iter {
             // We need to iterate all candidate memtables as their start time is unspecific
-            if mem.time_range.intersect_with(time_range) {
-                mems.push(mem.clone());
+            if memTableState.time_range.intersect_with(time_range) {
+                mems.push(memTableState.clone());
             }
         }
     }
@@ -463,10 +457,7 @@ struct ImmutableMemTableSet(BTreeMap<MemTableId, MemTableState>);
 impl ImmutableMemTableSet {
     /// Memory used by all immutable memtables
     fn memory_usage(&self) -> usize {
-        self.0
-            .values()
-            .map(|m| m.mem.approximate_memory_usage())
-            .sum()
+        self.0.values().map(|m| m.mem.approximate_memory_usage()).sum()
     }
 
     fn memtables_for_read(&self, time_range: TimeRange, mems: &mut MemTableVec) {
@@ -491,7 +482,7 @@ pub struct ReadView {
     /// Ssts to read in each level.
     ///
     /// The `ReadView` MUST ensure the length of `leveled_ssts` >= MAX_LEVEL.
-    pub leveled_ssts: LeveledFiles,
+    pub leveled_ssts: Vec<Vec<FileHandle>>,
 }
 
 impl Default for ReadView {
@@ -530,7 +521,7 @@ struct TableVersionInner {
 
 impl TableVersionInner {
     fn memtable_for_write(&self, timestamp: Timestamp) -> Option<MemTableForWrite> {
-        if let Some(mem) = self.memtable_view.sampling_mem.clone() {
+        if let Some(mem) = self.memtable_view.samplingMemTable.clone() {
             if !mem.freezed {
                 // If sampling memtable is not freezed.
                 return Some(MemTableForWrite::Sampling(mem));
@@ -538,7 +529,7 @@ impl TableVersionInner {
         }
 
         self.memtable_view
-            .mutables
+            .mutableMemTableSet
             .memtable_for_write(timestamp)
             .cloned()
             .map(MemTableForWrite::Normal)
@@ -653,7 +644,7 @@ impl TableVersion {
     /// Insert memtable into mutable memtable set.
     pub fn insert_mutable(&self, mem_state: MemTableState) {
         let mut inner = self.tableVersionInner.write().unwrap();
-        let old_memtable = inner.memtable_view.mutables.insert(mem_state.clone());
+        let old_memtable = inner.memtable_view.mutableMemTableSet.insert(mem_state.clone());
         assert!(
             old_memtable.is_none(),
             "Find a duplicate memtable, new_memtable:{:?}, old_memtable:{:?}, memtable_view:{:#?}",
@@ -668,8 +659,8 @@ impl TableVersion {
     /// Panic if the sampling memtable of this version is not None.
     pub fn set_sampling(&self, sampling_mem: SamplingMemTable) {
         let mut inner = self.tableVersionInner.write().unwrap();
-        assert!(inner.memtable_view.sampling_mem.is_none());
-        inner.memtable_view.sampling_mem = Some(sampling_mem);
+        assert!(inner.memtable_view.samplingMemTable.is_none());
+        inner.memtable_view.samplingMemTable = Some(sampling_mem);
     }
 
     /// Atomically apply the edit to the version.
@@ -721,12 +712,12 @@ impl TableVersion {
 
         {
             // Pick memtables for read.
-            let inner = self.tableVersionInner.read().unwrap();
+            let tableVersionInner = self.tableVersionInner.read().unwrap();
 
-            inner.memtable_view.memtables_for_read(time_range, &mut memtables, &mut sampling_mem);
+            tableVersionInner.memtable_view.memtables_for_read(time_range, &mut memtables, &mut sampling_mem);
 
             // Pick ssts for read.
-            inner.levels_controller.pick_ssts(time_range, |level, ssts| {
+            tableVersionInner.levels_controller.pick_ssts(time_range, |level, ssts| {
                 leveled_ssts[level.as_usize()].extend_from_slice(ssts)
             });
         }
@@ -739,11 +730,9 @@ impl TableVersion {
     }
 
     /// Pick ssts for compaction using given `picker`.
-    pub fn pick_for_compaction(
-        &self,
-        picker_ctx: PickerContext,
-        picker: &CompactionPickerRef,
-    ) -> picker::Result<CompactionTask> {
+    pub fn pick_for_compaction(&self,
+                               picker_ctx: PickerContext,
+                               picker: &CompactionPickerRef) -> picker::Result<CompactionTask> {
         let mut inner = self.tableVersionInner.write().unwrap();
 
         picker.pick_compaction(picker_ctx, &mut inner.levels_controller)

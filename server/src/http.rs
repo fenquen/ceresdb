@@ -147,28 +147,15 @@ pub struct Service<Q> {
 
 impl<Q: QueryExecutor + 'static> Service<Q> {
     pub async fn start(&mut self) -> Result<()> {
-        let ip_addr: IpAddr = self
-            .config
-            .endpoint
-            .addr
-            .parse()
-            .with_context(|| ParseIpAddr {
-                ip: self.config.endpoint.addr.to_string(),
-            })?;
+        let ip_addr: IpAddr = self.config.endpoint.addr.parse().with_context(|| ParseIpAddr { ip: self.config.endpoint.addr.to_string(), })?;
         let rx = self.rx.take().context(AlreadyStarted)?;
 
-        info!(
-            "HTTP server tries to listen on {}",
-            &self.config.endpoint.to_string()
-        );
+        info!("http server tries to listen on {}",&self.config.endpoint.to_string());
 
         // Register filters to warp and rejection handler
         let routes = self.routes().recover(handle_rejection);
         let (_addr, server) = warp::serve(routes).bind_with_graceful_shutdown(
-            (ip_addr, self.config.endpoint.port),
-            async {
-                rx.await.ok();
-            },
+            (ip_addr, self.config.endpoint.port), async { rx.await.ok(); },
         );
 
         self.engine_runtimes.default_runtime.spawn(server);
@@ -247,7 +234,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
 
     // POST /sql
     fn sql(&self) -> impl Filter<Extract=(impl Reply), Error=Rejection> + Clone {
-        // 要是请求体的内容是json文本那么映射程Request 如果是纯文本那么落地到Request的query
+        // fenquen 要是请求体的内容是json文本那么映射程Request 如果是纯文本那么落地到Request的query
         let extract_request = warp::body::json()
             .or(warp::body::bytes().map(|v: Bytes| Request {
                 query: String::from_utf8_lossy(&v).to_string(),
@@ -260,7 +247,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .and(self.with_context())
             .and(self.with_proxy())
             .and(self.with_read_runtime())
-            .and_then(|request, requestContext, proxy: Arc<Proxy<Q>>, runtime: RuntimeRef| async move {
+            .and_then(|request, requestContext, proxy: Arc<Proxy<Q>>, runtime: Arc<Runtime>| async move {
                 let result = runtime
                     .spawn(async move {
                         proxy.handle_http_sql_query(&requestContext, request).await.map(convert_output)

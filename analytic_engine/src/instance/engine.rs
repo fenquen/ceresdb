@@ -286,9 +286,9 @@ impl TableEngineInstance {
     }
 
     /// create a table under given space
-    pub async fn create_table(self: &Arc<Self>,
-                              spaceId: SpaceId,
-                              request: CreateTableRequest) -> Result<SpaceAndTable> {
+    pub async fn createTable(self: &Arc<Self>,
+                             spaceId: SpaceId,
+                             request: CreateTableRequest) -> Result<SpaceAndTable> {
         let context = SpaceContext {
             catalog_name: request.catalog_name.clone(),
             schema_name: request.schema_name.clone(),

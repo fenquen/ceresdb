@@ -140,8 +140,7 @@ pub struct VarbinaryColumn(BinaryArray);
 #[derive(Debug, Clone)]
 pub struct StringColumn(StringArray);
 
-/// dictionary encode type is difference from other types, need implement
-/// without macro
+/// dictionary encode type is difference from other types, need implement without macro
 #[derive(Debug, Clone)]
 pub struct StringDictionaryColumn(DictionaryArray<Int32Type>);
 

@@ -114,27 +114,24 @@ async fn run_server_with_runtimes<T>(config: Config,
 
     let walsOpener = T::default();
     let serverBuilder = match &config.cluster_deployment {
-        None => {
-            build_without_meta(&config,
-                               &StaticRouteConfig::default(),
-                               serverBuilder,
-                               engine_runtimes.clone(),
-                               walsOpener).await
-        }
-        Some(ClusterDeployment::NoMeta(v)) => {
+        None => build_without_meta(&config,
+                                   &StaticRouteConfig::default(),
+                                   serverBuilder,
+                                   engine_runtimes.clone(),
+                                   walsOpener).await,
+
+        Some(ClusterDeployment::NoMeta(v)) =>
             build_without_meta(&config,
                                v,
                                serverBuilder,
                                engine_runtimes.clone(),
-                               walsOpener).await
-        }
-        Some(ClusterDeployment::WithMeta(cluster_config)) => {
+                               walsOpener).await,
+        Some(ClusterDeployment::WithMeta(cluster_config)) =>
             build_with_meta(&config,
                             cluster_config,
                             serverBuilder,
                             engine_runtimes.clone(),
-                            walsOpener).await
-        }
+                            walsOpener).await,
     };
 
     // Build and start server
@@ -268,13 +265,9 @@ async fn build_without_meta<Executor: QueryExecutor + 'static, T: WalsOpener>(co
     // Build static router and schema config provider
     let cluster_view = ClusterView::from(&static_route_config.topology);
     let schema_configs = cluster_view.schema_configs.clone();
-    let router = Arc::new(RuleBasedRouter::new(
-        cluster_view,
-        static_route_config.rules.clone(),
-    ));
+    let router = Arc::new(RuleBasedRouter::new(cluster_view, static_route_config.rules.clone()));
     let schema_config_provider = Arc::new(ConfigBasedProvider::new(
-        schema_configs,
-        config.server.default_schema_config.clone(),
+        schema_configs, config.server.default_schema_config.clone(),
     ));
 
     serverBuilder

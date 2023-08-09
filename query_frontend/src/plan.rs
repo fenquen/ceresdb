@@ -77,15 +77,10 @@ impl Debug for QueryPlan {
 pub struct CreateTablePlan {
     /// Engine
     pub engine: String,
-    /// Create table if not exists
     pub if_not_exists: bool,
-    /// Table name
-    pub table: String,
-    /// Table schema
+    pub tableName: String,
     pub table_schema: Schema,
-    /// Table options
     pub options: HashMap<String, String>,
-    /// Table partition info
     pub partition_info: Option<PartitionInfo>,
 }
 
@@ -94,7 +89,7 @@ impl Debug for CreateTablePlan {
         f.debug_struct("CreateTablePlan")
             .field("engine", &self.engine)
             .field("if_not_exists", &self.if_not_exists)
-            .field("table", &self.table)
+            .field("table", &self.tableName)
             .field("table_schema", &self.table_schema)
             .field(
                 "options",

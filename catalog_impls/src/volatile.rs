@@ -151,7 +151,7 @@ impl Catalog for CatalogImpl {
             return Ok(());
         }
 
-        let schema: SchemaRef = Arc::new(SchemaImpl::new(
+        let schema: SchemaRef = Arc::new(SchemaMemoryBased::new(
             self.name.to_string(),
             name.to_string(),
             SchemaId::from_u32(schema_id),
@@ -181,7 +181,7 @@ impl Catalog for CatalogImpl {
 /// A volatile implementation for [`Schema`].
 ///
 /// The implementation is actually a delegation for [`cluster::TableManager`].
-struct SchemaImpl {
+struct SchemaMemoryBased {
     /// Catalog name
     catalog_name: String,
     /// Schema name
@@ -194,7 +194,7 @@ struct SchemaImpl {
     create_table_mutex: Mutex<()>,
 }
 
-impl SchemaImpl {
+impl SchemaMemoryBased {
     fn new(
         catalog_name: String,
         schema_name: String,
@@ -259,7 +259,7 @@ impl SchemaImpl {
 }
 
 #[async_trait]
-impl Schema for SchemaImpl {
+impl Schema for SchemaMemoryBased {
     fn name(&self) -> NameRef {
         &self.schema_name
     }
@@ -281,8 +281,8 @@ impl Schema for SchemaImpl {
     ) -> schema::Result<TableRef> {
         // FIXME: Error should be returned if create_if_not_exist is false.
         if let Some(table) = self.get_table(
-            &request.catalog_name,
-            &request.schema_name,
+            &request.catalogName,
+            &request.schemaName,
             &request.table_name,
         )? {
             return Ok(table);
@@ -292,8 +292,8 @@ impl Schema for SchemaImpl {
         let _create_table_guard = self.create_table_mutex.lock().await;
 
         if let Some(table) = self.get_table(
-            &request.catalog_name,
-            &request.schema_name,
+            &request.catalogName,
+            &request.schemaName,
             &request.table_name,
         )? {
             return Ok(table);
@@ -312,7 +312,7 @@ impl Schema for SchemaImpl {
 
             // TODO: seems unnecessary?
             let _ = shard
-                .find_table(&request.schema_name, &request.table_name)
+                .find_table(&request.schemaName, &request.table_name)
                 .with_context(|| schema::CreateTable {
                     request: request.clone(),
                     msg: "table not found in shard".to_string(),
@@ -322,8 +322,8 @@ impl Schema for SchemaImpl {
 
         // Table engine is able to handle duplicate table creation.
         let table = opts
-            .table_engine
-            .create_table(request)
+            .tableEngine
+            .createTable(request)
             .await
             .box_err()
             .context(CreateTableWithCause)?;

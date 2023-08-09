@@ -106,8 +106,7 @@ impl TableEngineInstance {
                                  partitioned_iters: Vec<impl RecordBatchWithKeyIterator + 'static>) -> Result<PartitionedStreams> {
 
         // 生成 Vec<Vec<>> 最外的元素数量有read_parallelism
-        let mut iterVecVec: Vec<_> = std::iter::repeat_with(Vec::new)
-            .take(request.opts.read_parallelism).collect();
+        let mut iterVecVec: Vec<_> = std::iter::repeat_with(Vec::new).take(request.opts.read_parallelism).collect();
 
         for (i, time_aligned_iter) in partitioned_iters.into_iter().enumerate() {
             iterVecVec[i % request.opts.read_parallelism].push(time_aligned_iter);
@@ -143,12 +142,12 @@ impl TableEngineInstance {
 
         let timeRange = readRequest.predicate.time_range();
         let tableVersion = tableData.current_version();
-        let read_views = self.partition_ssts_and_memtables(timeRange, tableVersion, tableOptions);
+        let readViews = self.partition_ssts_and_memtables(timeRange, tableVersion, tableOptions);
 
         let iter_options = self.make_iter_options(tableOptions.num_rows_per_row_group);
 
-        let mut iters = Vec::with_capacity(read_views.len());
-        for (idx, read_view) in read_views.into_iter().enumerate() {
+        let mut iters = Vec::with_capacity(readViews.len());
+        for (idx, read_view) in readViews.into_iter().enumerate() {
             let metrics_collector = readRequest.metrics_collector.span(format!("{}_{}", MERGE_ITER_METRICS_COLLECTOR_NAME_PREFIX, idx));
             let merge_config = MergeConfig {
                 request_id: readRequest.request_id,
@@ -250,38 +249,35 @@ impl TableEngineInstance {
                                     timeRange: TimeRange,
                                     tableVersion: &TableVersion,
                                     tableOptions: &TableOptions) -> Vec<ReadView> {
-        let read_view = tableVersion.pick_read_view(timeRange);
+        let readView = tableVersion.pick_read_view(timeRange);
 
         let segment_duration = match tableOptions.segment_duration {
             Some(v) => v.0,
             None => {
                 // Segment duration is unknown, the table maybe still in sampling phase
                 // or the segment duration is still not applied to the table options, just return one partition.
-                return vec![read_view];
+                return vec![readView];
             }
         };
-        if read_view.contains_sampling() {
+
+        if readView.contains_sampling() {
             // The table contains sampling memtable, just return one partition.
-            return vec![read_view];
+            return vec![readView];
         }
 
         // Collect the aligned ssts and memtables into the map.
         // {aligned timestamp} => {read view}
         let mut read_view_by_time = BTreeMap::new();
-        for (level, leveled_ssts) in read_view.leveled_ssts.into_iter().enumerate() {
-            for file in leveled_ssts {
-                let aligned_ts = file
-                    .time_range()
-                    .inclusive_start()
-                    .truncate_by(segment_duration);
-                let entry = read_view_by_time
-                    .entry(aligned_ts)
-                    .or_insert_with(ReadView::default);
-                entry.leveled_ssts[level].push(file);
+        for (level, leveled_ssts) in readView.leveled_ssts.into_iter().enumerate() {
+            for fileHandle in leveled_ssts {
+                let aligned_ts = fileHandle.time_range().inclusive_start.truncate_by(segment_duration);
+                let entry = read_view_by_time.entry(aligned_ts).or_insert_with(ReadView::default);
+
+                entry.leveled_ssts[level].push(fileHandle);
             }
         }
 
-        for memtable in read_view.memtables {
+        for memtable in readView.memtables {
             let aligned_ts = memtable.time_range.inclusive_start().truncate_by(segment_duration);
 
             let entry = read_view_by_time.entry(aligned_ts).or_insert_with(ReadView::default);

@@ -293,7 +293,7 @@ impl SysCatalogTable {
             shard_id: DEFAULT_SHARD_ID,
         };
 
-        let table = tableEngine.create_table(createTableRequest).await.context(BuildTable)?;
+        let table = tableEngine.createTable(createTableRequest).await.context(BuildTable)?;
 
         Ok(Self {
             table,
@@ -333,15 +333,11 @@ impl SysCatalogTable {
     }
 
     /// Create table in the catalog.
-    pub async fn create_table(&self, table_info: TableInfo) -> Result<()> {
-        info!(
-            "Create table to sys_catalog table, table_info:{:?}",
-            table_info
-        );
+    pub async fn createTable(&self, tableInfo: TableInfo) -> Result<()> {
+        info!("create table to sys_catalog table, table_info:{:?}",tableInfo);
 
         let _lock = self.update_table_lock.lock().await;
-        self.write_table_info(table_info, TableRequestType::Create)
-            .await?;
+        self.write_table_info(tableInfo, TableRequestType::Create).await?;
 
         Ok(())
     }
@@ -417,19 +413,16 @@ impl SysCatalogTable {
     }
 
     /// Write the table info to the sys_catalog table without lock.
-    async fn write_table_info(&self, table_info: TableInfo, typ: TableRequestType) -> Result<()> {
-        info!(
-            "Write table info to sys_catalog table, table_info:{:?}",
-            table_info
-        );
+    async fn write_table_info(&self, tableInfo: TableInfo, tableRequestType: TableRequestType) -> Result<()> {
+        info!("write table info to sys_catalog table, table_info:{:?}",tableInfo);
 
-        let serializer = TableWriter {
-            catalog_table: self.table.clone(),
-            table_to_write: table_info,
-            typ,
+        let tableWriter = TableWriter {
+            sysCatalogTableUnderlyingTable: self.table.clone(),
+            table_to_write: tableInfo,
+            typ: tableRequestType,
         };
 
-        serializer.write().await?;
+        tableWriter.write().await?;
 
         Ok(())
     }
@@ -516,44 +509,35 @@ impl SysCatalogTable {
             options: visitOptions,
         };
 
-        while let Some(batch) = batch_stream.try_next().await.context(ReadStream)? {
+        while let Some(recordBatch) = batch_stream.try_next().await.context(ReadStream)? {
             // Visit all requests in the record batch
-            info!("real batch_stream schema is:{:?}", batch.schema());
-            self.visit_record_batch(batch, &mut visitor).await?;
+            info!("real batch_stream schema is:{:?}", recordBatch.schema());
+            self.visit_record_batch(recordBatch, &mut visitor).await?;
         }
 
         Ok(())
     }
 
     /// Visit the record batch
-    async fn visit_record_batch(
-        &self,
-        batch: RecordBatch,
-        visitor: &mut Visitor<'_>,
-    ) -> Result<()> {
-        let key_column = batch.column(self.key_column_index);
-        let value_column = batch.column(self.value_column_index);
+    async fn visit_record_batch(&self,
+                                recordBatch: RecordBatch,
+                                visitor: &mut Visitor<'_>) -> Result<()> {
+        let key_column = recordBatch.column(self.key_column_index);
+        let value_column = recordBatch.column(self.value_column_index);
 
-        info!(
-            "Sys catalog table visit record batch, column_num:{}, row_num:{}",
-            batch.num_columns(),
-            batch.num_rows()
-        );
+        info!("sys catalog table visit record batch, column_num:{}, row_num:{}",recordBatch.num_columns(),recordBatch.num_rows());
 
-        let num_rows = batch.num_rows();
+        let num_rows = recordBatch.num_rows();
+
         for i in 0..num_rows {
             // Key and value column is not nullable
             let key = key_column.datum(i);
             let value = value_column.datum(i);
 
-            debug!(
-                "Sys catalog table visit row, i:{}, key:{:?}, value:{:?}",
-                i, key, value
-            );
+            debug!("sys catalog table visit row, i:{}, key:{:?}, value:{:?}",i, key, value);
 
             // Key and value column is always varbinary.
-            let request =
-                decode_one_request(key.as_varbinary().unwrap(), value.as_varbinary().unwrap())?;
+            let request = decode_one_request(key.as_varbinary().unwrap(), value.as_varbinary().unwrap())?;
 
             visitor.visit(request)?;
         }
@@ -941,43 +925,36 @@ pub struct AlterTableRequest {
     pub schema: Schema,
 }
 
-/// Writer for writing the table information into the catalog table.
+/// Writer for writing the table information into the sys catalog table.
 pub struct TableWriter {
-    catalog_table: TableRef,
+    sysCatalogTableUnderlyingTable: TableRef,
     table_to_write: TableInfo,
     typ: TableRequestType,
 }
 
 impl TableWriter {
     async fn write(&self) -> Result<()> {
-        let row_group = self.convert_table_info_to_row_group()?;
-        let write_req = WriteRequest { rowGroup: row_group };
-        self.catalog_table
-            .write(write_req)
-            .await
-            .context(PersistTables)?;
+        let rowGroup = self.convertTableInfo2RowGroup()?;
+        self.sysCatalogTableUnderlyingTable.write(WriteRequest { rowGroup }).await.context(PersistTables)?;
 
         Ok(())
     }
 
-    /// Convert the table to write into [common_types::row::RowGroup].
-    fn convert_table_info_to_row_group(&self) -> Result<RowGroup> {
-        let mut builder = RowGroupBuilder::new(self.catalog_table.schema());
+    fn convertTableInfo2RowGroup(&self) -> Result<RowGroup> {
+        let mut rowGroupBuilder = RowGroupBuilder::new(self.sysCatalogTableUnderlyingTable.schema());
+
         let key = Self::build_create_table_key(&self.table_to_write)?;
         let value = Self::build_create_table_value(self.table_to_write.clone(), self.typ)?;
 
-        debug!(
-            "TableWriter build key value, key:{:?}, value:{:?}",
-            key, value
-        );
+        debug!("tableWriter build key value, key:{:?}, value:{:?}",key, value);
 
-        Self::build_row(&mut builder, key, value)?;
+        Self::buildRow(&mut rowGroupBuilder, key, value)?;
 
-        Ok(builder.build())
+        Ok(rowGroupBuilder.build())
     }
 
-    fn build_row(builder: &mut RowGroupBuilder, key: Bytes, value: Bytes) -> Result<()> {
-        builder
+    fn buildRow(rowGroupBuilder: &mut RowGroupBuilder, key: Bytes, value: Bytes) -> Result<()> {
+        rowGroupBuilder
             .row_builder()
             // key
             .append_datum(Datum::Varbinary(key))
@@ -994,23 +971,22 @@ impl TableWriter {
     }
 
     fn build_create_table_key(table_info: &TableInfo) -> Result<Bytes> {
-        let key = TableKey {
+        Self::encode_table_key(TableKey {
             catalog: &table_info.catalog_name,
             schema: &table_info.schema_name,
             table: &table_info.table_name,
-        };
-        Self::encode_table_key(key)
+        })
     }
 
     fn encode_table_key(key: TableKey) -> Result<Bytes> {
-        let encoder = EntryKeyEncoder;
-        let mut buf = BytesMut::with_capacity(encoder.estimate_encoded_size(&key));
-        encoder.encode(&mut buf, &key)?;
+        let entryKeyEncoder = EntryKeyEncoder;
+        let mut buf = BytesMut::with_capacity(entryKeyEncoder.estimate_encoded_size(&key));
+        entryKeyEncoder.encode(&mut buf, &key)?;
         Ok(buf.into())
     }
 
-    fn build_create_table_value(table_info: TableInfo, typ: TableRequestType) -> Result<Bytes> {
-        let mut table_entry = TableEntry::from(table_info);
+    fn build_create_table_value(tableInfo: TableInfo, typ: TableRequestType) -> Result<Bytes> {
+        let mut table_entry = TableEntry::from(tableInfo);
 
         let now = Timestamp::now().as_i64();
         match typ {

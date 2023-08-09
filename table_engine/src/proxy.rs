@@ -38,11 +38,11 @@ impl TableEngine for TableEngineProxy {
         Ok(())
     }
 
-    async fn create_table(&self, request: CreateTableRequest) -> crate::engine::Result<TableRef> {
+    async fn createTable(&self, request: CreateTableRequest) -> crate::engine::Result<TableRef> {
         // TODO(yingwen): Use a map
         match request.engine.as_str() {
-            MEMORY_ENGINE_TYPE => self.memoryTableEngine.create_table(request).await,
-            ANALYTIC_ENGINE_TYPE => self.analyticTableEngine.create_table(request).await,
+            MEMORY_ENGINE_TYPE => self.memoryTableEngine.createTable(request).await,
+            ANALYTIC_ENGINE_TYPE => self.analyticTableEngine.createTable(request).await,
             engine_type => UnknownEngineType { engine_type }.fail(),
         }
     }

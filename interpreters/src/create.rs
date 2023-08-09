@@ -29,8 +29,8 @@ define_result!(Error);
 pub struct CreateInterpreter {
     interpreterContext: InterpreterContext,
     createTablePlan: CreateTablePlan,
-    table_engine: Arc<dyn TableEngine>,
-    table_manipulator: Arc<dyn TableManipulator + Send + Sync>,
+    tableEngine: Arc<dyn TableEngine>,
+    tableManipulator: Arc<dyn TableManipulator + Send + Sync>,
 }
 
 impl CreateInterpreter {
@@ -41,17 +41,17 @@ impl CreateInterpreter {
         Box::new(Self {
             interpreterContext,
             createTablePlan,
-            table_engine,
-            table_manipulator,
+            tableEngine: table_engine,
+            tableManipulator: table_manipulator,
         })
     }
 }
 
 impl CreateInterpreter {
-    async fn execute_create(self: Box<Self>) -> Result<Output> {
-        self.table_manipulator.create_table(self.interpreterContext,
-                                            self.createTablePlan,
-                                            self.table_engine).await.context(ManipulateTable)
+    async fn executeCreate(self: Box<Self>) -> Result<Output> {
+        self.tableManipulator.createTable(self.interpreterContext,
+                                          self.createTablePlan,
+                                          self.tableEngine).await.context(ManipulateTable)
     }
 }
 
@@ -60,6 +60,6 @@ impl CreateInterpreter {
 #[async_trait]
 impl Interpreter for CreateInterpreter {
     async fn execute(self: Box<Self>) -> InterpreterResult<Output> {
-        self.execute_create().await.context(Create)
+        self.executeCreate().await.context(Create)
     }
 }

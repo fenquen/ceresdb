@@ -33,7 +33,7 @@ impl TableManipulatorMetaBased {
 
 #[async_trait]
 impl TableManipulator for TableManipulatorMetaBased {
-    async fn create_table(
+    async fn createTable(
         &self,
         ctx: InterpreterContext,
         plan: CreateTablePlan,
@@ -46,11 +46,11 @@ impl TableManipulator for TableManipulatorMetaBased {
                 msg: format!("fail to encode table schema, ctx:{ctx:?}, plan:{plan:?}"),
             })?;
 
-        let partition_table_info = create_partition_table_info(&plan.table, &plan.partition_info);
+        let partition_table_info = create_partition_table_info(&plan.tableName, &plan.partition_info);
 
         let req = CreateTableRequest {
             schema_name: ctx.default_schema().to_string(),
-            name: plan.table,
+            name: plan.tableName,
             encoded_schema,
             engine: plan.engine,
             create_if_not_exist: plan.if_not_exists,

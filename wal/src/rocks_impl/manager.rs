@@ -202,10 +202,11 @@ impl TableUnit {
                                       logWriteBatch.walLocation.table_id,
                                       next_sequence_num);
 
+                // encode key 然后注入到key_buf
                 self.commonLogEncoding.encode_key(&mut key_buf, &commonLogKey).box_err().context(Encoding)?;
 
-                rocksDbWriteBatch.put(&key_buf, &logWriteEntry.payload)
-                    .map_err(|e| e.into()).context(Write)?;
+                // fenquen 对createTable来说 key是regionId加上tableId value是AddTableMeta的序列化后的byte
+                rocksDbWriteBatch.put(&key_buf, &logWriteEntry.payload).map_err(|e| e.into()).context(Write)?;
 
                 next_sequence_num += 1;
             }

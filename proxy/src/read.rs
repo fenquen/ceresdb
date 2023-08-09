@@ -72,12 +72,12 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         };
         let frontend = Frontend::new(provider);
 
-        let mut sql_ctx = SqlContext::new(request_id, deadline);
+        let mut sqlContext = SqlContext::new(request_id, deadline);
 
         // Parse sql, frontend error of invalid sql already contains sql
         // TODO(yingwen): Maybe move sql from frontend error to outer error
         let mut statementVec = frontend
-            .parse_sql(&mut sql_ctx, sql)
+            .parse_sql(&mut sqlContext, sql)
             .box_err()
             .context(ErrWithCause {
                 code: StatusCode::BAD_REQUEST,
@@ -97,11 +97,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             statementVec.len() == 1,
             ErrNoCause {
                 code: StatusCode::BAD_REQUEST,
-                msg: format!(
-                    "Only support execute one statement now, current num:{}, sql:{}",
-                    statementVec.len(),
-                    sql
-                ),
+                msg: format!("only support execute one statement, current num:{}, sql:{}",statementVec.len(),sql),
             }
         );
 
@@ -116,7 +112,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         let plan = frontend
             // TODO(yingwen): Check error, some error may indicate that the sql is invalid. Now we
             // return internal server error in those cases
-            .statement_to_plan(&mut sql_ctx, statementVec.remove(0))
+            .statementToPlan(&mut sqlContext, statementVec.remove(0))
             .box_err()
             .with_context(|| ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
@@ -141,17 +137,15 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         })?;
 
         let cost = beginTime.saturating_elapsed();
-        info!("Handle sql query success, catalog:{catalog}, schema:{schema}, request_id:{request_id}, cost:{cost:?}, sql:{sql:?}");
+        info!("handle sql query success, catalog:{catalog}, schema:{schema}, request_id:{request_id}, cost:{cost:?}, sql:{sql:?}");
 
         match &output {
             Output::AffectedRows(_) => Ok(output),
             Output::Records(v) => {
                 if plan_maybe_expired {
-                    let row_nums = v
-                        .iter()
-                        .fold(0_usize, |acc, record_batch| acc + record_batch.num_rows());
+                    let row_nums = v.iter().fold(0_usize, |acc, record_batch| acc + record_batch.num_rows());
                     if row_nums == 0 {
-                        warn!("Query time range maybe exceed TTL, sql:{sql}");
+                        warn!("query time range maybe exceed TTL, sql:{sql}");
 
                         // TODO: Cannot return this error directly, empty query
                         // should return 200, not 4xx/5xx

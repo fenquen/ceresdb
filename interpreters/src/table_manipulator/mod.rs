@@ -73,10 +73,10 @@ define_result!(Error);
 /// 用来 create_table drop_table
 #[async_trait]
 pub trait TableManipulator {
-    async fn create_table(&self,
-                          interpreterContext: InterpreterContext,
-                          createTablePlan: CreateTablePlan,
-                          tableEngine: Arc<dyn TableEngine>) -> Result<Output>;
+    async fn createTable(&self,
+                         interpreterContext: InterpreterContext,
+                         createTablePlan: CreateTablePlan,
+                         tableEngine: Arc<dyn TableEngine>) -> Result<Output>;
 
     async fn drop_table(&self,
                         interpreterContext: InterpreterContext,

@@ -23,8 +23,7 @@ define_result!(Error);
 pub trait CatalogManager: Send + Sync {
     /// Get the default catalog name
     ///
-    /// Default catalog is ensured created because no method to create catalog
-    /// is provided.
+    /// Default catalog is ensured created because no method to create catalog is provided.
     fn default_catalog_name(&self) -> NameRef;
 
     /// Get the default schema name

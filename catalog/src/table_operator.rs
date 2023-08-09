@@ -1,5 +1,6 @@
 // Copyright 2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
+use std::sync::Arc;
 use std::time::Instant;
 
 use generic_error::BoxError;
@@ -16,13 +17,14 @@ use crate::{
     },
     Result, TableOperatorNoCause, TableOperatorWithCause,
 };
+use crate::manager::CatalogManager;
 
 /// Table operator
 ///
 /// Encapsulate all operations about tables, including create/drop, open/close and etc.
 #[derive(Clone)]
 pub struct TableOperator {
-    catalog_manager: ManagerRef,
+    catalog_manager: Arc<dyn CatalogManager>,
 }
 
 impl TableOperator {
@@ -156,7 +158,7 @@ impl TableOperator {
                     "Failed to close shard, shard id:{shard_id}, success_count:{success_count}, close_err_count:{}", close_table_errs.len(),
                 ),
             }
-            .fail()
+                .fail()
         }
     }
 
@@ -204,19 +206,13 @@ impl TableOperator {
         Ok(())
     }
 
-    pub async fn create_table_on_shard(
-        &self,
-        request: CreateTableRequest,
-        opts: CreateOptions,
-    ) -> Result<TableRef> {
-        let schema = self.schema_by_name(&request.catalog_name, &request.schema_name)?;
+    pub async fn create_table_on_shard(&self,
+                                       request: CreateTableRequest,
+                                       opts: CreateOptions) -> Result<TableRef> {
+        let schema = self.schema_by_name(&request.catalogName, &request.schemaName)?;
 
-        // TODO: we should create table directly by table engine, and register table
-        // into schema like opening.
-        schema
-            .create_table(request.clone(), opts)
-            .await
-            .box_err()
+        // TODO: we should create table directly by table engine, and register table into schema like opening.
+        schema.create_table(request.clone(), opts).await.box_err()
             .context(TableOperatorWithCause {
                 msg: format!("failed to create table on shard, request:{request:?}"),
             })
@@ -249,20 +245,14 @@ impl TableOperator {
         Ok(())
     }
 
-    fn schema_by_name(&self, catalog_name: &str, schema_name: &str) -> Result<SchemaRef> {
-        let catalog = self
-            .catalog_manager
-            .catalog_by_name(catalog_name)
-            .box_err()
-            .context(TableOperatorWithCause {
-                msg: format!("failed to find catalog, catalog_name:{catalog_name}"),
-            })?
-            .context(TableOperatorNoCause {
-                msg: format!("catalog not found, catalog_name:{catalog_name}"),
-            })?;
+    fn schema_by_name(&self, catalogName: &str, schemaName: &str) -> Result<SchemaRef> {
+        let catalog =
+            self.catalog_manager.catalog_by_name(catalogName).box_err()
+                .context(TableOperatorWithCause { msg: format!("failed to find catalog, catalog_name:{catalog_name}") })?
+                .context(TableOperatorNoCause { msg: format!("catalog not found, catalog_name:{catalog_name}") })?;
 
         catalog
-            .schema_by_name(schema_name)
+            .schema_by_name(schemaName)
             .box_err()
             .context(TableOperatorWithCause {
                 msg: format!("failed to find schema, schema_name:{schema_name}"),

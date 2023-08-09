@@ -38,7 +38,7 @@ use datafusion::{
 };
 use generic_error::GenericError;
 use influxql_parser::statement::Statement as InfluxqlStatement;
-use log::{debug, trace};
+use log::{debug, info, trace};
 use macros::define_result;
 use prom_remote_api::types::Query as PromRemoteQuery;
 use snafu::{ensure, Backtrace, OptionExt, ResultExt, Snafu};
@@ -64,6 +64,7 @@ use crate::{
     promql::{remote_query_to_plan, ColumnNames, Expr as PromExpr, RemoteQueryPlan},
     provider::{ContextProviderAdapter, MetaProvider},
 };
+
 // We do not carry backtrace in sql error because it is mainly used in server
 // handler and the error is usually caused by invalid/unsupported sql, which
 // should be easy to find out the reason.
@@ -83,8 +84,8 @@ pub enum Error {
     DatafusionExpr { source: DataFusionError },
 
     #[snafu(display(
-        "Failed to get data type from datafusion physical expr, err:{}",
-        source
+    "Failed to get data type from datafusion physical expr, err:{}",
+    source
     ))]
     DatafusionDataType { source: DataFusionError },
 
@@ -104,7 +105,7 @@ pub enum Error {
     RequireTimestamp,
 
     #[snafu(display(
-        "Table must contain only one timestamp key and it's data type must be TIMESTAMP"
+    "Table must contain only one timestamp key and it's data type must be TIMESTAMP"
     ))]
     InvalidTimestampKey,
 
@@ -115,9 +116,9 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Undefined column is used in primary key, column name:{}.\nBacktrace:\n{}",
-        name,
-        backtrace
+    "Undefined column is used in primary key, column name:{}.\nBacktrace:\n{}",
+    name,
+    backtrace
     ))]
     UndefinedColumnInPrimaryKey { name: String, backtrace: Backtrace },
 
@@ -125,10 +126,10 @@ pub enum Error {
     PrimaryKeyNotFound { name: String },
 
     #[snafu(display(
-        "Duplicate definitions of primary key are found, first:{:?}, second:{:?}.\nBacktrace:\n{:?}",
-        first,
-        second,
-        backtrace,
+    "Duplicate definitions of primary key are found, first:{:?}, second:{:?}.\nBacktrace:\n{:?}",
+    first,
+    second,
+    backtrace,
     ))]
     DuplicatePrimaryKey {
         first: Vec<Ident>,
@@ -140,9 +141,9 @@ pub enum Error {
     TagColumnNotFound { name: String },
 
     #[snafu(display(
-        "Timestamp key column can not be tag, name:{}.\nBacktrace:\n{:?}",
-        name,
-        backtrace
+    "Timestamp key column can not be tag, name:{}.\nBacktrace:\n{:?}",
+    name,
+    backtrace
     ))]
     TimestampKeyTag { name: String, backtrace: Backtrace },
 
@@ -192,9 +193,9 @@ pub enum Error {
     InsertSourceBodyNotSet,
 
     #[snafu(display(
-        "Invalid insert stmt, source expr is not value, source_expr:{:?}.\nBacktrace:\n{}",
-        source_expr,
-        backtrace,
+    "Invalid insert stmt, source expr is not value, source_expr:{:?}.\nBacktrace:\n{}",
+    source_expr,
+    backtrace,
     ))]
     InsertExprNotValue {
         source_expr: Expr,
@@ -202,9 +203,9 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Invalid insert stmt, source expr has no valid negative value, source_expr:{:?}.\nBacktrace:\n{}",
-        source_expr,
-        backtrace,
+    "Invalid insert stmt, source expr has no valid negative value, source_expr:{:?}.\nBacktrace:\n{}",
+    source_expr,
+    backtrace,
     ))]
     InsertExprNoNegativeValue {
         source_expr: Expr,
@@ -233,10 +234,10 @@ pub enum Error {
     BuildPromPlanError { source: crate::promql::Error },
 
     #[snafu(display(
-        "Failed to cast default value expr to column type, expr:{}, from:{}, to:{}",
-        expr,
-        from,
-        to
+    "Failed to cast default value expr to column type, expr:{}, from:{}, to:{}",
+    expr,
+    from,
+    to
     ))]
     InvalidDefaultValueCoercion {
         expr: Expr,
@@ -245,13 +246,13 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to parse partition statement to partition info, msg:{}, err:{}",
-        msg,
-        source,
+    "Failed to parse partition statement to partition info, msg:{}, err:{}",
+    msg,
+    source,
     ))]
     ParsePartitionWithCause { msg: String, source: GenericError },
 
-    #[snafu(display("Unsupported partition method, msg:{}", msg,))]
+    #[snafu(display("Unsupported partition method, msg:{}", msg, ))]
     UnsupportedPartition { msg: String },
 
     #[snafu(display("Failed to build plan, msg:{}", msg))]
@@ -293,7 +294,7 @@ impl<'a, P: MetaProvider> Planner<'a, P> {
     ///
     /// Takes the ownership of statement because some statements like INSERT
     /// statements contains lots of data
-    pub fn statement_to_plan(&self, statement: Statement) -> Result<Plan> {
+    pub fn statementToPlan(&self, statement: Statement) -> Result<Plan> {
         trace!("Statement to plan, request_id:{}, statement:{:?}",self.request_id,statement);
 
         let adapter = ContextProviderAdapter::new(self.metaProvider, self.read_parallelism);
@@ -304,7 +305,7 @@ impl<'a, P: MetaProvider> Planner<'a, P> {
 
         match statement {
             Statement::Standard(s) => plannerDelegate.sql_statement_to_plan(*s),
-            Statement::Create(s) => plannerDelegate.create_table_to_plan(*s),
+            Statement::Create(s) => plannerDelegate.createTableToPlan(*s),
             Statement::Drop(s) => plannerDelegate.drop_table_to_plan(s),
             Statement::Describe(s) => plannerDelegate.describe_table_to_plan(s),
             Statement::AlterModifySetting(s) => plannerDelegate.alter_modify_setting_to_plan(s),
@@ -351,7 +352,7 @@ impl<'a, P: MetaProvider> Planner<'a, P> {
         Ok(Plan::Create(CreateTablePlan {
             engine: schema_config.default_engine_type.clone(),
             if_not_exists: true,
-            table: write_table.table.clone(),
+            tableName: write_table.table.clone(),
             table_schema: build_schema_from_write_table_request(schema_config, write_table)?,
             options: HashMap::default(),
             partition_info: None,
@@ -474,11 +475,11 @@ pub fn build_schema_from_write_table_request(
         schema_config.default_timestamp_column_name.clone(),
         DatumKind::Timestamp,
     )
-    .is_nullable(false)
-    .build()
-    .with_context(|| InvalidColumnSchema {
-        column_name: schema_config.default_timestamp_column_name.clone(),
-    })?;
+        .is_nullable(false)
+        .build()
+        .with_context(|| InvalidColumnSchema {
+            column_name: schema_config.default_timestamp_column_name.clone(),
+        })?;
 
     // Use (tsid, timestamp) as primary key.
     let tsid_column_schema =
@@ -591,21 +592,18 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
         }))
     }
 
-    fn tsid_column_schema() -> Result<ColumnSchema> {
+    fn buildTsidColumnSchema() -> Result<ColumnSchema> {
         column_schema::Builder::new(TSID_COLUMN.to_string(), DatumKind::UInt64)
-            .is_nullable(false)
-            .build()
+            .is_nullable(false).build()
             .context(InvalidColumnSchema {
                 column_name: TSID_COLUMN,
             })
     }
 
-    fn create_table_schema(
-        columns: &[Ident],
-        primary_key_columns: &[Ident],
-        mut columns_by_name: HashMap<&str, ColumnSchema>,
-        column_idxs_by_name: HashMap<&str, usize>,
-    ) -> Result<Schema> {
+    fn create_table_schema(columns: &[Ident],
+                           primary_key_columns: &[Ident],
+                           mut columns_by_name: HashMap<&str, ColumnSchema>,
+                           column_idxs_by_name: HashMap<&str, usize>) -> Result<Schema> {
         assert_eq!(columns_by_name.len(), column_idxs_by_name.len());
 
         let mut schema_builder =
@@ -637,17 +635,14 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
     }
 
     // Find the primary key columns and ensure at most only one exists.
-    fn find_and_ensure_primary_key_columns(
-        constraints: &[TableConstraint],
-    ) -> Result<Option<Vec<Ident>>> {
+    fn findAndEnsurePrimaryKeyColumns(constraints: &[TableConstraint]) -> Result<Option<Vec<Ident>>> {
         let mut primary_key_columns: Option<Vec<Ident>> = None;
         for constraint in constraints {
             if let TableConstraint::Unique {
                 columns,
                 is_primary,
                 ..
-            } = constraint
-            {
+            } = constraint {
                 if *is_primary {
                     ensure!(
                         primary_key_columns.is_none(),
@@ -656,6 +651,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
                             second: columns.clone()
                         }
                     );
+
                     primary_key_columns = Some(columns.clone());
                 }
             }
@@ -665,10 +661,8 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
     }
 
     // Find the timestamp column and ensure its valid existence (only one).
-    fn find_and_ensure_timestamp_column(
-        columns_by_name: &HashMap<&str, ColumnSchema>,
-        constraints: &[TableConstraint],
-    ) -> Result<Ident> {
+    fn find_and_ensure_timestamp_column(columns_by_name: &HashMap<&str, ColumnSchema>,
+                                        constraints: &[TableConstraint]) -> Result<Ident> {
         let mut timestamp_column_name = None;
         for constraint in constraints {
             if let TableConstraint::Unique { columns, .. } = constraint {
@@ -706,73 +700,67 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
         timestamp_column_name.context(RequireTimestamp)
     }
 
-    fn create_table_to_plan(&self, stmt: CreateTable) -> Result<Plan> {
+    fn createTableToPlan(&self, stmt: CreateTable) -> Result<Plan> {
         ensure!(!stmt.table_name.is_empty(), CreateTableNameEmpty);
 
-        debug!("Create table to plan, stmt:{:?}", stmt);
+        info!("create table to plan, stmt:{:?}", stmt);
 
         // Build all column schemas.
-        let mut columns_by_name = stmt
-            .columns
-            .iter()
-            .map(|col| Ok((col.name.value.as_str(), parse_column(col)?)))
-            .collect::<Result<HashMap<_, _>>>()?;
+        let mut columnName_columnSchema =
+            stmt.columns.iter().map(|col| Ok((col.name.value.as_str(), parse_column(col)?)))
+                .collect::<Result<HashMap<_, _>>>()?;
 
-        let mut column_idxs_by_name: HashMap<_, _> = stmt
-            .columns
-            .iter()
-            .enumerate()
-            .map(|(idx, col)| (col.name.value.as_str(), idx))
-            .collect();
+        let mut columnName_columnIndex: HashMap<_, _> =
+            stmt.columns.iter().enumerate()
+                .map(|(idx, col)| (col.name.value.as_str(), idx)).collect();
 
-        // Tsid column is a reserved column.
+        // tsid column is a reserved column.
         ensure!(
-            !columns_by_name.contains_key(TSID_COLUMN),
+            !columnName_columnSchema.contains_key(TSID_COLUMN),
             ColumnNameReserved {
                 name: TSID_COLUMN.to_string(),
             }
         );
 
         let timestamp_column =
-            Self::find_and_ensure_timestamp_column(&columns_by_name, &stmt.constraints)?;
+            Self::find_and_ensure_timestamp_column(&columnName_columnSchema, &stmt.constraints)?;
+
         let tsid_column = Ident::with_quote(DEFAULT_QUOTE_CHAR, TSID_COLUMN);
+
         let mut columns: Vec<_> = stmt.columns.iter().map(|col| col.name.clone()).collect();
 
-        let mut add_tsid_column = || {
-            columns_by_name.insert(TSID_COLUMN, Self::tsid_column_schema()?);
-            column_idxs_by_name.insert(TSID_COLUMN, columns.len());
+        let mut addTsidColumnFn = || {
+            columnName_columnSchema.insert(TSID_COLUMN, Self::buildTsidColumnSchema()?);
+            columnName_columnIndex.insert(TSID_COLUMN, columns.len());
             columns.push(tsid_column.clone());
             Ok(())
         };
-        let primary_key_columns =
-            match Self::find_and_ensure_primary_key_columns(&stmt.constraints)? {
-                Some(primary_key_columns) => {
-                    // Ensure the primary key is defined already.
-                    for col in &primary_key_columns {
-                        let col_name = &col.value;
-                        if col_name == TSID_COLUMN {
-                            // tsid column is a reserved column which can't be
-                            // defined by user, so let's add it manually.
-                            add_tsid_column()?;
-                        }
+
+        let primaryKeyColumns = match Self::findAndEnsurePrimaryKeyColumns(&stmt.constraints)? {
+            Some(primaryKeyColumns) => {
+                // Ensure the primary key is defined already.
+                for col in &primaryKeyColumns {
+                    if &col.value == TSID_COLUMN {
+                        // tsid column is a reserved column which can't be defined by user, so let's add it manually.
+                        addTsidColumnFn()?;
                     }
-
-                    primary_key_columns
                 }
-                None => {
-                    // No primary key is provided explicitly, so let's use `(tsid,
-                    // timestamp_key)` as the default primary key.
-                    add_tsid_column()?;
 
-                    vec![tsid_column, timestamp_column]
-                }
-            };
-        let table_schema = Self::create_table_schema(
-            &columns,
-            &primary_key_columns,
-            columns_by_name,
-            column_idxs_by_name,
-        )?;
+                primaryKeyColumns
+            }
+            None => {
+                // No primary key is provided explicitly, so let's use `(tsid,timestamp_key)` as the default primary key.
+                addTsidColumnFn()?;
+
+                vec![tsid_column, timestamp_column]
+            }
+        };
+
+        let table_schema =
+            Self::create_table_schema(&columns,
+                                      &primaryKeyColumns,
+                                      columnName_columnSchema,
+                                      columnName_columnIndex, )?;
 
         let partition_info = match stmt.partition {
             Some(p) => Some(PartitionParser::parse(p)?),
@@ -787,21 +775,20 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
         // TODO: support create table on other catalog/schema
         let table_name = stmt.table_name.to_string();
         let table_ref = get_table_ref(&table_name);
-        let table = table_ref.table().to_string();
 
-        let plan = CreateTablePlan {
+        let createTablePlan = CreateTablePlan {
             engine: stmt.engineName,
             if_not_exists: stmt.if_not_exists,
-            table,
+            tableName: table_ref.table().to_string(),
             table_schema,
             options,
             // TODO: sql parse supports `partition by` syntax.
             partition_info,
         };
 
-        debug!("Create table to plan, plan:{:?}", plan);
+        debug!("createTableStatement to createTablePlan, plan:{:?}", createTablePlan);
 
-        Ok(Plan::Create(plan))
+        Ok(Plan::Create(createTablePlan))
     }
 
     fn drop_table_to_plan(&self, stmt: DropTable) -> Result<Plan> {
@@ -819,7 +806,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
                 return TableNotFound {
                     name: stmt.table_name.to_string(),
                 }
-                .fail();
+                    .fail();
             };
 
         let plan = DropTablePlan {
@@ -929,7 +916,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
                                     table: table.name(),
                                     column: &column.name,
                                 }
-                                .fail();
+                                    .fail();
                             }
                         }
                     }
@@ -1072,7 +1059,7 @@ fn parse_data_value_from_expr(data_type: DatumKind, expr: &mut Expr) -> Result<D
                         expr: child_expr.clone(),
                     },
                 }
-                .fail()?,
+                    .fail()?,
             };
             let mut datum = parse_data_value_from_expr(data_type, child_expr)?;
             if is_negative {
@@ -1087,7 +1074,7 @@ fn parse_data_value_from_expr(data_type: DatumKind, expr: &mut Expr) -> Result<D
         _ => InsertExprNotValue {
             source_expr: expr.clone(),
         }
-        .fail(),
+            .fail(),
     }
 }
 
@@ -1100,9 +1087,9 @@ fn build_row_group(
     // Build row group by schema
     match *source.body {
         SetExpr::Values(Values {
-            explicit_row: _,
-            rows,
-        }) => {
+                            explicit_row: _,
+                            rows,
+                        }) => {
             let mut row_group_builder = RowGroupBuilder::with_capacity(schema.clone(), rows.len());
             for mut exprs in rows {
                 // Try to build row
@@ -1110,7 +1097,7 @@ fn build_row_group(
 
                 // For each column in schema, append datum into row builder
                 for (index_opt, column_schema) in
-                    column_index_in_insert.iter().zip(schema.columns())
+                column_index_in_insert.iter().zip(schema.columns())
                 {
                     match index_opt {
                         InsertMode::Direct(index) => {
@@ -1301,7 +1288,7 @@ fn ensure_column_default_value_valid<P: MetaProvider>(
                 &arrow_schema,
                 &execution_props,
             )
-            .context(DatafusionExpr)?;
+                .context(DatafusionExpr)?;
 
             let from_type = physical_expr
                 .data_type(&arrow_schema)
@@ -1322,7 +1309,7 @@ fn ensure_column_default_value_valid<P: MetaProvider>(
             vec![DFField::from(new_arrow_field.clone())],
             HashMap::new(),
         )
-        .context(CreateDatafusionSchema)?;
+            .context(CreateDatafusionSchema)?;
         df_schema.merge(to_merged_df_schema);
         arrow_schema =
             ArrowSchema::try_merge(vec![arrow_schema, ArrowSchema::new(vec![new_arrow_field])])

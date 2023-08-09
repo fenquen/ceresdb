@@ -5,6 +5,7 @@
 
 #![feature(trait_alias)]
 #![allow(non_snake_case)]
+
 pub mod context;
 pub mod error;
 mod error_util;
@@ -180,15 +181,12 @@ impl<QueryExecutor0: QueryExecutor + 'static> Proxy<QueryExecutor0> {
 
     /// Returns true when query range maybe exceeding ttl,
     /// Note: False positive is possible
-    // TODO(tanruixiang): Add integration testing when supported by the testing
-    // framework
-    fn is_plan_expired(
-        &self,
-        plan: &Plan,
-        catalog_name: &str,
-        schema_name: &str,
-        table_name: &str,
-    ) -> Result<bool> {
+    // TODO(tanruixiang): Add integration testing when supported by the testing framework
+    fn is_plan_expired(&self,
+                       plan: &Plan,
+                       catalog_name: &str,
+                       schema_name: &str,
+                       table_name: &str) -> Result<bool> {
         if let Plan::Query(query) = &plan {
             let catalog = self.get_catalog(catalog_name)?;
             let schema = self.get_schema(&catalog, schema_name)?;
@@ -196,11 +194,13 @@ impl<QueryExecutor0: QueryExecutor + 'static> Proxy<QueryExecutor0> {
                 Ok(Some(v)) => v,
                 _ => return Ok(false),
             };
+
             if let Some(value) = table_ref.options().get(ENABLE_TTL) {
                 if value == "false" {
                     return Ok(false);
                 }
             }
+
             let ttl_duration = if let Some(ttl) = table_ref.options().get(TTL) {
                 if let Ok(ttl) = parse_duration(ttl) {
                     ttl
@@ -211,17 +211,10 @@ impl<QueryExecutor0: QueryExecutor + 'static> Proxy<QueryExecutor0> {
                 return Ok(false);
             };
 
-            let timestamp_name = &table_ref
-                .schema()
-                .column(table_ref.schema().timestamp_index())
-                .name
-                .clone();
+            let timestamp_name = &table_ref.schema().column(table_ref.schema().timestamp_index()).name.clone();
             let ts_col = Column::from_name(timestamp_name);
             let range = find_time_range(&query.dataFusionLogicalPlan, &ts_col)
-                .box_err()
-                .context(Internal {
-                    msg: "Failed to find time range",
-                })?;
+                .box_err().context(Internal { msg: "Failed to find time range",})?;
             match range.end {
                 Bound::Included(x) | Bound::Excluded(x) => {
                     if let Expr::Literal(ScalarValue::Int64(Some(x))) = x {
@@ -380,8 +373,8 @@ impl<QueryExecutor0: QueryExecutor + 'static> Proxy<QueryExecutor0> {
         // Partition info is stored in ceresmeta, so we need to use create_table_request
         // to create it.
         let create_table_request = CreateTableRequest {
-            catalog_name: catalog_name.to_string(),
-            schema_name: schema_name.to_string(),
+            catalogName: catalog_name.to_string(),
+            schemaName: schema_name.to_string(),
             table_name: partition_table_info.name,
             table_id: Some(TableId::new(partition_table_info.id)),
             table_schema: table.table_schema,
@@ -392,7 +385,7 @@ impl<QueryExecutor0: QueryExecutor + 'static> Proxy<QueryExecutor0> {
             partition_info: partition_table_info.partition_info,
         };
         let create_opts = CreateOptions {
-            table_engine: self.instance.partition_table_engine.clone(),
+            tableEngine: self.instance.partition_table_engine.clone(),
             create_if_not_exists: true,
         };
         schema
@@ -520,9 +513,8 @@ impl<QueryExecutor0: QueryExecutor + 'static> Proxy<QueryExecutor0> {
     async fn interpreter_execute_plan(interpreter: InterpreterPtr, deadline: Option<Instant>) -> Result<Output> {
         if let Some(deadline) = deadline {
             tokio::time::timeout_at(tokio::time::Instant::from_std(deadline), interpreter.execute()).await
-                .box_err()
-                .context(Internal { msg: "Plan execution timeout" })
-                .and_then(|v| { v.box_err().context(Internal { msg: "Failed to execute interpreter" })})
+                .box_err().context(Internal { msg: "Plan execution timeout" })
+                .and_then(|v| { v.box_err().context(Internal { msg: "Failed to execute interpreter" }) })
         } else {
             interpreter.execute().await.box_err().context(Internal { msg: "Failed to execute interpreter" })
         }

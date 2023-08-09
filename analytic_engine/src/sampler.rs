@@ -219,7 +219,5 @@ fn pick_duration(interval: u64) -> Duration {
     }
 
     // No duration larger than scaled interval, returns the largest duration.
-    let du_ms = AVAILABLE_DURATIONS[AVAILABLE_DURATIONS.len() - 1];
-
-    Duration::from_millis(du_ms)
+    Duration::from_millis(AVAILABLE_DURATIONS[AVAILABLE_DURATIONS.len() - 1])
 }

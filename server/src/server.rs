@@ -72,7 +72,7 @@ pub enum Error {
     #[snafu(display("Http service failed, msg:{}, err:{}", msg, source))]
     HttpService {
         msg: String,
-        source: crate::http::Error,
+        source: http::Error,
     },
 
     #[snafu(display("Failed to build mysql service, err:{}", source))]
@@ -124,34 +124,28 @@ impl<Q: QueryExecutor + 'static> Server<Q> {
     pub async fn start(&mut self) -> Result<()> {
         // Run in standalone mode
         if let Some(local_tables_recoverer) = &self.local_tables_recoverer {
-            info!("Server start, open local tables");
-            local_tables_recoverer
-                .recover()
-                .await
-                .context(OpenLocalTables)?;
+            info!("server start, open local tables");
+            local_tables_recoverer.recover().await.context(OpenLocalTables)?;
         }
 
         // Run in cluster mode
         if let Some(cluster) = &self.cluster {
-            info!("Server start, start cluster");
+            info!("server start, start cluster");
             cluster.start().await.context(StartCluster)?;
         }
 
         // TODO: Is it necessary to create default schema in cluster mode?
-        info!("Server start, create default schema if not exist");
+        info!("server start, create default schema if not exist");
         self.create_default_schema_if_not_exists().await;
 
-        info!("Server start, start services");
-        self.http_service.start().await.context(HttpService {
-            msg: "start failed",
-        })?;
-        self.mysql_service
-            .start()
-            .await
-            .context(StartMysqlService)?;
+        info!("server start, start services");
+        self.http_service.start().await.context(HttpService { msg: "start failed", })?;
+
+        self.mysql_service.start().await.context(StartMysqlService)?;
+
         self.rpc_services.start().await.context(StartGrpcService)?;
 
-        info!("Server start finished");
+        info!("server start finished");
 
         Ok(())
     }

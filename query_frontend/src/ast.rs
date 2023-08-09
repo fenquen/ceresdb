@@ -37,12 +37,7 @@ impl TableName {
 
 impl ToString for TableName {
     fn to_string(&self) -> String {
-        self.0
-             .0
-            .iter()
-            .map(|ident| ident.value.as_str())
-            .collect::<Vec<_>>()
-            .join(".")
+        self.0.0.iter().map(|ident| ident.value.as_str()).collect::<Vec<_>>().join(".")
     }
 }
 

@@ -299,7 +299,7 @@ pub trait TableEngine: Send + Sync {
     async fn close(&self) -> Result<()>;
 
     /// Create table
-    async fn create_table(&self, createTableRequest: CreateTableRequest) -> Result<TableRef>;
+    async fn createTable(&self, createTableRequest: CreateTableRequest) -> Result<TableRef>;
 
     /// Drop table
     async fn drop_table(&self, request: DropTableRequest) -> Result<bool>;
