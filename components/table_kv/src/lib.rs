@@ -6,7 +6,6 @@ use std::{fmt, time::Duration};
 
 pub mod config;
 pub mod memory;
-pub mod obkv;
 
 /// Context during write.
 #[derive(Default)]

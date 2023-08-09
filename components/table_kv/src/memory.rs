@@ -179,6 +179,7 @@ impl Table {
 type TableRef = Arc<Table>;
 type TableMap = HashMap<String, TableRef>;
 
+/// 用在 MemWalsOpener
 #[derive(Clone, Default, Debug)]
 pub struct MemoryImpl {
     tables: Arc<Mutex<TableMap>>,

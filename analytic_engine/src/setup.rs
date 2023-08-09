@@ -8,10 +8,10 @@ use async_trait::async_trait;
 use futures::Future;
 use macros::define_result;
 use message_queue::kafka::kafka_impl::KafkaImpl;
-use object_store::{aliyun, config::{ObjectStoreOptions, StorageOptions}, disk_cache::ObjectStoreWithDiskCache, mem_cache::{MemCache, ObjectStoreWithMemCache}, metrics::ObjectStoreWithMetrics, obkv, prefix::StoreWithPrefix, s3, LocalFileSystem, ObjectStoreRef, ObjectStore};
+use object_store::{aliyun, config::{ObjectStoreOptions, StorageOptions}, disk_cache::ObjectStoreWithDiskCache, mem_cache::{MemCache, ObjectStoreWithMemCache}, metrics::ObjectStoreWithMetrics, prefix::StoreWithPrefix, s3, LocalFileSystem, ObjectStoreRef, ObjectStore};
 use snafu::{Backtrace, ResultExt, Snafu};
 use table_engine::engine::{EngineRuntimes, TableEngineRef};
-use table_kv::{memory::MemoryImpl, obkv::ObkvImpl, TableKv};
+use table_kv::{memory::MemoryImpl, TableKv};
 use wal::{
     manager::{self, WalManagerRef},
     message_queue_impl::wal::MessageQueueImpl,
@@ -51,12 +51,7 @@ pub enum Error {
     OpenManifestWal { source: manager::error::Error },
 
     #[snafu(display("Failed to open manifest, err:{}", source))]
-    OpenManifest {
-        source: crate::manifest::details::Error,
-    },
-
-    #[snafu(display("Failed to open obkv, err:{}", source))]
-    OpenObkv { source: table_kv::obkv::Error },
+    OpenManifest { source: crate::manifest::details::Error,},
 
     #[snafu(display("Failed to execute in runtime, err:{}", source))]
     RuntimeExec { source: runtime::Error },
@@ -380,26 +375,6 @@ fn open_storage(storageOptions: StorageOptions,
                     Arc::new(aliyun::try_new(&aliyun_opts).context(OpenObjectStore)?);
                 let store_with_prefix = StoreWithPrefix::new(aliyun_opts.prefix, oss);
                 Arc::new(store_with_prefix.context(OpenObjectStore)?) as _
-            }
-            ObjectStoreOptions::Obkv(obkv_opts) => {
-                let obkv_config = obkv_opts.client;
-                let obkv = engineRuntimes
-                    .write_runtime
-                    .spawn_blocking(move || ObkvImpl::new(obkv_config).context(OpenObkv))
-                    .await
-                    .context(RuntimeExec)??;
-
-                let oss: ObjectStoreRef = Arc::new(
-                    obkv::ObkvObjectStore::try_new(
-                        Arc::new(obkv),
-                        obkv_opts.shard_num,
-                        obkv_opts.part_size.0 as usize,
-                        obkv_opts.max_object_size.0 as usize,
-                        obkv_opts.upload_parallelism,
-                    )
-                        .context(OpenObjectStore)?,
-                );
-                Arc::new(StoreWithPrefix::new(obkv_opts.prefix, oss).context(OpenObjectStore)?) as _
             }
             ObjectStoreOptions::S3(s3_option) => {
                 let oss: ObjectStoreRef =
