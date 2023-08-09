@@ -37,16 +37,16 @@ impl SpaceAndTable {
     /// Create SpaceAndTable
     ///
     /// REQUIRE: The table must belongs to the space
-    pub fn new(space: SpaceRef, table_data: TableDataRef) -> Self {
+    pub fn new(space: SpaceRef, tableData: TableDataRef) -> Self {
         // Checks table is in space
         debug_assert!(space
             .table_datas
             .read()
             .unwrap()
-            .find_table(&table_data.name)
+            .find_table(&tableData.name)
             .is_some());
 
-        Self { space, table_data }
+        Self { space, table_data: tableData }
     }
 
     /// Get space info
@@ -97,7 +97,7 @@ pub struct Space {
 
     /// Space memtable memory usage collector
     pub mem_usage_collector: Arc<MemUsageCollector>,
-    /// The maximum write buffer size used for single space.
+    /// The maximum write buffer size used for single space. 默认的是0
     pub write_buffer_size: usize,
 }
 
@@ -116,21 +116,16 @@ impl Space {
         }
     }
 
-    /// Returns true when space total memtable memory usage reaches
-    /// space_write_buffer_size limit.
+    /// Returns true when space total memtable memory usage reaches space_write_buffer_size limit.
     #[inline]
     pub fn should_flush_space(&self) -> bool {
         self.write_buffer_size > 0 && self.memtable_memory_usage() >= self.write_buffer_size
     }
 
-    /// Find the table whose memtable consumes the most memory in the space by
-    /// specifying Worker.
+    /// Find the table whose memtable consumes the most memory in the space by specifying Worker.
     #[inline]
-    pub fn find_maximum_memory_usage_table(&self) -> Option<TableDataRef> {
-        self.table_datas
-            .read()
-            .unwrap()
-            .find_maximum_memory_usage_table()
+    pub fn find_maximum_memory_usage_table(&self) -> Option<Arc<TableData>> {
+        self.table_datas.read().unwrap().find_maximum_memory_usage_table()
     }
 
     #[inline]
@@ -185,7 +180,6 @@ impl Space {
     }
 }
 
-/// A reference to space
 pub type SpaceRef = Arc<Space>;
 
 impl fmt::Debug for Space {

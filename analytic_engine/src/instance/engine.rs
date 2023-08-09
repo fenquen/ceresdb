@@ -255,13 +255,13 @@ impl TableEngineInstance {
                                    context: SpaceContext) -> Result<Arc<Space>> {
         {
             // find space
-            let spaces = self.space_store.spaces.read().unwrap();
+            let spaces = self.spaceStore.spaces.read().unwrap();
             if let Some(space) = spaces.get_by_id(spaceId) {
                 return Ok(space.clone());
             }
         }
 
-        let mut spaces = self.space_store.spaces.write().unwrap();
+        let mut spaces = self.spaceStore.spaces.write().unwrap();
         // The space may already been created by other thread
         if let Some(space) = spaces.get_by_id(spaceId) {
             return Ok(space.clone());
@@ -281,7 +281,7 @@ impl TableEngineInstance {
 
     /// Find space by id
     pub fn find_space(&self, space_id: SpaceId) -> Option<SpaceRef> {
-        let spaces = self.space_store.spaces.read().unwrap();
+        let spaces = self.spaceStore.spaces.read().unwrap();
         spaces.get_by_id(space_id).cloned()
     }
 
@@ -295,9 +295,9 @@ impl TableEngineInstance {
         };
 
         let space = self.findOrCreateSpace(spaceId, context).await?;
-        let table_data = self.doCreateTable(space.clone(), request).await?;
+        let tableData = self.doCreateTable(space.clone(), request).await?;
 
-        Ok(SpaceAndTable::new(space, table_data))
+        Ok(SpaceAndTable::new(space, tableData))
     }
 
     /// Find the table under given space by its table name
@@ -332,7 +332,7 @@ impl TableEngineInstance {
         })?;
         let dropper = Dropper {
             space,
-            space_store: self.space_store.clone(),
+            space_store: self.spaceStore.clone(),
             flusher: self.make_flusher(),
         };
 
@@ -352,7 +352,7 @@ impl TableEngineInstance {
 
         let closer = Closer {
             space,
-            manifest: self.space_store.manifest.clone(),
+            manifest: self.spaceStore.manifest.clone(),
             flusher: self.make_flusher(),
         };
 

@@ -32,9 +32,8 @@ use wal::manager::{WalLocation, WalManagerRef};
 use self::flush_compaction::{Flusher, TableFlushOptions};
 use crate::{
     compaction::{scheduler::CompactionSchedulerRef, TableCompactionRequest},
-    manifest::ManifestRef,
     row_iter::IterOptions,
-    space::{SpaceId, SpaceRef, SpacesRef},
+    space::{SpaceRef, SpacesRef},
     sst::{
         factory::{FactoryRef as SstFactoryRef, ObjectStorePickerRef, ScanOptions},
         file::FilePurgerRef,
@@ -79,7 +78,7 @@ pub struct SpaceStore {
     /// Manifest (or meta) stores meta data of the engine instance.
     manifest: Arc<dyn Manifest>,
     /// Wal of all tables
-    wal_manager: WalManagerRef,
+    walManager: WalManagerRef,
     /// Object store picker for persisting data.
     store_picker: ObjectStorePickerRef,
     /// Sst factory.
@@ -124,10 +123,7 @@ impl SpaceStore {
 
 /// Manages all spaces, also contains needed resources shared across all table
 pub struct TableEngineInstance {
-    /// Space storage
-    space_store: SpaceStoreRef,
-
-    /// Runtime to execute async tasks.
+    spaceStore: Arc<SpaceStore>,
     runtimes: Arc<EngineRuntimes>,
 
     /// Global table options, overwrite mutable options in each table's TableOptions.
@@ -142,9 +138,10 @@ pub struct TableEngineInstance {
     /// Engine memtable memory usage collector
     mem_usage_collector: Arc<MemUsageCollector>,
 
+    /// 默认是的0
     pub(crate) max_rows_in_write_queue: usize,
 
-    /// Engine write buffer size
+    /// Engine write buffer size 默认的是0
     pub(crate) db_write_buffer_size: usize,
 
     /// Space write buffer size
@@ -159,7 +156,7 @@ pub struct TableEngineInstance {
     /// Max retry limit to flush memtables
     pub(crate) max_retry_flush_limit: usize,
 
-    /// Max bytes per write batch
+    /// Max bytes per write batch 默认是none
     pub(crate) max_bytes_per_write_batch: Option<usize>,
 
     /// Options for scanning sst
@@ -173,7 +170,7 @@ impl TableEngineInstance {
     pub async fn close(&self) -> Result<()> {
         self.file_purger.stop().await.context(StopFilePurger)?;
 
-        self.space_store.close().await?;
+        self.spaceStore.close().await?;
 
         self.compaction_scheduler
             .stop_scheduler()
@@ -200,10 +197,10 @@ impl TableEngineInstance {
         };
 
         let flusher = self.make_flusher();
-        let mut serial_exec = table_data.serial_exec.lock().await;
+        let mut serial_exec = table_data.tableOpSerialExecutor.lock().await;
         let flush_scheduler = serial_exec.flush_scheduler();
         flusher
-            .schedule_flush(flush_scheduler, table_data, flush_opts)
+            .scheduleFlush(flush_scheduler, table_data, flush_opts)
             .await
             .box_err()
             .context(ManualOp {
@@ -229,20 +226,15 @@ impl TableEngineInstance {
     // This method will wait until compaction finished.
     pub async fn manual_compact_table(&self, table_data: &TableDataRef) -> Result<()> {
         let (request, rx) = TableCompactionRequest::new(table_data.clone());
-        let succeed = self
-            .compaction_scheduler
-            .schedule_table_compaction(request)
-            .await;
+        let succeed = self.compaction_scheduler.schedule_table_compaction(request).await;
         if !succeed {
             error!("Failed to schedule compaction, table:{}", table_data.name);
         }
 
-        rx.await
-            .context(RecvManualOpResult {
+        rx.await.context(RecvManualOpResult {
                 op: "compact",
                 table: &table_data.name,
-            })?
-            .box_err()
+            })?.box_err()
             .context(ManualOp {
                 op: "compact",
                 table: &table_data.name,
@@ -254,9 +246,8 @@ impl TableEngineInstance {
 impl TableEngineInstance {
     /// Returns true when engine instance's total memtable memory usage reaches db_write_buffer_size limit.
     #[inline]
-    fn should_flush_instance(&self) -> bool {
-        self.db_write_buffer_size > 0
-            && self.mem_usage_collector.total_memory_allocated() >= self.db_write_buffer_size
+    fn shouldFlushInstance(&self) -> bool {
+        self.db_write_buffer_size > 0 && self.mem_usage_collector.total_memory_allocated() >= self.db_write_buffer_size
     }
 
     #[inline]
@@ -272,7 +263,7 @@ impl TableEngineInstance {
     #[inline]
     fn make_flusher(&self) -> Flusher {
         Flusher {
-            space_store: self.space_store.clone(),
+            space_store: self.spaceStore.clone(),
             // Do flush in write runtime
             runtime: self.runtimes.write_runtime.clone(),
             write_sst_max_buffer_size: self.write_sst_max_buffer_size,
@@ -285,10 +276,9 @@ impl TableEngineInstance {
     }
 }
 
-/// Instance reference
 pub type InstanceRef = Arc<TableEngineInstance>;
 
 #[inline]
-pub(crate) fn create_wal_location(table_id: TableId, shard_info: TableShardInfo) -> WalLocation {
+pub(crate) fn createWalLocation(table_id: TableId, shard_info: TableShardInfo) -> WalLocation {
     WalLocation::new(shard_info.shard_id as u64, table_id)
 }

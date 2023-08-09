@@ -464,9 +464,9 @@ impl RowGroupBuilder {
     pub fn row_builder(&mut self) -> RowBuilder {
         RowBuilder {
             // schema: &self.schema,
-            cols: Vec::with_capacity(self.schema.num_columns()),
+            columnDatums: Vec::with_capacity(self.schema.num_columns()),
             // rows: &mut self.rows,
-            group_builder: self,
+            belongingRowGroupBuilder: self,
         }
     }
 
@@ -517,13 +517,12 @@ pub fn check_datum_type(datum: &Datum, column_schema: &ColumnSchema) -> Result<(
     Ok(())
 }
 
-// TODO(yingwen): This builder is used to build RowGroup, need to provide a
-// builder to build one row
+// TODO(yingwen): This builder is used to build RowGroup, need to provide a builder to build one row
 /// Row builder for the row group
 #[derive(Debug)]
 pub struct RowBuilder<'a> {
-    group_builder: &'a mut RowGroupBuilder,
-    cols: Vec<Datum>,
+    belongingRowGroupBuilder: &'a mut RowGroupBuilder,
+    columnDatums: Vec<Datum>,
 }
 
 impl<'a> RowBuilder<'a> {
@@ -531,15 +530,15 @@ impl<'a> RowBuilder<'a> {
     pub fn append_datum(mut self, datum: Datum) -> Result<Self> {
         self.check_datum(&datum)?;
 
-        self.cols.push(datum);
+        self.columnDatums.push(datum);
 
         Ok(self)
     }
 
     /// Check whether the datum is valid
     fn check_datum(&self, datum: &Datum) -> Result<()> {
-        let index = self.cols.len();
-        let schema = &self.group_builder.schema;
+        let index = self.columnDatums.len();
+        let schema = &self.belongingRowGroupBuilder.schema;
         ensure!(
             index < schema.num_columns(),
             ColumnOutOfBound {
@@ -554,9 +553,9 @@ impl<'a> RowBuilder<'a> {
 
     /// Finish building this row and append this row into the row group
     pub fn finish(self) -> Result<()> {
-        ensure!(self.cols.len() == self.group_builder.schema.num_columns(),MissingColumns);
+        ensure!(self.columnDatums.len() == self.belongingRowGroupBuilder.schema.num_columns(),MissingColumns);
 
-        self.group_builder.push_checked_row(Row { cols: self.cols });
+        self.belongingRowGroupBuilder.push_checked_row(Row { cols: self.columnDatums });
         Ok(())
     }
 }

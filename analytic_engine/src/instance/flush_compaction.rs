@@ -62,9 +62,9 @@ pub enum Error {
     StoreVersionEdit { source: GenericError },
 
     #[snafu(display(
-        "Failed to purge wal, wal_location:{:?}, sequence:{}",
-        wal_location,
-        sequence
+    "Failed to purge wal, wal_location:{:?}, sequence:{}",
+    wal_location,
+    sequence
     ))]
     PurgeWal {
         wal_location: WalLocation,
@@ -76,9 +76,9 @@ pub enum Error {
     InvalidMemIter { source: GenericError },
 
     #[snafu(display(
-        "Failed to create sst writer, storage_format_hint:{:?}, err:{}",
-        storage_format_hint,
-        source,
+    "Failed to create sst writer, storage_format_hint:{:?}, err:{}",
+    storage_format_hint,
+    source,
     ))]
     CreateSstWriter {
         storage_format_hint: StorageFormatHint,
@@ -89,10 +89,10 @@ pub enum Error {
     WriteSst { path: String, source: GenericError },
 
     #[snafu(display(
-        "Background flush failed, cannot write more data, retry_count:{}, err:{}.\nBacktrace:\n{}",
-        retry_count,
-        msg,
-        backtrace
+    "Background flush failed, cannot write more data, retry_count:{}, err:{}.\nBacktrace:\n{}",
+    retry_count,
+    msg,
+    backtrace
     ))]
     BackgroundFlushFailed {
         msg: String,
@@ -191,20 +191,13 @@ struct FlushTask {
 }
 
 impl Flusher {
-    /// Schedule a flush request.
-    pub async fn schedule_flush(
-        &self,
-        flush_scheduler: &mut TableFlushScheduler,
-        table_data: &TableDataRef,
-        opts: TableFlushOptions,
-    ) -> Result<()> {
-        debug!(
-            "Instance flush table, table_data:{:?}, flush_opts:{:?}",
-            table_data, opts
-        );
+    pub async fn scheduleFlush(&self,
+                               flush_scheduler: &mut TableFlushScheduler,
+                               table_data: &TableDataRef,
+                               opts: TableFlushOptions) -> Result<()> {
+        debug!("instance flush table, table_data:{:?}, flush_opts:{:?}",table_data, opts);
 
-        self.schedule_table_flush(flush_scheduler, table_data.clone(), opts, false)
-            .await
+        self.schedule_table_flush(flush_scheduler, table_data.clone(), opts, false).await
     }
 
     /// Do flush and wait for it to finish.
@@ -426,9 +419,9 @@ impl FlushTask {
         // Mark sequence <= flushed_sequence to be deleted.
         let table_location = self.table_data.table_location();
         let wal_location =
-            instance::create_wal_location(table_location.id, table_location.shard_info);
+            instance::createWalLocation(table_location.id, table_location.shard_info);
         self.space_store
-            .wal_manager
+            .walManager
             .mark_delete_entries_up_to(wal_location, flushed_sequence)
             .await
             .context(PurgeWal {
@@ -546,8 +539,8 @@ impl FlushTask {
                 &time_ranges,
                 timestamp_idx,
             )?
-            .into_iter()
-            .enumerate()
+                .into_iter()
+                .enumerate()
             {
                 if !record_batch.is_empty() {
                     batch_record_senders[idx]
@@ -710,7 +703,7 @@ impl SpaceStore {
                 runtime.clone(),
                 &mut edit_meta,
             )
-            .await?;
+                .await?;
         }
 
         let edit_req = {
@@ -729,16 +722,14 @@ impl SpaceStore {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub(crate) async fn compact_input_files(
-        &self,
-        request_id: RequestId,
-        table_data: &TableData,
-        input: &CompactionInputFiles,
-        scan_options: ScanOptions,
-        sst_write_options: &SstWriteOptions,
-        runtime: Arc<Runtime>,
-        edit_meta: &mut VersionEditMeta,
-    ) -> Result<()> {
+    pub(crate) async fn compact_input_files(&self,
+                                            request_id: RequestId,
+                                            table_data: &TableData,
+                                            input: &CompactionInputFiles,
+                                            scan_options: ScanOptions,
+                                            sst_write_options: &SstWriteOptions,
+                                            runtime: Arc<Runtime>,
+                                            edit_meta: &mut VersionEditMeta) -> Result<()> {
         debug!(
             "Compact input files, table_name:{}, id:{}, input::{:?}, edit_meta:{:?}",
             table_data.name, table_data.id, input, edit_meta
@@ -920,18 +911,14 @@ impl SpaceStore {
         Ok(())
     }
 
-    pub(crate) fn delete_expired_files(
-        &self,
-        table_data: &TableData,
-        request_id: RequestId,
-        expired: &ExpiredFiles,
-        edit_meta: &mut VersionEditMeta,
-    ) {
+    pub(crate) fn delete_expired_files(&self,
+                                       table_data: &TableData,
+                                       request_id: RequestId,
+                                       expired: &ExpiredFiles,
+                                       edit_meta: &mut VersionEditMeta) {
         if !expired.files.is_empty() {
-            info!(
-                "Instance try to delete expired files, table:{}, table_id:{}, request_id:{}, level:{}, files:{:?}",
-                table_data.name, table_data.id, request_id, expired.level, expired.files,
-            );
+            info!("instance try to delete expired files, table:{}, table_id:{}, request_id:{}, level:{}, files:{:?}",
+                table_data.name, table_data.id, request_id, expired.level, expired.files,);
         }
 
         let files = &expired.files;
@@ -945,11 +932,9 @@ impl SpaceStore {
     }
 }
 
-fn split_record_batch_with_time_ranges(
-    record_batch: RecordBatchWithKey,
-    time_ranges: &[TimeRange],
-    timestamp_idx: usize,
-) -> Result<Vec<RecordBatchWithKey>> {
+fn split_record_batch_with_time_ranges(record_batch: RecordBatchWithKey,
+                                       time_ranges: &[TimeRange],
+                                       timestamp_idx: usize) -> Result<Vec<RecordBatchWithKey>> {
     let mut builders: Vec<RecordBatchWithKeyBuilder> = (0..time_ranges.len())
         .map(|_| RecordBatchWithKeyBuilder::new(record_batch.schema_with_key().clone()))
         .collect();
@@ -970,28 +955,22 @@ fn split_record_batch_with_time_ranges(
                 record_batch: &record_batch,
                 row_idx,
             };
-            builders[idx]
-                .append_row_view(&view)
-                .box_err()
-                .context(SplitRecordBatch)?;
+
+            builders[idx].append_row_view(&view).box_err().context(SplitRecordBatch)?;
         } else {
-            panic!(
-                "Record timestamp is not in time_ranges, timestamp:{timestamp:?}, time_ranges:{time_ranges:?}"
-            );
+            panic!("record timestamp is not in time_ranges, timestamp:{timestamp:?}, time_ranges:{time_ranges:?}");
         }
     }
+
     let mut ret = Vec::with_capacity(builders.len());
     for mut builder in builders {
         ret.push(builder.build().box_err().context(SplitRecordBatch)?);
     }
+
     Ok(ret)
 }
 
-fn build_mem_table_iter(
-    memtable: MemTableRef,
-    table_data: &TableDataRef,
-) -> Result<ColumnarIterPtr> {
-    let scan_ctx = ScanContext::default();
+fn build_mem_table_iter(memtable: MemTableRef, table_data: &TableDataRef) -> Result<ColumnarIterPtr> {
     let scan_req = ScanRequest {
         start_user_key: Bound::Unbounded,
         end_user_key: Bound::Unbounded,
@@ -1001,8 +980,6 @@ fn build_mem_table_iter(
         reverse: false,
         metrics_collector: None,
     };
-    memtable
-        .scan(scan_ctx, scan_req)
-        .box_err()
-        .context(InvalidMemIter)
+
+    memtable.scan(ScanContext::default(), scan_req).box_err().context(InvalidMemIter)
 }

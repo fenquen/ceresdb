@@ -59,7 +59,7 @@ impl TableEngineInstance {
             }
         };
 
-        self.space_store.manifest.apply_edit(metaEditRequest).await
+        self.spaceStore.manifest.apply_edit(metaEditRequest).await
             .with_context(|| WriteManifest {
                 space_id: space.id,
                 table: request.table_name.clone(),

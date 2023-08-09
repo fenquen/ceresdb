@@ -77,7 +77,7 @@ impl TableEngineInstance {
         let space_store = Arc::new(SpaceStore {
             spaces,
             manifest: Arc::new(manifest),
-            wal_manager: wal_manager.clone(),
+            walManager: wal_manager.clone(),
             store_picker: store_picker.clone(),
             sst_factory,
             meta_cache: ctx.meta_cache.clone(),
@@ -109,7 +109,7 @@ impl TableEngineInstance {
             .scan_batch_size
             .map(|batch_size| IterOptions { batch_size });
         let instance = Arc::new(TableEngineInstance {
-            space_store,
+            spaceStore: space_store,
             runtimes: ctx.engineRuntimes.clone(),
             table_opts: ctx.analyticEngineConfig.table_opts.clone(),
 
@@ -123,10 +123,7 @@ impl TableEngineInstance {
             replay_batch_size: ctx.analyticEngineConfig.replay_batch_size,
             write_sst_max_buffer_size: ctx.analyticEngineConfig.write_sst_max_buffer_size.as_byte() as usize,
             max_retry_flush_limit: ctx.analyticEngineConfig.max_retry_flush_limit,
-            max_bytes_per_write_batch: ctx
-                .analyticEngineConfig
-                .max_bytes_per_write_batch
-                .map(|v| v.as_byte() as usize),
+            max_bytes_per_write_batch: ctx.analyticEngineConfig.max_bytes_per_write_batch.map(|v| v.as_byte() as usize),
             iter_options,
             scan_options,
             recover_mode: ctx.analyticEngineConfig.recover_mode,
@@ -138,8 +135,8 @@ impl TableEngineInstance {
     pub async fn do_open_tables_of_shard(self: &Arc<Self>, context: TablesOfShardContext) -> Result<HashMap<TableId, Result<Option<SpaceAndTable>>>> {
         let mut shard_opener =
             ShardOpener::init(context,
-                              self.space_store.manifest.clone(),
-                              self.space_store.wal_manager.clone(),
+                              self.spaceStore.manifest.clone(),
+                              self.spaceStore.walManager.clone(),
                               self.replay_batch_size,
                               self.make_flusher(),
                               self.max_retry_flush_limit,
@@ -182,8 +179,6 @@ struct RecoverTableDataContext {
     table_data: TableDataRef,
     space: SpaceRef,
 }
-
-pub type OpenTablesOfShardResult = HashMap<TableId, Result<Option<SpaceAndTable>>>;
 
 /// Opener for tables of the same shard
 struct ShardOpener {

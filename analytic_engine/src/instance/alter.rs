@@ -95,7 +95,7 @@ impl<'a> Alterer<'a> {
         // Encode payloads
         let table_location = self.table_data.table_location();
         let wal_location =
-            instance::create_wal_location(table_location.id, table_location.shard_info);
+            instance::createWalLocation(table_location.id, table_location.shard_info);
         let log_batch_encoder = LogBatchEncoder::create(wal_location);
         let log_batch = log_batch_encoder.encode(&payload).context(EncodePayloads {
             table: &self.table_data.name,
@@ -105,8 +105,8 @@ impl<'a> Alterer<'a> {
         // Write log batch
         let write_ctx = WriteContext::default();
         self.instance
-            .space_store
-            .wal_manager
+            .spaceStore
+            .walManager
             .write(&write_ctx, &log_batch)
             .await
             .box_err()
@@ -130,7 +130,7 @@ impl<'a> Alterer<'a> {
             }
         };
         self.instance
-            .space_store
+            .spaceStore
             .manifest
             .apply_edit(edit_req)
             .await
@@ -226,7 +226,7 @@ impl<'a> Alterer<'a> {
         // Encode payload
         let table_location = self.table_data.table_location();
         let wal_location =
-            instance::create_wal_location(table_location.id, table_location.shard_info);
+            instance::createWalLocation(table_location.id, table_location.shard_info);
         let log_batch_encoder = LogBatchEncoder::create(wal_location);
         let log_batch = log_batch_encoder.encode(&payload).context(EncodePayloads {
             table: &self.table_data.name,
@@ -236,8 +236,8 @@ impl<'a> Alterer<'a> {
         // Write log batch
         let write_ctx = WriteContext::default();
         self.instance
-            .space_store
-            .wal_manager
+            .spaceStore
+            .walManager
             .write(&write_ctx, &log_batch)
             .await
             .box_err()
@@ -256,7 +256,7 @@ impl<'a> Alterer<'a> {
             }
         };
         self.instance
-            .space_store
+            .spaceStore
             .manifest
             .apply_edit(edit_req)
             .await

@@ -30,10 +30,10 @@ use crate::{
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display(
-        "Projection too long, max:{}, given:{}.\nBacktrace:\n{}",
-        max,
-        given,
-        backtrace
+    "Projection too long, max:{}, given:{}.\nBacktrace:\n{}",
+    max,
+    given,
+    backtrace
     ))]
     ProjectionTooLong {
         max: usize,
@@ -42,10 +42,10 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Invalid projection index, max:{}, given:{}.\nBacktrace:\n{}",
-        max,
-        given,
-        backtrace
+    "Invalid projection index, max:{}, given:{}.\nBacktrace:\n{}",
+    max,
+    given,
+    backtrace
     ))]
     InvalidProjectionIndex {
         max: usize,
@@ -57,17 +57,17 @@ pub enum Error {
     ProjectionMissTimestamp { backtrace: Backtrace },
 
     #[snafu(display(
-        "Column name already exists, name:{}.\nBacktrace:\n{}",
-        name,
-        backtrace
+    "Column name already exists, name:{}.\nBacktrace:\n{}",
+    name,
+    backtrace
     ))]
     ColumnNameExists { name: String, backtrace: Backtrace },
 
     #[snafu(display(
-        "Column id already exists, name:{}, id:{}.\nBacktrace:\n{}",
-        name,
-        id,
-        backtrace
+    "Column id already exists, name:{}, id:{}.\nBacktrace:\n{}",
+    name,
+    id,
+    backtrace
     ))]
     ColumnIdExists {
         name: String,
@@ -76,10 +76,10 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Unsupported key column type, name:{}, type:{:?}.\nBacktrace:\n{}",
-        name,
-        kind,
-        backtrace
+    "Unsupported key column type, name:{}, type:{:?}.\nBacktrace:\n{}",
+    name,
+    kind,
+    backtrace
     ))]
     KeyColumnType {
         name: String,
@@ -88,10 +88,10 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Timestamp key column already exists, timestamp_column:{}, given:{}.\nBacktrace:\n{}",
-        timestamp_column,
-        given_column,
-        backtrace
+    "Timestamp key column already exists, timestamp_column:{}, given:{}.\nBacktrace:\n{}",
+    timestamp_column,
+    given_column,
+    backtrace
     ))]
     TimestampKeyExists {
         timestamp_column: String,
@@ -103,17 +103,17 @@ pub enum Error {
     TimestampNotInPrimaryKey { backtrace: Backtrace },
 
     #[snafu(display(
-        "Key column cannot be nullable, name:{}.\nBacktrace:\n{}",
-        name,
-        backtrace
+    "Key column cannot be nullable, name:{}.\nBacktrace:\n{}",
+    name,
+    backtrace
     ))]
     NullKeyColumn { name: String, backtrace: Backtrace },
 
     #[snafu(display(
-        "Invalid arrow field, field_name:{}, arrow_schema:{:?}, err:{}",
-        field_name,
-        arrow_schema,
-        source
+    "Invalid arrow field, field_name:{}, arrow_schema:{:?}, err:{}",
+    field_name,
+    arrow_schema,
+    source
     ))]
     InvalidArrowField {
         field_name: String,
@@ -122,17 +122,17 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Primary key with tsid should only contains tsid and timestamp key.\nBacktrace:\n{}",
-        backtrace
+    "Primary key with tsid should only contains tsid and timestamp key.\nBacktrace:\n{}",
+    backtrace
     ))]
     InvalidPrimaryKeyWithTsid { backtrace: Backtrace },
 
     #[snafu(display(
-        "Invalid arrow schema key, key:{:?}, raw_value:{}, err:{:?}.\nBacktrace:\n{}",
-        key,
-        raw_value,
-        source,
-        backtrace
+    "Invalid arrow schema key, key:{:?}, raw_value:{}, err:{:?}.\nBacktrace:\n{}",
+    key,
+    raw_value,
+    source,
+    backtrace
     ))]
     InvalidArrowSchemaMetaValue {
         key: ArrowSchemaMetaKey,
@@ -142,9 +142,9 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Arrow schema meta key not found, key:{:?}.\nBacktrace:\n{}",
-        key,
-        backtrace
+    "Arrow schema meta key not found, key:{:?}.\nBacktrace:\n{}",
+    key,
+    backtrace
     ))]
     ArrowSchemaMetaKeyNotFound {
         key: ArrowSchemaMetaKey,
@@ -161,16 +161,16 @@ pub enum Error {
     EmptyEncodedSchema { backtrace: Backtrace },
 
     #[snafu(display(
-        "Invalid schema encoding version, version:{}.\nBacktrace:\n{}",
-        version,
-        backtrace
+    "Invalid schema encoding version, version:{}.\nBacktrace:\n{}",
+    version,
+    backtrace
     ))]
     InvalidSchemaEncodingVersion { version: u8, backtrace: Backtrace },
 
     #[snafu(display(
-        "Failed to decode schema from protobuf bytes, buf:{:?}, err:{}",
-        buf,
-        source,
+    "Failed to decode schema from protobuf bytes, buf:{:?}, err:{}",
+    buf,
+    source,
     ))]
     DecodeSchemaFromPb {
         buf: Vec<u8>,
@@ -178,10 +178,10 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to decode index, input:{}, err:{}\nBacktrace:\n{}",
-        input,
-        source,
-        backtrace
+    "Failed to decode index, input:{}, err:{}\nBacktrace:\n{}",
+    input,
+    source,
+    backtrace
     ))]
     DecodeIndex {
         input: String,
@@ -263,9 +263,9 @@ impl ArrowSchemaMeta {
         meta: &HashMap<String, String>,
         key: ArrowSchemaMetaKey,
     ) -> Result<T>
-    where
-        T: FromStr,
-        T::Err: std::error::Error + Send + Sync + 'static,
+        where
+            T: FromStr,
+            T::Err: std::error::Error + Send + Sync + 'static,
     {
         let raw_value = meta
             .get(key.as_str())
@@ -795,13 +795,10 @@ impl Schema {
         compare_row(&self.primary_key_indexes, lhs, rhs)
     }
 
-    /// Returns `Ok` if rows with `writer_schema` can write to table with the
-    /// same schema as `self`.
-    pub fn compatible_for_write(
-        &self,
-        writer_schema: &Schema,
-        index_in_writer: &mut IndexInWriterSchema,
-    ) -> std::result::Result<(), CompatError> {
+    /// Returns `Ok` if rows with `writer_schema` can write to table with the same schema as `self`.
+    pub fn compatible_for_write(&self,
+                                writer_schema: &Schema,
+                                index_in_writer: &mut IndexInWriterSchema) -> std::result::Result<(), CompatError> {
         index_in_writer.reserve_columns(self.num_columns());
 
         let mut num_col_in_writer = 0;
@@ -1206,8 +1203,8 @@ impl Builder {
                 self.version.to_string(),
             ),
         ]
-        .into_iter()
-        .collect()
+            .into_iter()
+            .collect()
     }
 
     fn find_tsid_index(columns: &[ColumnSchema]) -> Option<usize> {

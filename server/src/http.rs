@@ -27,7 +27,7 @@ use proxy::{
 };
 use query_engine::executor::QueryExecutor as QueryExecutor;
 use router::endpoint::Endpoint;
-use runtime::{Runtime, RuntimeRef};
+use runtime::Runtime;
 use serde::Serialize;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use table_engine::{engine::EngineRuntimes, table::FlushRequest};

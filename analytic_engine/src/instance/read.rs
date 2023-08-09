@@ -158,9 +158,9 @@ impl TableEngineInstance {
                 sequence,
                 projected_schema: projected_schema.clone(),
                 predicate: readRequest.predicate.clone(),
-                sst_factory: &self.space_store.sst_factory,
+                sst_factory: &self.spaceStore.sst_factory,
                 sst_read_options: sst_read_options.clone(),
-                store_picker: self.space_store.store_picker(),
+                store_picker: self.spaceStore.store_picker(),
                 merge_iter_options: iter_options.clone(),
                 need_dedup: tableOptions.needDeDuplicate(),
                 reverse: false,
@@ -225,8 +225,8 @@ impl TableEngineInstance {
                 projected_schema: projected_schema.clone(),
                 predicate: request.predicate.clone(),
                 sst_read_options: sst_read_options.clone(),
-                sst_factory: &self.space_store.sst_factory,
-                store_picker: self.space_store.store_picker(),
+                sst_factory: &self.spaceStore.sst_factory,
+                store_picker: self.spaceStore.store_picker(),
             };
             let builder = chain::Builder::new(chain_config);
             let chain_iter = builder

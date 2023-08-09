@@ -2,6 +2,7 @@
 
 //! Common traits and types about catalog (schema)
 
+#![allow(non_snake_case)]
 pub mod consts;
 pub mod manager;
 pub mod schema;

@@ -50,14 +50,12 @@ impl ScheduleSync {
 
     #[inline]
     pub fn reset_flush_failure_count(&self) {
-        self.continuous_flush_failure_count
-            .store(0, Ordering::Relaxed);
+        self.continuous_flush_failure_count.store(0, Ordering::Relaxed);
     }
 
     #[inline]
     pub fn inc_flush_failure_count(&self) {
-        self.continuous_flush_failure_count
-            .fetch_add(1, Ordering::Relaxed);
+        self.continuous_flush_failure_count.fetch_add(1, Ordering::Relaxed);
     }
 }
 
@@ -81,8 +79,7 @@ impl Default for TableFlushScheduler {
     }
 }
 
-/// All operations on tables must hold the mutable reference of this
-/// [TableOpSerialExecutor].
+/// All operations on tables must hold the mutable reference of this [TableOpSerialExecutor].
 ///
 /// To ensure the consistency of a table's data, these rules are required:
 /// - The write procedure (write wal + write memtable) should be serialized as a
@@ -108,9 +105,7 @@ impl TableOpSerialExecutor {
     pub fn table_id(&self) -> TableId {
         self.table_id
     }
-}
 
-impl TableOpSerialExecutor {
     pub fn flush_scheduler(&mut self) -> &mut TableFlushScheduler {
         &mut self.flush_scheduler
     }
@@ -122,8 +117,7 @@ impl TableFlushScheduler {
         matches!(&*state, FlushState::Flushing)
     }
 
-    /// Control the flush procedure and ensure multiple flush procedures to be
-    /// sequential.
+    /// Control the flush procedure and ensure multiple flush procedures to be sequential.
     ///
     /// REQUIRE: should only be called by the write thread.
     pub async fn flush_sequentially<F>(
@@ -134,8 +128,8 @@ impl TableFlushScheduler {
         runtime: &Runtime,
         table_data: Arc<TableData>,
     ) -> Result<()>
-    where
-        F: Future<Output = Result<()>> + Send + 'static,
+        where
+            F: Future<Output=Result<()>> + Send + 'static,
     {
         let metrics = &table_data.metrics;
         // If flush operation is running, then we need to wait for it to complete first.
@@ -174,7 +168,7 @@ impl TableFlushScheduler {
                                 msg: err_msg,
                                 retry_count: opts.max_retry_flush_limit,
                             }
-                            .fail();
+                                .fail();
                         }
                     }
                 }
@@ -188,7 +182,7 @@ impl TableFlushScheduler {
                 return Other {
                     msg: "State notifier is dropped unexpectedly",
                 }
-                .fail();
+                    .fail();
             }
         }
 

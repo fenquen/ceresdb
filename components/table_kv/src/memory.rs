@@ -192,8 +192,8 @@ impl MemoryImpl {
 
 impl TableKv for MemoryImpl {
     type Error = Error;
-    type ScanIter = MemoryScanIter;
     type WriteBatch = MemoryWriteBatch;
+    type ScanIter = MemoryScanIter;
 
     fn table_exists(&self, table_name: &str) -> Result<bool> {
         let exists = self.tables.lock().unwrap().contains_key(table_name);

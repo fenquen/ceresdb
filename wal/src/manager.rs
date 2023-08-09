@@ -139,7 +139,6 @@ pub mod error {
 
 pub type RegionId = u64;
 
-/// Decide where to write logs
 #[derive(Debug, Default, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct WalLocation {
     /// fenquen regionId 和 shardId 相同 shardId和schemaId相同

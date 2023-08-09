@@ -7,7 +7,7 @@
 
 use std::convert::TryFrom;
 
-use bytes_ext::{Buf, BufMut, ByteVec, BytesMut};
+use bytes_ext::{Buf, BufMut, BytesMut};
 use common_types::{
     datum::Datum,
     row::{Row, RowGroup},
@@ -22,7 +22,7 @@ use crate::{
 };
 
 #[derive(Debug, Snafu)]
-#[snafu(visibility(pub(crate)))]
+#[snafu(visibility(pub (crate)))]
 pub enum Error {
     #[snafu(display("Failed to encode row datum, err:{}", source))]
     EncodeRowDatum { source: crate::compact::Error },
@@ -131,12 +131,10 @@ impl<'a> Decoder<Row> for WalRowDecoder<'a> {
 /// - index_in_writer: The index mapping from table schema to column in the
 ///   schema of row group.
 /// - encoded_rows: The Vec to store bytes of each encoded row.
-pub fn encode_row_group_for_wal(
-    row_group: &RowGroup,
-    table_schema: &Schema,
-    index_in_writer: &IndexInWriterSchema,
-    encoded_rows: &mut Vec<ByteVec>,
-) -> Result<()> {
+pub fn encode_row_group_for_wal(row_group: &RowGroup,
+                                table_schema: &Schema,
+                                index_in_writer: &IndexInWriterSchema,
+                                encoded_rows: &mut Vec<Vec<u8>>) -> Result<()> {
     let row_encoder = WalRowEncoder {
         table_schema,
         index_in_writer,

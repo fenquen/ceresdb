@@ -178,14 +178,12 @@ impl Replay for TableBasedReplay {
 }
 
 impl TableBasedReplay {
-    async fn recover_table_logs(
-        context: &ReplayContext,
-        table_data: &TableDataRef,
-        read_ctx: &ReadContext,
-    ) -> Result<()> {
+    async fn recover_table_logs(context: &ReplayContext,
+                                table_data: &TableDataRef,
+                                read_ctx: &ReadContext) -> Result<()> {
         let table_location = table_data.table_location();
         let wal_location =
-            instance::create_wal_location(table_location.id, table_location.shard_info);
+            instance::createWalLocation(table_location.id, table_location.shard_info);
         let read_req = ReadRequest {
             location: wal_location,
             start: ReadBoundary::Excluded(table_data.current_version().flushed_sequence()),
@@ -200,7 +198,7 @@ impl TableBasedReplay {
             .box_err()
             .context(ReplayWalWithCause { msg: None })?;
 
-        let mut serial_exec = table_data.serial_exec.lock().await;
+        let mut serial_exec = table_data.tableOpSerialExecutor.lock().await;
         let mut log_entry_buf = VecDeque::with_capacity(context.wal_replay_batch_size);
         loop {
             // fetch entries to log_entry_buf
@@ -225,7 +223,7 @@ impl TableBasedReplay {
                 table_data,
                 log_entry_buf.iter(),
             )
-            .await?;
+                .await?;
         }
 
         Ok(())
@@ -286,7 +284,7 @@ impl RegionBasedReplay {
         // Lock all related tables.
         let mut serial_exec_ctxs = HashMap::with_capacity(table_datas.len());
         for table_data in table_datas {
-            let serial_exec = table_data.serial_exec.lock().await;
+            let serial_exec = table_data.tableOpSerialExecutor.lock().await;
             let serial_exec_ctx = SerialExecContext {
                 table_data: table_data.clone(),
                 serial_exec,
@@ -343,7 +341,7 @@ impl RegionBasedReplay {
                     &ctx.table_data,
                     log_batch.range(table_batch.range),
                 )
-                .await;
+                    .await;
 
                 // If occur error, mark this table as failed and store the cause.
                 if let Err(e) = result {
@@ -419,13 +417,11 @@ struct SerialExecContext<'a> {
 }
 
 /// Replay all log entries into memtable and flush if necessary
-async fn replay_table_log_entries(
-    flusher: &Flusher,
-    max_retry_flush_limit: usize,
-    serial_exec: &mut TableOpSerialExecutor,
-    table_data: &TableDataRef,
-    log_entries: impl Iterator<Item = &LogEntry<ReadPayload>>,
-) -> Result<()> {
+async fn replay_table_log_entries(flusher: &Flusher,
+                                  max_retry_flush_limit: usize,
+                                  serial_exec: &mut TableOpSerialExecutor,
+                                  table_data: &TableDataRef,
+                                  log_entries: impl Iterator<Item=&LogEntry<ReadPayload>>) -> Result<()> {
     let flushed_sequence = table_data.current_version().flushed_sequence();
     debug!(
         "Replay table log entries begin, table:{}, table_id:{:?}, last_sequence:{}, flushed_sequence:{flushed_sequence}",
@@ -495,7 +491,7 @@ async fn replay_table_log_entries(
                     };
                     let flush_scheduler = serial_exec.flush_scheduler();
                     flusher
-                        .schedule_flush(flush_scheduler, table_data, opts)
+                        .scheduleFlush(flush_scheduler, table_data, opts)
                         .await
                         .box_err()
                         .context(ReplayWalWithCause {
@@ -518,7 +514,7 @@ async fn replay_table_log_entries(
     }
 
     debug!(
-        "Replay table log entries finish, table:{}, table_id:{:?}, last_sequence:{}, flushed_sequence:{}",
+        "replay table log entries finish, table:{}, table_id:{:?}, last_sequence:{}, flushed_sequence:{}",
         table_data.name, table_data.id, table_data.last_sequence(), table_data.current_version().flushed_sequence()
     );
 

@@ -284,7 +284,7 @@ impl SysCatalogTable {
             schema_name: consts::SYSTEM_CATALOG_SCHEMA.to_string(),
             schema_id: SYSTEM_SCHEMA_ID,
             table_name: SYS_CATALOG_TABLE_NAME.to_string(),
-            table_id: SYS_CATALOG_TABLE_ID,
+            table_id: SYS_CATALOG_TABLE_ID, // fenquen 创建sysCatalogTable时候 其tableId是强制指定的 SYS_CATALOG_TABLE_ID
             table_schema,
             partition_info: None,
             engine: tableEngine.engine_type().to_string(),
@@ -337,7 +337,7 @@ impl SysCatalogTable {
         info!("create table to sys_catalog table, table_info:{:?}",tableInfo);
 
         let _lock = self.update_table_lock.lock().await;
-        self.write_table_info(tableInfo, TableRequestType::Create).await?;
+        self.writeTableInfo(tableInfo, TableRequestType::Create).await?;
 
         Ok(())
     }
@@ -365,7 +365,7 @@ impl SysCatalogTable {
                     },
                 )?;
 
-                self.write_table_info(table_info, TableRequestType::Drop)
+                self.writeTableInfo(table_info, TableRequestType::Drop)
                     .await?;
             } else {
                 warn!("Prepare to drop a dropped table, request:{:?}", request);
@@ -396,7 +396,7 @@ impl SysCatalogTable {
                     },
                 )?;
 
-                self.write_table_info(table_info, TableRequestType::Drop)
+                self.writeTableInfo(table_info, TableRequestType::Drop)
                     .await?;
             } else {
                 warn!("Drop a dropped table, request:{:?}", request);
@@ -413,7 +413,7 @@ impl SysCatalogTable {
     }
 
     /// Write the table info to the sys_catalog table without lock.
-    async fn write_table_info(&self, tableInfo: TableInfo, tableRequestType: TableRequestType) -> Result<()> {
+    async fn writeTableInfo(&self, tableInfo: TableInfo, tableRequestType: TableRequestType) -> Result<()> {
         info!("write table info to sys_catalog table, table_info:{:?}",tableInfo);
 
         let tableWriter = TableWriter {
@@ -949,6 +949,27 @@ impl TableWriter {
         Ok(rowGroupBuilder.build())
     }
 
+    fn build_create_table_key(table_info: &TableInfo) -> Result<Bytes> {
+        Self::encode_table_key(TableKey {
+            catalog: &table_info.catalog_name,
+            schema: &table_info.schema_name,
+            table: &table_info.table_name,
+        })
+    }
+
+    fn build_create_table_value(tableInfo: TableInfo, typ: TableRequestType) -> Result<Bytes> {
+        let mut table_entry = TableEntry::from(tableInfo);
+
+        let now = Timestamp::now().as_i64();
+        match typ {
+            TableRequestType::Create => table_entry.created_time = now,
+            TableRequestType::Drop => table_entry.modified_time = now,
+        }
+
+        let buf = table_entry.encode_to_vec();
+        Ok(buf.into())
+    }
+
     fn buildRow(rowGroupBuilder: &mut RowGroupBuilder, key: Bytes, value: Bytes) -> Result<()> {
         rowGroupBuilder
             .row_builder()
@@ -966,31 +987,10 @@ impl TableWriter {
         Ok(())
     }
 
-    fn build_create_table_key(table_info: &TableInfo) -> Result<Bytes> {
-        Self::encode_table_key(TableKey {
-            catalog: &table_info.catalog_name,
-            schema: &table_info.schema_name,
-            table: &table_info.table_name,
-        })
-    }
-
     fn encode_table_key(key: TableKey) -> Result<Bytes> {
         let entryKeyEncoder = EntryKeyEncoder;
         let mut buf = BytesMut::with_capacity(entryKeyEncoder.estimate_encoded_size(&key));
         entryKeyEncoder.encode(&mut buf, &key)?;
-        Ok(buf.into())
-    }
-
-    fn build_create_table_value(tableInfo: TableInfo, typ: TableRequestType) -> Result<Bytes> {
-        let mut table_entry = TableEntry::from(tableInfo);
-
-        let now = Timestamp::now().as_i64();
-        match typ {
-            TableRequestType::Create => table_entry.created_time = now,
-            TableRequestType::Drop => table_entry.modified_time = now,
-        }
-
-        let buf = table_entry.encode_to_vec();
         Ok(buf.into())
     }
 

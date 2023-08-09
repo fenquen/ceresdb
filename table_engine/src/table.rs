@@ -35,41 +35,25 @@ use crate::{
     stream::{PartitionedStreams, SendableRecordBatchStream},
 };
 
-/// Contains common error variant, implementation specific error should
-/// be cast into Box<dyn Error>
+/// Contains common error variant, implementation specific error should be cast into Box<dyn Error>
 #[derive(Debug, Snafu)]
 #[snafu(visibility = "pub")]
 pub enum Error {
-    #[snafu(display(
-        "Unsupported table method, table:{}, method:{}.\nBacktrace:\n{}",
-        table,
-        method,
-        backtrace
-    ))]
+    #[snafu(display("unupported table method, table:{}, method:{}.\nBacktrace:\n{}", table, method, backtrace))]
     UnsupportedMethod {
         table: String,
         method: String,
         backtrace: Backtrace,
     },
 
-    #[snafu(display(
-        "Get Invalid primary key, expected schema:{:?}, given_primary_keys:{:?}.\nBacktrace:\n{}",
-        schema,
-        primary_key_columns,
-        backtrace
-    ))]
+    #[snafu(display("get Invalid primary key, expected schema:{:?}, given_primary_keys:{:?}.\nBacktrace:\n{}", schema, primary_key_columns, backtrace))]
     GetInvalidPrimaryKey {
         schema: RecordSchemaWithKey,
         primary_key_columns: Vec<ColumnSchema>,
         backtrace: Backtrace,
     },
 
-    #[snafu(display(
-        "Get null primary key, expected schema:{:?}, given_primary_keys:{:?}.\nBacktrace:\n{}",
-        schema,
-        primary_key_columns,
-        backtrace
-    ))]
+    #[snafu(display("get null primary key, expected schema:{:?}, given_primary_keys:{:?}.\nBacktrace:\n{}", schema, primary_key_columns, backtrace))]
     GetNullPrimaryKey {
         schema: RecordSchemaWithKey,
         primary_key_columns: Vec<ColumnSchema>,
@@ -136,9 +120,7 @@ pub enum Error {
         source: GenericError,
     },
 
-    #[snafu(display(
-        "Failed to wait for pending writes, table:{table}.\nBacktrace:\n{backtrace}"
-    ))]
+    #[snafu(display("failed to wait for pending writes, table:{table}.\nBacktrace:\n{backtrace}"))]
     WaitForPendingWrites { table: String, backtrace: Backtrace },
 
     #[snafu(display("Reject for too many pending writes, table:{table}"))]
@@ -298,9 +280,7 @@ pub struct WriteRequest {
 pub struct ReadOptions {
     pub batch_size: usize,
     /// Suggested read parallelism, the actual returned stream should equal to
-    /// `read_parallelism`.
     pub read_parallelism: usize,
-    /// Request deadline
     pub deadline: Option<Instant>,
 }
 

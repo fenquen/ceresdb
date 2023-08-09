@@ -41,6 +41,7 @@ use crate::{
     space::{SpaceAndTable, SpaceRef},
 };
 use crate::instance::TableEngineInstance;
+use crate::table::data::TableData;
 
 pub mod data;
 pub mod metrics;
@@ -79,7 +80,7 @@ pub struct TableImpl {
     instance: Arc<TableEngineInstance>,
     engine_type: String,
     /// Holds a strong reference to prevent the underlying table from being dropped when this handle exist.
-    table_data: TableDataRef,
+    tableData: Arc<TableData>,
     /// Buffer for written rows.
     pending_writes: Arc<Mutex<PendingWriteQueue>>,
 }
@@ -93,7 +94,7 @@ impl TableImpl {
             space,
             instance,
             engine_type: ANALYTIC_ENGINE_TYPE.to_string(),
-            table_data,
+            tableData: table_data,
             pending_writes: Arc::new(pending_writes),
         }
     }
@@ -103,7 +104,7 @@ impl fmt::Debug for TableImpl {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("TableImpl")
             .field("space_id", &self.space.id)
-            .field("table_id", &self.table_data.id)
+            .field("table_id", &self.tableData.id)
             .finish()
     }
 }
@@ -275,7 +276,7 @@ impl TableImpl {
                 let write_requests = WriteRequests::new(
                     self.instance.clone(),
                     self.space.clone(),
-                    self.table_data.clone(),
+                    self.tableData.clone(),
                     self.pending_writes.clone(),
                 );
 
@@ -313,7 +314,7 @@ impl TableImpl {
     }
 
     async fn write_requests(write_requests: WriteRequests) -> Result<()> {
-        let mut serial_exec = write_requests.table_data.serial_exec.lock().await;
+        let mut serial_exec = write_requests.table_data.tableOpSerialExecutor.lock().await;
         // The `serial_exec` is acquired, let's merge the pending requests and write
         // them all.
         let pending_writes = {
@@ -385,19 +386,19 @@ impl TableImpl {
 #[async_trait]
 impl Table for TableImpl {
     fn name(&self) -> &str {
-        &self.table_data.name
+        &self.tableData.name
     }
 
     fn id(&self) -> TableId {
-        self.table_data.id
+        self.tableData.id
     }
 
     fn schema(&self) -> Schema {
-        self.table_data.schema()
+        self.tableData.schema()
     }
 
     fn options(&self) -> HashMap<String, String> {
-        self.table_data.table_options().to_raw_map()
+        self.tableData.table_options().to_raw_map()
     }
 
     fn partition_info(&self) -> Option<PartitionInfo> {
@@ -409,41 +410,37 @@ impl Table for TableImpl {
     }
 
     fn stats(&self) -> TableStats {
-        self.table_data.metrics.table_stats()
+        self.tableData.metrics.table_stats()
     }
 
     async fn write(&self, writeRequest: WriteRequest) -> Result<usize> {
-        let _timer = self.table_data.metrics.start_table_total_timer();
+        let _timer = self.tableData.metrics.start_table_total_timer();
 
+        // 默认情况是不会满足的
         if self.should_queue_write_request(&writeRequest) {
             return self.write_with_pending_queue(writeRequest).await;
         }
 
-        let mut serial_exec = self.table_data.serial_exec.lock().await;
+        let mut serial_exec = self.tableData.tableOpSerialExecutor.lock().await;
 
-        let mut writer = Writer::new(
-            self.instance.clone(),
-            self.space.clone(),
-            self.table_data.clone(),
-            &mut serial_exec,
-        );
+        let mut writer =
+            Writer::new(self.instance.clone(),
+                        self.space.clone(),
+                        self.tableData.clone(),
+                        &mut serial_exec, );
 
-        writer
-            .write(writeRequest)
-            .await
-            .box_err()
-            .context(Write { table: self.name() })
+        writer.write(writeRequest).await.box_err().context(Write { table: self.name() })
     }
 
     async fn read(&self, mut readRequest: ReadRequest) -> Result<SendableRecordBatchStream> {
         readRequest.opts.read_parallelism = 1;
 
         let mut partitionedStreams =
-            self.instance.partitioned_read_from_table(&self.table_data, readRequest)
+            self.instance.partitioned_read_from_table(&self.tableData, readRequest)
                 .await.box_err().context(Scan { table: self.name() })?;
 
         assert_eq!(partitionedStreams.streams.len(), 1);
-        
+
         Ok(partitionedStreams.streams.pop().unwrap())
     }
 
@@ -526,7 +523,7 @@ impl Table for TableImpl {
     async fn partitioned_read(&self, request: ReadRequest) -> Result<PartitionedStreams> {
         let streams = self
             .instance
-            .partitioned_read_from_table(&self.table_data, request)
+            .partitioned_read_from_table(&self.tableData, request)
             .await
             .box_err()
             .context(Scan { table: self.name() })?;
@@ -535,9 +532,9 @@ impl Table for TableImpl {
     }
 
     async fn alter_schema(&self, request: AlterSchemaRequest) -> Result<usize> {
-        let mut serial_exec = self.table_data.serial_exec.lock().await;
+        let mut serial_exec = self.tableData.tableOpSerialExecutor.lock().await;
         let mut alterer = Alterer::new(
-            self.table_data.clone(),
+            self.tableData.clone(),
             &mut serial_exec,
             self.instance.clone(),
         )
@@ -552,9 +549,9 @@ impl Table for TableImpl {
     }
 
     async fn alter_options(&self, options: HashMap<String, String>) -> Result<usize> {
-        let mut serial_exec = self.table_data.serial_exec.lock().await;
+        let mut serial_exec = self.tableData.tableOpSerialExecutor.lock().await;
         let alterer = Alterer::new(
-            self.table_data.clone(),
+            self.tableData.clone(),
             &mut serial_exec,
             self.instance.clone(),
         )
@@ -570,7 +567,7 @@ impl Table for TableImpl {
 
     async fn flush(&self, request: FlushRequest) -> Result<()> {
         self.instance
-            .manual_flush_table(&self.table_data, request)
+            .manual_flush_table(&self.tableData, request)
             .await
             .box_err()
             .context(Flush { table: self.name() })
@@ -578,7 +575,7 @@ impl Table for TableImpl {
 
     async fn compact(&self) -> Result<()> {
         self.instance
-            .manual_compact_table(&self.table_data)
+            .manual_compact_table(&self.tableData)
             .await
             .box_err()
             .context(Compact { table: self.name() })?;

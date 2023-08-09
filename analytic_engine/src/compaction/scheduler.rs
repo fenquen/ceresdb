@@ -650,11 +650,11 @@ impl ScheduleWorker {
                     self.max_unflushed_duration,
                 );
 
-                let mut serial_exec = table_data.serial_exec.lock().await;
+                let mut serial_exec = table_data.tableOpSerialExecutor.lock().await;
                 let flush_scheduler = serial_exec.flush_scheduler();
                 // Instance flush the table asynchronously.
                 if let Err(e) = flusher
-                    .schedule_flush(flush_scheduler, table_data, TableFlushOptions::default())
+                    .scheduleFlush(flush_scheduler, table_data, TableFlushOptions::default())
                     .await
                 {
                     error!("Failed to flush table, err:{}", e);

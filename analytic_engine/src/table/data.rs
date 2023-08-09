@@ -130,8 +130,7 @@ pub struct TableData {
     /// Last sequence visible to the reads
     ///
     /// Write to last_sequence should be guarded by a mutex and only done by
-    /// single writer, but reads are allowed to be done concurrently without
-    /// mutex protected
+    /// single writer, but reads are allowed to be done concurrently without mutex protected
     last_sequence: AtomicU64,
 
     /// Auto incremented id to track memtable, reset on engine open
@@ -164,8 +163,7 @@ pub struct TableData {
     /// Shard info of the table
     pub shard_info: TableShardInfo,
 
-    /// The table operation serial_exec
-    pub serial_exec: tokio::sync::Mutex<TableOpSerialExecutor>,
+    pub tableOpSerialExecutor: tokio::sync::Mutex<TableOpSerialExecutor>,
 }
 
 impl fmt::Debug for TableData {
@@ -246,7 +244,7 @@ impl TableData {
             dropped: AtomicBool::new(false),
             metrics,
             shard_info: TableShardInfo::new(shard_id),
-            serial_exec: tokio::sync::Mutex::new(TableOpSerialExecutor::new(table_id)),
+            tableOpSerialExecutor: tokio::sync::Mutex::new(TableOpSerialExecutor::new(table_id)),
             manifest_updates: AtomicUsize::new(0),
             manifest_snapshot_every_n_updates,
         })
@@ -255,15 +253,13 @@ impl TableData {
     /// Recover table from add table meta
     ///
     /// This wont recover sequence number, which will be set after wal replayed
-    pub fn recover_from_add(
-        add_meta: AddTableMeta,
-        purger: &FilePurger,
-        shard_id: ShardId,
-        preflush_write_buffer_size_ratio: f32,
-        mem_usage_collector: CollectorRef,
-        allocator: IdAllocator,
-        manifest_snapshot_every_n_updates: NonZeroUsize,
-    ) -> Result<Self> {
+    pub fn recover_from_add(add_meta: AddTableMeta,
+                            purger: &FilePurger,
+                            shard_id: ShardId,
+                            preflush_write_buffer_size_ratio: f32,
+                            mem_usage_collector: CollectorRef,
+                            allocator: IdAllocator,
+                            manifest_snapshot_every_n_updates: NonZeroUsize) -> Result<Self> {
         let memtable_factory = Arc::new(SkiplistMemTableFactory);
         let purge_queue = purger.create_purge_queue(add_meta.space_id, add_meta.table_id);
         let current_version = TableVersion::new(purge_queue);
@@ -291,7 +287,7 @@ impl TableData {
             dropped: AtomicBool::new(false),
             metrics,
             shard_info: TableShardInfo::new(shard_id),
-            serial_exec: tokio::sync::Mutex::new(TableOpSerialExecutor::new(add_meta.table_id)),
+            tableOpSerialExecutor: tokio::sync::Mutex::new(TableOpSerialExecutor::new(add_meta.table_id)),
             manifest_updates: AtomicUsize::new(0),
             manifest_snapshot_every_n_updates,
         })
@@ -312,31 +308,26 @@ impl TableData {
         self.schema.lock().unwrap().version()
     }
 
-    /// Get current table version
     #[inline]
     pub fn current_version(&self) -> &TableVersion {
         &self.current_version
     }
 
-    /// Get last sequence number
     #[inline]
     pub fn last_sequence(&self) -> SequenceNumber {
         self.last_sequence.load(Ordering::Acquire)
     }
 
-    /// Set last sequence number
     #[inline]
     pub fn set_last_sequence(&self, seq: SequenceNumber) {
         self.last_sequence.store(seq, Ordering::Release);
     }
 
-    /// Get last flush time
     #[inline]
     pub fn last_flush_time(&self) -> u64 {
         self.last_flush_time_ms.load(Ordering::Relaxed)
     }
 
-    /// Set last flush time
     #[inline]
     pub fn set_last_flush_time(&self, time: u64) {
         self.last_flush_time_ms.store(time, Ordering::Release);
@@ -347,7 +338,6 @@ impl TableData {
         self.opts.load().clone()
     }
 
-    /// Update table options.
     #[inline]
     pub fn set_table_options(&self, opts: TableOptions) {
         let mutable_limit = compute_mutable_limit(
@@ -451,8 +441,7 @@ impl TableData {
     ///
     /// REQUIRE: Do in write worker
     pub fn should_flush_table(&self, serial_exec: &mut TableOpSerialExecutor) -> bool {
-        // Fallback to usize::MAX if Failed to convert arena_block_size into
-        // usize (overflow)
+        // fallback to usize::MAX if Failed to convert arena_block_size into usize (overflow)
         let max_write_buffer_size = self
             .table_options()
             .write_buffer_size
@@ -467,12 +456,12 @@ impl TableData {
         let mutable_usage = self.current_version.mutable_memory_usage();
         let total_usage = self.current_version.total_memory_usage();
         let in_flush = serial_exec.flush_scheduler().is_in_flush();
+
         // Inspired by https://github.com/facebook/rocksdb/blob/main/include/rocksdb/write_buffer_manager.h#L94
         if mutable_usage > mutable_limit && !in_flush {
-            info!(
-                "TableData should flush by mutable limit, table:{}, table_id:{}, mutable_usage:{}, mutable_limit: {}, total_usage:{}, max_write_buffer_size:{}",
-                self.name, self.id, mutable_usage, mutable_limit, total_usage, max_write_buffer_size
-            );
+            info!("tableData should flush by mutable limit, table:{}, table_id:{}, mutable_usage:{}, mutable_limit: {}, total_usage:{}, max_write_buffer_size:{}",
+                self.name, self.id, mutable_usage, mutable_limit, total_usage, max_write_buffer_size);
+
             return true;
         }
 
@@ -482,16 +471,12 @@ impl TableData {
         let should_flush =
             total_usage >= max_write_buffer_size && mutable_usage >= max_write_buffer_size / 2;
 
-        debug!(
-            "Check should flush, table:{}, table_id:{}, mutable_usage:{}, mutable_limit: {}, total_usage:{}, max_write_buffer_size:{}",
-            self.name, self.id, mutable_usage, mutable_limit, total_usage, max_write_buffer_size
-        );
+        debug!("check should flush, table:{}, table_id:{}, mutable_usage:{}, mutable_limit: {}, total_usage:{}, max_write_buffer_size:{}",
+            self.name, self.id, mutable_usage, mutable_limit, total_usage, max_write_buffer_size);
 
         if should_flush {
-            info!(
-                "TableData should flush by total usage, table:{}, table_id:{}, mutable_usage:{}, mutable_limit: {}, total_usage:{}, max_write_buffer_size:{}",
-                self.name, self.id, mutable_usage, mutable_limit, total_usage, max_write_buffer_size
-            );
+            info!("tableData should flush by total usage, table:{}, table_id:{}, mutable_usage:{}, mutable_limit: {}, total_usage:{}, max_write_buffer_size:{}",
+                self.name, self.id, mutable_usage, mutable_limit, total_usage, max_write_buffer_size);
         }
 
         should_flush

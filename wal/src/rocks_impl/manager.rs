@@ -197,6 +197,7 @@ impl TableUnit {
 
             for logWriteEntry in &logWriteBatch.logWriteEntryVec {
 
+                // fenquen rocksdb的key 包含 walLocation 和 sequenceNumber
                 let commonLogKey =
                     CommonLogKey::new(logWriteBatch.walLocation.region_id,
                                       logWriteBatch.walLocation.table_id,
@@ -872,9 +873,9 @@ impl WalManager for WalManagerRocksDb {
         ))
     }
 
-    async fn write(&self, ctx: &WriteContext, batch: &LogWriteBatch) -> Result<SequenceNumber> {
-        let table_unit = self.getOrCreateTableUnit(batch.walLocation);
-        table_unit.write(ctx, batch).await
+    async fn write(&self, ctx: &WriteContext, logWriteBatch: &LogWriteBatch) -> Result<SequenceNumber> {
+        let table_unit = self.getOrCreateTableUnit(logWriteBatch.walLocation);
+        table_unit.write(ctx, logWriteBatch).await
     }
 
     async fn scan(&self, ctx: &ScanContext, req: &ScanRequest) -> Result<BatchLogIteratorAdapter> {

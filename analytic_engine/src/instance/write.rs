@@ -2,6 +2,7 @@
 
 //! Write logic of instance
 
+use std::sync::Arc;
 use bytes_ext::ByteVec;
 use ceresdbproto::{schema as schema_pb, table_requests};
 use codec::row;
@@ -22,21 +23,23 @@ use wal::{
 use crate::{
     instance,
     instance::{
-        flush_compaction::TableFlushOptions, serial_executor::TableOpSerialExecutor, InstanceRef,
+        flush_compaction::TableFlushOptions, serial_executor::TableOpSerialExecutor,
     },
     memtable::{key::KeySequence, PutContext},
     payload::WritePayload,
-    space::SpaceRef,
     table::{data::TableDataRef, version::MemTableForWrite},
 };
+use crate::instance::TableEngineInstance;
+use crate::space::Space;
+use crate::table::data::TableData;
 
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display(
-        "Failed to encode payloads, table:{}, wal_location:{:?}, err:{}",
-        table,
-        wal_location,
-        source
+    "Failed to encode payloads, table:{}, wal_location:{:?}, err:{}",
+    table,
+    wal_location,
+    source
     ))]
     EncodePayloads {
         table: String,
@@ -59,13 +62,7 @@ pub enum Error {
     #[snafu(display("Try to write to a dropped table, table:{}", table))]
     WriteDroppedTable { table: String },
 
-    #[snafu(display(
-        "Too many rows to write (more than {}), table:{}, rows:{}.\nBacktrace:\n{}",
-        MAX_ROWS_TO_WRITE,
-        table,
-        rows,
-        backtrace,
-    ))]
+    #[snafu(display("too many rows to write in a single round (more than {}), table:{}, rows:{}.\nBacktrace:\n{}", MAX_ROWS_TO_WRITE, table, rows, backtrace, ))]
     TooManyRows {
         table: String,
         rows: usize,
@@ -85,9 +82,9 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Background flush failed, cannot write more data, err:{}.\nBacktrace:\n{}",
-        msg,
-        backtrace
+    "Background flush failed, cannot write more data, err:{}.\nBacktrace:\n{}",
+    msg,
+    backtrace
     ))]
     BackgroundFlushFailed { msg: String, backtrace: Backtrace },
 
@@ -109,42 +106,39 @@ define_result!(Error);
 const MAX_ROWS_TO_WRITE: usize = 10_000_000;
 
 pub(crate) struct EncodeContext {
-    pub row_group: RowGroup,
-    pub index_in_writer: IndexInWriterSchema,
-    pub encoded_rows: Vec<ByteVec>,
+    pub rowGroup: RowGroup,
+    pub indexInWriterSchema: IndexInWriterSchema,
+    pub encodedRows: Vec<Vec<u8>>,
 }
 
 impl EncodeContext {
-    pub fn new(row_group: RowGroup) -> Self {
+    pub fn new(rowGroup: RowGroup) -> Self {
         Self {
-            row_group,
-            index_in_writer: IndexInWriterSchema::default(),
-            encoded_rows: Vec::new(),
+            rowGroup,
+            indexInWriterSchema: IndexInWriterSchema::default(),
+            encodedRows: Vec::new(),
         }
     }
 
     pub fn encode_rows(&mut self, table_schema: &Schema) -> Result<()> {
         row::encode_row_group_for_wal(
-            &self.row_group,
+            &self.rowGroup,
             table_schema,
-            &self.index_in_writer,
-            &mut self.encoded_rows,
-        )
-        .context(EncodeRowGroup)?;
+            &self.indexInWriterSchema,
+            &mut self.encodedRows,
+        ).context(EncodeRowGroup)?;
 
-        assert_eq!(self.row_group.num_rows(), self.encoded_rows.len());
+        assert_eq!(self.rowGroup.num_rows(), self.encodedRows.len());
 
         Ok(())
     }
 }
 
-/// Split the write request into multiple batches whose size is determined by
-/// the `max_bytes_per_batch`.
+/// Split the write request into multiple batches whose size is determined by the `max_bytes_per_batch`.
 struct WriteRowGroupSplitter {
     /// Max bytes per batch. Actually, the size of a batch is not exactly
     /// ensured less than this `max_bytes_per_batch`, but it is guaranteed that
-    /// the batch contains at most one more row when its size exceeds this
-    /// `max_bytes_per_batch`.
+    /// the batch contains at most one more row when its size exceeds this `max_bytes_per_batch`.
     max_bytes_per_batch: usize,
 }
 
@@ -154,8 +148,8 @@ enum SplitResult<'a> {
         row_group_batches: Vec<RowGroupSlicer<'a>>,
     },
     Integrate {
-        encoded_rows: Vec<ByteVec>,
-        row_group: RowGroupSlicer<'a>,
+        encodedRows: Vec<ByteVec>,
+        rowGroupSlicer: RowGroupSlicer<'a>,
     },
 }
 
@@ -179,8 +173,8 @@ impl WriteRowGroupSplitter {
         if end_row_indexes.len() <= 1 {
             // No need to split.
             return SplitResult::Integrate {
-                encoded_rows,
-                row_group: RowGroupSlicer::from(row_group),
+                encodedRows: encoded_rows,
+                rowGroupSlicer: RowGroupSlicer::from(row_group),
             };
         }
 
@@ -240,26 +234,24 @@ impl WriteRowGroupSplitter {
 }
 
 pub struct Writer<'a> {
-    instance: InstanceRef,
-    space: SpaceRef,
-    table_data: TableDataRef,
+    instance: Arc<TableEngineInstance>,
+    space: Arc<Space>,
+    tableData: Arc<TableData>,
     serial_exec: &'a mut TableOpSerialExecutor,
 }
 
 impl<'a> Writer<'a> {
-    pub fn new(
-        instance: InstanceRef,
-        space: SpaceRef,
-        table_data: TableDataRef,
-        serial_exec: &'a mut TableOpSerialExecutor,
-    ) -> Writer<'a> {
-        // Ensure the writer has permission to handle the write of the table.
+    pub fn new(instance: Arc<TableEngineInstance>,
+               space: Arc<Space>,
+               table_data: Arc<TableData>,
+               serial_exec: &'a mut TableOpSerialExecutor) -> Writer<'a> {
+        // ensure the writer has permission to handle the write of the table.
         assert_eq!(table_data.id, serial_exec.table_id());
 
-        Self {
+        Writer {
             instance,
             space,
-            table_data,
+            tableData: table_data,
             serial_exec,
         }
     }
@@ -271,9 +263,9 @@ pub(crate) struct MemTableWriter<'a> {
 }
 
 impl<'a> MemTableWriter<'a> {
-    pub fn new(table_data: TableDataRef, serial_exec: &'a mut TableOpSerialExecutor) -> Self {
+    pub fn new(tableData: TableDataRef, serial_exec: &'a mut TableOpSerialExecutor) -> Self {
         Self {
-            table_data,
+            table_data: tableData,
             _serial_exec: serial_exec,
         }
     }
@@ -283,14 +275,12 @@ impl<'a> MemTableWriter<'a> {
     /// Write data into memtable.
     ///
     /// index_in_writer must match the schema in table_data.
-    pub fn write(
-        &self,
-        sequence: SequenceNumber,
-        row_group: &RowGroupSlicer,
-        index_in_writer: IndexInWriterSchema,
-    ) -> Result<()> {
+    pub fn write(&self,
+                 sequenceNumber: SequenceNumber,
+                 rowGroupSlicer: &RowGroupSlicer,
+                 indexInWriterSchema: IndexInWriterSchema) -> Result<()> {
         let _timer = self.table_data.metrics.start_table_write_memtable_timer();
-        if row_group.is_empty() {
+        if rowGroupSlicer.is_empty() {
             return Ok(());
         }
 
@@ -299,8 +289,8 @@ impl<'a> MemTableWriter<'a> {
         let mut wrote_memtables: SmallVec<[_; 4]> = SmallVec::new();
         let mut last_mutable_mem: Option<MemTableForWrite> = None;
 
-        let mut ctx = PutContext::new(index_in_writer);
-        for (row_idx, row) in row_group.iter().enumerate() {
+        let mut ctx = PutContext::new(indexInWriterSchema);
+        for (row_idx, row) in rowGroupSlicer.iter().enumerate() {
             // TODO(yingwen): Add RowWithSchema and take RowWithSchema as input, then remove
             // this unwrap()
             let timestamp = row.timestamp(schema).unwrap();
@@ -311,9 +301,9 @@ impl<'a> MemTableWriter<'a> {
             }
             if last_mutable_mem.is_none()
                 || !last_mutable_mem
-                    .as_ref()
-                    .unwrap()
-                    .accept_timestamp(timestamp)
+                .as_ref()
+                .unwrap()
+                .accept_timestamp(timestamp)
             {
                 // The time range is not processed by current memtable, find next one.
                 let mutable_mem = self
@@ -328,7 +318,7 @@ impl<'a> MemTableWriter<'a> {
 
             // We have check the row num is less than `MAX_ROWS_TO_WRITE`, it is safe to
             // cast it to u32 here
-            let key_seq = KeySequence::new(sequence, row_idx as u32);
+            let key_seq = KeySequence::new(sequenceNumber, row_idx as u32);
             // TODO(yingwen): Batch sample timestamp in sampling phase.
             last_mutable_mem
                 .as_ref()
@@ -342,7 +332,7 @@ impl<'a> MemTableWriter<'a> {
         // Update last sequence of memtable.
         for mem_wrote in wrote_memtables {
             mem_wrote
-                .set_last_sequence(sequence)
+                .set_last_sequence(sequenceNumber)
                 .context(UpdateMemTableSequence)?;
         }
 
@@ -351,125 +341,101 @@ impl<'a> MemTableWriter<'a> {
 }
 
 impl<'a> Writer<'a> {
-    pub(crate) async fn write(&mut self, request: WriteRequest) -> Result<usize> {
-        let _timer = self.table_data.metrics.start_table_write_execute_timer();
-        self.table_data.metrics.on_write_request_begin();
+    pub(crate) async fn write(&mut self, writeRequest: WriteRequest) -> Result<usize> {
+        let _timer = self.tableData.metrics.start_table_write_execute_timer();
+        self.tableData.metrics.on_write_request_begin();
 
-        self.validate_before_write(&request)?;
-        let mut encode_ctx = EncodeContext::new(request.rowGroup);
+        // 确保1把不能写超过1000万的row
+        self.validate_before_write(&writeRequest)?;
 
-        self.preprocess_write(&mut encode_ctx).await?;
+        let mut encodeContext = EncodeContext::new(writeRequest.rowGroup);
+
+        self.preprocess_write(&mut encodeContext).await?;
 
         {
-            let _timer = self.table_data.metrics.start_table_write_encode_timer();
-            let schema = self.table_data.schema();
-            encode_ctx.encode_rows(&schema)?;
+            let _timer = self.tableData.metrics.start_table_write_encode_timer();
+            let schema = self.tableData.schema();
+            encodeContext.encode_rows(&schema)?;
         }
 
         let EncodeContext {
-            row_group,
-            index_in_writer,
-            encoded_rows,
-        } = encode_ctx;
+            rowGroup,
+            indexInWriterSchema,
+            encodedRows,
+        } = encodeContext;
 
-        let table_data = self.table_data.clone();
-        let split_res = self.maybe_split_write_request(encoded_rows, &row_group);
-        match split_res {
-            SplitResult::Integrate {
-                encoded_rows,
-                row_group,
-            } => {
-                self.write_table_row_group(&table_data, row_group, index_in_writer, encoded_rows)
-                    .await?;
+        let tableData = self.tableData.clone();
+
+        match self.maybeSplitWriteRequest(encodedRows, &rowGroup) {
+            SplitResult::Integrate { encodedRows, rowGroupSlicer } => {
+                self.writeTableRowGroup(&tableData, rowGroupSlicer, indexInWriterSchema, encodedRows).await?;
             }
-            SplitResult::Splitted {
-                encoded_batches,
-                row_group_batches,
-            } => {
-                for (encoded_rows, row_group) in encoded_batches.into_iter().zip(row_group_batches)
-                {
-                    self.write_table_row_group(
-                        &table_data,
-                        row_group,
-                        index_in_writer.clone(),
-                        encoded_rows,
-                    )
-                    .await?;
+            SplitResult::Splitted { encoded_batches, row_group_batches } => {
+                for (encodedRows, rowGroupSlicer) in encoded_batches.into_iter().zip(row_group_batches) {
+                    self.writeTableRowGroup(&tableData,
+                                            rowGroupSlicer,
+                                            indexInWriterSchema.clone(),
+                                            encodedRows, ).await?;
                 }
             }
         }
 
-        Ok(row_group.num_rows())
+        Ok(rowGroup.num_rows())
     }
 
-    fn maybe_split_write_request<'b>(
-        &'a self,
-        encoded_rows: Vec<ByteVec>,
-        row_group: &'b RowGroup,
-    ) -> SplitResult<'b> {
+    /// 用来控制要不要分批写 max_bytes_per_write_batch
+    fn maybeSplitWriteRequest<'b>(&self, // &'a self
+                                  encodedRows: Vec<Vec<u8>>,
+                                  rowGroup: &'b RowGroup) -> SplitResult<'b> {
         if self.instance.max_bytes_per_write_batch.is_none() {
             return SplitResult::Integrate {
-                encoded_rows,
-                row_group: RowGroupSlicer::from(row_group),
+                encodedRows,
+                rowGroupSlicer: RowGroupSlicer::from(rowGroup),
             };
         }
 
         let splitter = WriteRowGroupSplitter::new(self.instance.max_bytes_per_write_batch.unwrap());
-        splitter.split(encoded_rows, row_group)
+        splitter.split(encodedRows, rowGroup)
     }
 
-    async fn write_table_row_group(
-        &mut self,
-        table_data: &TableDataRef,
-        row_group: RowGroupSlicer<'_>,
-        index_in_writer: IndexInWriterSchema,
-        encoded_rows: Vec<ByteVec>,
-    ) -> Result<()> {
-        let sequence = self.write_to_wal(encoded_rows).await?;
-        let memtable_writer = MemTableWriter::new(table_data.clone(), self.serial_exec);
+    async fn writeTableRowGroup(&mut self,
+                                tableData: &Arc<TableData>,
+                                rowGroupSlicer: RowGroupSlicer<'_>,
+                                indexInWriterSchema: IndexInWriterSchema,
+                                encodedRows: Vec<Vec<u8>>) -> Result<()> {
+        // 写wal
+        let sequenceNumber = self.write2Wal(encodedRows).await?;
 
-        memtable_writer
-            .write(sequence, &row_group, index_in_writer)
-            .map_err(|e| {
-                error!(
-                    "Failed to write to memtable, table:{}, table_id:{}, err:{}",
-                    table_data.name, table_data.id, e
-                );
-                e
-            })?;
+        let memTableWriter = MemTableWriter::new(tableData.clone(), self.serial_exec);
 
-        // Failure of writing memtable may cause inconsecutive sequence.
-        if table_data.last_sequence() + 1 != sequence {
-            warn!(
-                "Sequence must be consecutive, table:{}, table_id:{}, last_sequence:{}, wal_sequence:{}",
-                table_data.name,table_data.id,
-                table_data.last_sequence(),
-                sequence
-            );
+        // 写memTable
+        memTableWriter.write(sequenceNumber, &rowGroupSlicer, indexInWriterSchema).map_err(|e| {
+            error!("failed to write to memtable, table:{}, table_id:{}, err:{}",tableData.name, tableData.id, e);
+            e
+        })?;
+
+        // failure of writing memtable may cause inconsecutive sequence.
+        if tableData.last_sequence() + 1 != sequenceNumber {
+            warn!("sequence must be consecutive, table:{}, table_id:{}, last_sequence:{}, wal_sequence:{}",
+                tableData.name,tableData.id,tableData.last_sequence(),sequenceNumber);
         }
 
-        debug!(
-            "Instance write finished, update sequence, table:{}, table_id:{} last_sequence:{}",
-            table_data.name, table_data.id, sequence
-        );
+        debug!("instance write finished, update sequence, table:{}, table_id:{} last_sequence:{}",
+            tableData.name, tableData.id, sequenceNumber);
 
-        table_data.set_last_sequence(sequence);
+        tableData.set_last_sequence(sequenceNumber);
 
-        // Collect metrics.
-        table_data
-            .metrics
-            .on_write_request_done(row_group.num_rows());
+        tableData.metrics.on_write_request_done(rowGroupSlicer.num_rows());
 
         Ok(())
     }
 
-    /// Return Ok if the request is valid, this is done before entering the
-    /// write thread.
+    /// Return Ok if the request is valid, this is done before entering the write thread.
     fn validate_before_write(&self, request: &WriteRequest) -> Result<()> {
         ensure!(
             request.rowGroup.num_rows() < MAX_ROWS_TO_WRITE,
             TooManyRows {
-                table: &self.table_data.name,
+                table: &self.tableData.name,
                 rows: request.rowGroup.num_rows(),
             }
         );
@@ -482,60 +448,41 @@ impl<'a> Writer<'a> {
     ///  - memtable capacity and maybe trigger flush
     ///
     /// Fills [common_types::schema::IndexInWriterSchema] in [EncodeContext]
-    async fn preprocess_write(&mut self, encode_ctx: &mut EncodeContext) -> Result<()> {
-        let _total_timer = self.table_data.metrics.start_table_write_preprocess_timer();
-        ensure!(
-            !self.table_data.is_dropped(),
-            WriteDroppedTable {
-                table: &self.table_data.name,
-            }
-        );
+    async fn preprocess_write(&mut self, encodeContext: &mut EncodeContext) -> Result<()> {
+        let _total_timer = self.tableData.metrics.start_table_write_preprocess_timer();
+
+        ensure!(!self.tableData.is_dropped(), WriteDroppedTable {table: &self.tableData.name,});
 
         // Checks schema compatibility.
-        self.table_data
-            .schema()
-            .compatible_for_write(
-                encode_ctx.row_group.schema(),
-                &mut encode_ctx.index_in_writer,
-            )
-            .context(IncompatSchema)?;
+        self.tableData.schema().compatible_for_write(encodeContext.rowGroup.schema(),
+                                                     &mut encodeContext.indexInWriterSchema).context(IncompatSchema)?;
 
-        if self.instance.should_flush_instance() {
-            if let Some(space) = self.instance.space_store.find_maximum_memory_usage_space() {
+        // 默认是false spaces上
+        if self.instance.shouldFlushInstance() {
+            if let Some(space) = self.instance.spaceStore.find_maximum_memory_usage_space() {
                 if let Some(table) = space.find_maximum_memory_usage_table() {
                     info!("Trying to flush table {} bytes {} in space {} because engine total memtable memory usage exceeds db_write_buffer_size {}.",
-                          table.name,
-                          table.memtable_memory_usage(),
-                          space.id,
-                          self.instance.db_write_buffer_size,
-                    );
-                    let _timer = self
-                        .table_data
-                        .metrics
-                        .start_table_write_instance_flush_wait_timer();
+                          table.name,table.memtable_memory_usage(),space.id,self.instance.db_write_buffer_size,);
+
+                    let _timer = self.tableData.metrics.start_table_write_instance_flush_wait_timer();
                     self.handle_memtable_flush(&table).await?;
                 }
             }
         }
 
+        // 默认是false space中的table上
         if self.space.should_flush_space() {
             if let Some(table) = self.space.find_maximum_memory_usage_table() {
                 info!("Trying to flush table {} bytes {} in space {} because space total memtable memory usage exceeds space_write_buffer_size {}.",
-                      table.name,
-                      table.memtable_memory_usage() ,
-                      self.space.id,
-                      self.space.write_buffer_size,
-                );
-                let _timer = self
-                    .table_data
-                    .metrics
-                    .start_table_write_space_flush_wait_timer();
+                      table.name,table.memtable_memory_usage() ,self.space.id,self.space.write_buffer_size,);
+
+                let _timer = self.tableData.metrics.start_table_write_space_flush_wait_timer();
                 self.handle_memtable_flush(&table).await?;
             }
         }
 
-        if self.table_data.should_flush_table(self.serial_exec) {
-            let table_data = self.table_data.clone();
+        if self.tableData.should_flush_table(self.serial_exec) {
+            let table_data = self.tableData.clone();
             let _timer = table_data.metrics.start_table_write_flush_wait_timer();
             self.handle_memtable_flush(&table_data).await?;
         }
@@ -544,40 +491,31 @@ impl<'a> Writer<'a> {
     }
 
     /// Write log_batch into wal, return the sequence number of log_batch.
-    async fn write_to_wal(&self, encoded_rows: Vec<ByteVec>) -> Result<SequenceNumber> {
-        let _timer = self.table_data.metrics.start_table_write_wal_timer();
+    async fn write2Wal(&self, encoded_rows: Vec<ByteVec>) -> Result<SequenceNumber> {
+        let _timer = self.tableData.metrics.start_table_write_wal_timer();
+
         // Convert into pb
-        let write_req_pb = table_requests::WriteRequest {
+        let writeRequestPb = table_requests::WriteRequest {
             // FIXME: Shall we avoid the magic number here?
             version: 0,
-            // Use the table schema instead of the schema in request to avoid schema
-            // mismatch during replaying
-            schema: Some(schema_pb::TableSchema::from(&self.table_data.schema())),
+            // use the table schema instead of the schema in request to avoid schema mismatch during replaying
+            schema: Some(schema_pb::TableSchema::from(&self.tableData.schema())),
             rows: encoded_rows,
         };
 
         // Encode payload
-        let payload = WritePayload::Write(&write_req_pb);
-        let table_location = self.table_data.table_location();
-        let wal_location =
-            instance::create_wal_location(table_location.id, table_location.shard_info);
-        let log_batch_encoder = LogBatchEncoder::create(wal_location);
+        let payload = WritePayload::Write(&writeRequestPb);
+        let tableLocation = self.tableData.table_location();
+        let wal_location = instance::createWalLocation(tableLocation.id, tableLocation.shard_info);
+        let log_batch_encoder = LogBatchEncoder::create(wal_location); // walLocation 是key
         let log_batch = log_batch_encoder.encode(&payload).context(EncodePayloads {
-            table: &self.table_data.name,
+            table: &self.tableData.name,
             wal_location,
         })?;
 
         // Write to wal manager
         let write_ctx = WriteContext::default();
-        let sequence = self
-            .instance
-            .space_store
-            .wal_manager
-            .write(&write_ctx, &log_batch)
-            .await
-            .context(WriteLogBatch {
-                table: &self.table_data.name,
-            })?;
+        let sequence = self.instance.spaceStore.walManager.write(&write_ctx, &log_batch).await.context(WriteLogBatch { table: &self.tableData.name})?;
 
         Ok(sequence)
     }
@@ -594,11 +532,11 @@ impl<'a> Writer<'a> {
             max_retry_flush_limit: self.instance.max_retry_flush_limit(),
         };
         let flusher = self.instance.make_flusher();
-        if table_data.id == self.table_data.id {
+        if table_data.id == self.tableData.id {
             let flush_scheduler = self.serial_exec.flush_scheduler();
             // Set `block_on_write_thread` to false and let flush do in background.
             return flusher
-                .schedule_flush(flush_scheduler, table_data, opts)
+                .scheduleFlush(flush_scheduler, table_data, opts)
                 .await
                 .context(FlushTable {
                     table: &table_data.name,
@@ -607,14 +545,14 @@ impl<'a> Writer<'a> {
 
         debug!(
             "Try to trigger flush of other table:{} from the write procedure of table:{}",
-            table_data.name, self.table_data.name
+            table_data.name, self.tableData.name
         );
-        match table_data.serial_exec.try_lock() {
+        match table_data.tableOpSerialExecutor.try_lock() {
             Ok(mut serial_exec) => {
                 let flush_scheduler = serial_exec.flush_scheduler();
                 // Set `block_on_write_thread` to false and let flush do in background.
                 flusher
-                    .schedule_flush(flush_scheduler, table_data, opts)
+                    .scheduleFlush(flush_scheduler, table_data, opts)
                     .await
                     .context(FlushTable {
                         table: &table_data.name,

@@ -295,19 +295,15 @@ pub trait TableEngine: Send + Sync {
     /// Returns the name of engine.
     fn engine_type(&self) -> &str;
 
-    /// Close the engine gracefully.
     async fn close(&self) -> Result<()>;
 
-    /// Create table
     async fn createTable(&self, createTableRequest: CreateTableRequest) -> Result<TableRef>;
 
-    /// Drop table
     async fn drop_table(&self, request: DropTableRequest) -> Result<bool>;
 
     /// Open table, return None if table not exists
     async fn open_table(&self, openTableRequest: OpenTableRequest) -> Result<Option<TableRef>>;
 
-    /// Close table
     async fn close_table(&self, request: CloseTableRequest) -> Result<()>;
 
     /// Open tables on same shard.
@@ -324,7 +320,6 @@ pub type TableEngineRef = Arc<dyn TableEngine>;
 
 #[derive(Clone, Debug)]
 pub struct EngineRuntimes {
-    /// Runtime for reading data
     pub read_runtime: RuntimeRef,
     /// Runtime for writing data
     pub write_runtime: RuntimeRef,

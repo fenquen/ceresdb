@@ -423,8 +423,8 @@ impl ObkvImpl {
 
 impl TableKv for ObkvImpl {
     type Error = Error;
-    type ScanIter = ObkvScanIter;
     type WriteBatch = ObkvWriteBatch;
+    type ScanIter = ObkvScanIter;
 
     fn table_exists(&self, table_name: &str) -> Result<bool> {
         self.client
