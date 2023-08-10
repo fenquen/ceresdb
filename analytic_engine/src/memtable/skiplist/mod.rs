@@ -38,8 +38,7 @@ struct Metrics {
     row_count: AtomicUsize,
 }
 
-/// MemTable implementation based on skiplist
-pub struct SkiplistMemTable<A: Arena<Stats = BasicStats> + Clone + Sync + Send> {
+pub struct SkipListMemTable<A: Arena<Stats=BasicStats> + Clone + Sync + Send> {
     /// Schema of this memtable, is immutable.
     schema: Schema,
     skiplist: Skiplist<BytewiseComparator, A>,
@@ -50,9 +49,7 @@ pub struct SkiplistMemTable<A: Arena<Stats = BasicStats> + Clone + Sync + Send> 
     metrics: Metrics,
 }
 
-impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send + 'static> MemTable
-    for SkiplistMemTable<A>
-{
+impl<A: Arena<Stats=BasicStats> + Clone + Sync + Send + 'static> MemTable for SkipListMemTable<A> {
     fn schema(&self) -> &Schema {
         &self.schema
     }

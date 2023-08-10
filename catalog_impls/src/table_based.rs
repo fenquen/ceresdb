@@ -696,6 +696,7 @@ impl Schema for SchemaTableBased {
         let request = createTableRequest.into_engine_create_request(Some(table_id), self.id);
         let table = opts.tableEngine.createTable(request.clone()).await.box_err().context(CreateTableWithCause)?;
 
+        // 也是会向rocksdb写data
         self.sysCatalogTable.createTable(request.clone().into()).await
             .box_err().context(WriteTableMeta { table: &request.table_name })?;
 

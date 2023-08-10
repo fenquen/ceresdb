@@ -602,13 +602,11 @@ pub struct Schema {
     /// The primary key index list in columns
     primary_key_indexes: Vec<usize>,
     /// Index of timestamp key column
-    // TODO(yingwen): Maybe we can remove the restriction that timestamp column must exists in
-    //  schema (mainly for projected schema)
+    // TODO(yingwen): Maybe we can remove the restriction that timestamp column must exists in schema (mainly for projected schema)
     timestamp_index: usize,
     /// Index of tsid key column
     tsid_index: Option<usize>,
-    /// Column schemas, only holds arc pointer so the Schema can be cloned
-    /// without much overhead.
+    /// Column schemas, only holds arc pointer so the Schema can be cloned without much overhead.
     column_schemas: Arc<ColumnSchemas>,
     /// Version of the schema, schemas with same version should be identical.
     version: Version,

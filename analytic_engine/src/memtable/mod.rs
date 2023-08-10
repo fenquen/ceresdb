@@ -26,7 +26,7 @@ use crate::memtable::key::KeySequence;
 const DEFAULT_SCAN_BATCH_SIZE: usize = 500;
 
 #[derive(Debug, Snafu)]
-#[snafu(visibility(pub(crate)))]
+#[snafu(visibility(pub (crate)))]
 pub enum Error {
     #[snafu(display("Failed to encode internal key, err:{}", source))]
     EncodeInternalKey { source: crate::memtable::key::Error },
@@ -42,7 +42,7 @@ pub enum Error {
         source: common_types::record_batch::Error,
     },
 
-    #[snafu(display("Failed to build record batch, err:{}", source,))]
+    #[snafu(display("Failed to build record batch, err:{}", source, ))]
     BuildRecordBatch {
         source: common_types::record_batch::Error,
     },
@@ -58,10 +58,10 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Invalid sequence number to put, given:{}, last:{}.\nBacktrace:\n{}",
-        given,
-        last,
-        backtrace
+    "Invalid sequence number to put, given:{}, last:{}.\nBacktrace:\n{}",
+    given,
+    last,
+    backtrace
     ))]
     InvalidPutSequence {
         given: SequenceNumber,
@@ -168,13 +168,11 @@ pub trait MemTable {
     /// REQUIRE:
     /// - The schema of RowGroup must equal to the schema of memtable. How to
     /// handle duplicate entries is implementation specific.
-    fn put(
-        &self,
-        ctx: &mut PutContext,
-        sequence: KeySequence,
-        row: &Row,
-        schema: &Schema,
-    ) -> Result<()>;
+    fn put(&self,
+           ctx: &mut PutContext,
+           sequence: KeySequence,
+           row: &Row,
+           schema: &Schema) -> Result<()>;
 
     /// Scan the memtable.
     ///
@@ -190,7 +188,7 @@ pub trait MemTable {
     ///
     /// REQUIRE:
     /// - External synchronization is required.
-    fn set_last_sequence(&self, sequence: SequenceNumber) -> Result<()>;
+    fn set_last_sequence(&self, sequenceNumber: SequenceNumber) -> Result<()>;
 
     /// Returns the last sequence of the memtable.
     ///
@@ -215,4 +213,4 @@ pub struct Metrics {
 pub type MemTableRef = Arc<dyn MemTable + Send + Sync>;
 
 /// A pointer to columnar iterator
-pub type ColumnarIterPtr = Box<dyn Iterator<Item = Result<RecordBatchWithKey>> + Send + Sync>;
+pub type ColumnarIterPtr = Box<dyn Iterator<Item=Result<RecordBatchWithKey>> + Send + Sync>;

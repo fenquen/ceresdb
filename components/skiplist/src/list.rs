@@ -199,7 +199,7 @@ impl Node {
     }
 }
 
-struct SkiplistCore<A: Arena<Stats = BasicStats>> {
+struct SkipListCore<A: Arena<Stats = BasicStats>> {
     height: AtomicUsize,
     head: NonNull<Node>,
     arena: A,
@@ -209,7 +209,7 @@ struct SkiplistCore<A: Arena<Stats = BasicStats>> {
 /// otherwise it is hard to avoid memory usage not out of the arena capacity
 #[derive(Clone)]
 pub struct Skiplist<C, A: Arena<Stats = BasicStats> + Clone> {
-    core: Arc<SkiplistCore<A>>,
+    core: Arc<SkipListCore<A>>,
     c: C,
 }
 
@@ -218,7 +218,7 @@ impl<C, A: Arena<Stats = BasicStats> + Clone> Skiplist<C, A> {
         let head = Node::alloc(&arena, &[], &[], MAX_HEIGHT - 1);
         let head = unsafe { NonNull::new_unchecked(head) };
         Skiplist {
-            core: Arc::new(SkiplistCore {
+            core: Arc::new(SkipListCore {
                 height: AtomicUsize::new(0),
                 head,
                 arena,

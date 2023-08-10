@@ -97,7 +97,7 @@ fn write_header<B: BufMut>(header: Header, buf: &mut B) -> Result<()> {
 /// Header size in bytes
 const HEADER_SIZE: usize = 1;
 
-/// Write request to persist in wal 向表写data用到 fenquen
+/// Write request to persist in wal 向表写data insert用到 fenquen
 #[derive(Debug)]
 pub enum WritePayload<'a> {
     Write(&'a table_requests::WriteRequest),

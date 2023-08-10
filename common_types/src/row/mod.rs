@@ -206,6 +206,7 @@ pub fn check_row_schema(row: &Row, schema: &Schema) -> Result<()> {
 #[derive(Debug)]
 pub struct RowGroupSlicer<'a> {
     range: Range<usize>,
+    /// 应用的是总的data
     row_group: &'a RowGroup,
 }
 
@@ -235,9 +236,7 @@ impl<'a> RowGroupSlicer<'a> {
 
     #[inline]
     pub fn iter(&self) -> IterRow<'a> {
-        IterRow {
-            iter: self.row_group.rows[self.range.start..self.range.end].iter(),
-        }
+        IterRow { iter: self.row_group.rows[self.range.start..self.range.end].iter(), }
     }
 
     #[inline]

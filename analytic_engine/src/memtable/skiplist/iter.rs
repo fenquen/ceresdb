@@ -22,7 +22,7 @@ use time_ext::InstantExt;
 
 use crate::memtable::{
     key::{self, KeySequence},
-    skiplist::{BytewiseComparator, SkiplistMemTable},
+    skiplist::{BytewiseComparator, SkipListMemTable},
     AppendRow, BuildRecordBatch, DecodeContinuousRow, DecodeInternalKey, EncodeInternalKey,
     IterReverse, IterTimeout, ProjectSchema, Result, ScanContext, ScanRequest,
 };
@@ -38,7 +38,7 @@ enum State {
     Finished,
 }
 
-/// Columnar iterator for [SkiplistMemTable]
+/// Columnar iterator for [SkipListMemTable]
 pub struct ColumnarIterImpl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> {
     /// The internal skiplist iter
     iter: IterRef<Skiplist<BytewiseComparator, A>, BytewiseComparator, A>,
@@ -71,7 +71,7 @@ pub struct ColumnarIterImpl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> 
 impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
     /// Create a new [ColumnarIterImpl]
     pub fn new(
-        memtable: &SkiplistMemTable<A>,
+        memtable: &SkipListMemTable<A>,
         ctx: ScanContext,
         request: ScanRequest,
     ) -> Result<Self> {

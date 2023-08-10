@@ -376,11 +376,9 @@ impl TableData {
     /// If the memtable schema is outdated, switch all memtables and create the
     /// needed mutable memtable by current schema. The returned memtable is
     /// guaranteed to have same schema of current table
-    pub fn find_or_create_mutable(
-        &self,
-        timestamp: Timestamp,
-        table_schema: &Schema,
-    ) -> Result<MemTableForWrite> {
+    pub fn findOrCreateMutable(&self,
+                               timestamp: Timestamp,
+                               table_schema: &Schema) -> Result<MemTableForWrite> {
         let last_sequence = self.last_sequence();
 
         if let Some(mem) = self

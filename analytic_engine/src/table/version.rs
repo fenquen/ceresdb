@@ -137,6 +137,7 @@ impl fmt::Debug for MemTableState {
     }
 }
 
+/// mutable memTable
 // TODO(yingwen): Replace by Either.
 #[derive(Clone)]
 pub enum MemTableForWrite {
@@ -146,8 +147,8 @@ pub enum MemTableForWrite {
 
 impl MemTableForWrite {
     #[inline]
-    pub fn set_last_sequence(&self, seq: SequenceNumber) -> memtable::Result<()> {
-        self.memtable().set_last_sequence(seq)
+    pub fn setLastSequence(&self, sequenceNumber: SequenceNumber) -> memtable::Result<()> {
+        self.memtable().set_last_sequence(sequenceNumber)
     }
 
     #[inline]
@@ -159,14 +160,12 @@ impl MemTableForWrite {
     }
 
     #[inline]
-    pub fn put(
-        &self,
-        ctx: &mut PutContext,
-        sequence: KeySequence,
-        row: &Row,
-        schema: &Schema,
-        timestamp: Timestamp,
-    ) -> Result<()> {
+    pub fn put(&self,
+               ctx: &mut PutContext,
+               sequence: KeySequence,
+               row: &Row,
+               schema: &Schema,
+               timestamp: Timestamp) -> Result<()> {
         match self {
             MemTableForWrite::Sampling(v) => {
                 v.mem.put(ctx, sequence, row, schema).context(PutMemTable)?;

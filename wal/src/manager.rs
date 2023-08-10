@@ -306,7 +306,7 @@ pub trait WalManager: Send + Sync + fmt::Debug + 'static {
     /// Write a batch of log entries to log.
     ///
     /// Returns the max sequence number for the batch of log entries.
-    async fn write(&self, ctx: &WriteContext, batch: &LogWriteBatch) -> Result<SequenceNumber>;
+    async fn write(&self, ctx: &WriteContext, logWriteBatch: &LogWriteBatch) -> Result<SequenceNumber>;
 
     /// Scan all logs from a `Region`.
     async fn scan(&self, ctx: &ScanContext, req: &ScanRequest) -> Result<BatchLogIteratorAdapter>;

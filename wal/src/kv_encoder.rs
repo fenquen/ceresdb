@@ -519,40 +519,42 @@ impl LogEncoding {
 /// LogBatchEncoder which are used to encode specify payloads.
 #[derive(Debug)]
 pub struct LogBatchEncoder {
-    location: WalLocation,
-    log_encoding: LogEncoding,
+    /// LogBatchEncoder的walLocation 传递到生成的LogWriteBatch 会参与成为会在的各个条目的key的 fenquen
+    walLocation: WalLocation,
+    logEncoding: LogEncoding,
 }
 
 impl LogBatchEncoder {
     /// Create LogBatchEncoder with specific region_id.
     pub fn create(location: WalLocation) -> Self {
         Self {
-            location,
-            log_encoding: LogEncoding::newest(),
+            walLocation: location,
+            logEncoding: LogEncoding::newest(),
         }
     }
 
     /// Consume LogBatchEncoder and encode single payload to LogWriteBatch.
     pub fn encode(self, payload: &impl Payload) -> manager::Result<LogWriteBatch> {
-        let mut write_batch = LogWriteBatch::new(self.location);
-        let mut buf = BytesMut::new();
-        self.log_encoding.encode_value(&mut buf, payload).box_err().context(Encoding)?;
+        let mut logWriteBatch = LogWriteBatch::new(self.walLocation);
 
-        write_batch.push(LogWriteEntry {
+        let mut buf = BytesMut::new();
+        self.logEncoding.encode_value(&mut buf, payload).box_err().context(Encoding)?;
+
+        logWriteBatch.push(LogWriteEntry {
             payload: buf.to_vec(),
         });
 
-        Ok(write_batch)
+        Ok(logWriteBatch)
     }
 
     /// Consume LogBatchEncoder and encode raw payload batch to LogWriteBatch.
     /// Note: To build payload from raw payload in `encode_batch`, raw payload
     /// need implement From trait.
     pub fn encode_batch<'a, P: Payload, I>(self, raw_payload_batch: &'a [I]) -> manager::Result<LogWriteBatch> where &'a I: Into<P>, {
-        let mut write_batch = LogWriteBatch::new(self.location);
+        let mut write_batch = LogWriteBatch::new(self.walLocation);
         let mut buf = BytesMut::new();
         for raw_payload in raw_payload_batch.iter() {
-            self.log_encoding
+            self.logEncoding
                 .encode_value(&mut buf, &raw_payload.into())
                 .box_err()
                 .context(Encoding)?;

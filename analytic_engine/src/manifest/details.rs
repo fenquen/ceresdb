@@ -375,7 +375,7 @@ impl ManifestImpl {
         let metaUpdateLogStoreWalBased = MetaUpdateLogStoreWalBased {
             opts: self.opts.clone(),
             location: walLocation,
-            wal_manager: self.wal_manager.clone(),
+            walManager: self.wal_manager.clone(),
         };
         let latest_sequence = metaUpdateLogStoreWalBased.append(metaUpdate).await?;
         self.num_updates_since_snapshot.fetch_add(1, Ordering::Relaxed);
@@ -394,7 +394,7 @@ impl ManifestImpl {
             let log_store = MetaUpdateLogStoreWalBased {
                 opts: self.opts.clone(),
                 location,
-                wal_manager: self.wal_manager.clone(),
+                walManager: self.wal_manager.clone(),
             };
             let snapshot_store =
                 MetaUpdateSnapshotStoreObjectStoreBased::new(space_id, table_id, self.store.clone());
@@ -460,7 +460,7 @@ impl Manifest for ManifestImpl {
         let log_store = MetaUpdateLogStoreWalBased {
             opts: self.opts.clone(),
             location: walLocation,
-            wal_manager: self.wal_manager.clone(),
+            walManager: self.wal_manager.clone(),
         };
 
         let snapshot_store = MetaUpdateSnapshotStoreObjectStoreBased::new(
@@ -605,7 +605,7 @@ impl MetaUpdateSnapshotStore for MetaUpdateSnapshotStoreObjectStoreBased {
 struct MetaUpdateLogStoreWalBased {
     opts: Options,
     location: WalLocation,
-    wal_manager: Arc<dyn WalManager>,
+    walManager: Arc<dyn WalManager>,
 }
 
 #[async_trait]
@@ -624,7 +624,7 @@ impl MetaUpdateLogStore for MetaUpdateLogStoreWalBased {
             end: ReadBoundary::Max,
         };
 
-        let iterator = self.wal_manager.read_batch(&ctx, &read_req).await.context(ReadWal)?;
+        let iterator = self.walManager.read_batch(&ctx, &read_req).await.context(ReadWal)?;
 
         Ok(MetaUpdateReaderImpl {
             iterator,
@@ -644,11 +644,11 @@ impl MetaUpdateLogStore for MetaUpdateLogStoreWalBased {
 
         let write_ctx = WriteContext { timeout: self.opts.store_timeout.0 };
 
-        self.wal_manager.write(&write_ctx, &logWriteBatch).await.context(WriteWal)
+        self.walManager.write(&write_ctx, &logWriteBatch).await.context(WriteWal)
     }
 
     async fn delete_up_to(&self, inclusive_end: SequenceNumber) -> Result<()> {
-        self.wal_manager
+        self.walManager
             .mark_delete_entries_up_to(self.location, inclusive_end)
             .await
             .context(CleanWal)

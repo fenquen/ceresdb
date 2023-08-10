@@ -9,11 +9,7 @@ use crate::config::AliyunOptions;
 
 fn normalize_endpoint(endpoint: &str, bucket: &str) -> String {
     if endpoint.starts_with("https") {
-        format!(
-            "https://{}.{}",
-            bucket,
-            endpoint.replacen("https://", "", 1)
-        )
+        format!("https://{}.{}", bucket, endpoint.replacen("https://", "", 1))
     } else {
         format!("http://{}.{}", bucket, endpoint.replacen("http://", "", 1))
     }

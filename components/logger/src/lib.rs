@@ -89,8 +89,8 @@ impl<N: Drain> LogDispatcher<N> {
 }
 
 impl<N> Drain for LogDispatcher<N>
-where
-    N: Drain<Ok = (), Err = io::Error>,
+    where
+        N: Drain<Ok=(), Err=io::Error>,
 {
     type Err = io::Error;
     type Ok = ();
@@ -151,9 +151,9 @@ pub fn init_log_from_drain<D>(
     async_log_channel_len: i32,
     init_stdlog: bool,
 ) -> Result<RuntimeLevel, SetLoggerError>
-where
-    D: Drain + Send + 'static,
-    <D as Drain>::Err: std::fmt::Display,
+    where
+        D: Drain + Send + 'static,
+        <D as Drain>::Err: std::fmt::Display,
 {
     let runtime_level = RuntimeLevel::new(level);
     // TODO(yingwen): Consider print the error instead of just ignoring it?
@@ -188,15 +188,15 @@ where
 // 2020-01-20 13:00:14.998 INFO [src/engine/rocksdb/rocks_kv.rs:394] RocksKV::open_with_op start, name:autogen
 // ```
 pub struct CeresFormat<D>
-where
-    D: Decorator,
+    where
+        D: Decorator,
 {
     decorator: D,
 }
 
 impl<D> CeresFormat<D>
-where
-    D: Decorator,
+    where
+        D: Decorator,
 {
     fn new(decorator: D) -> Self {
         Self { decorator }
@@ -204,11 +204,11 @@ where
 }
 
 impl<D> Drain for CeresFormat<D>
-where
-    D: Decorator,
+    where
+        D: Decorator,
 {
-    type Err = io::Error;
     type Ok = ();
+    type Err = io::Error;
 
     fn log(&self, record: &Record, values: &OwnedKVList) -> Result<Self::Ok, Self::Err> {
         self.decorator.with_record(record, values, |decorator| {
@@ -297,8 +297,8 @@ impl<D> RuntimeLevelFilter<D> {
 }
 
 impl<D> Drain for RuntimeLevelFilter<D>
-where
-    D: Drain,
+    where
+        D: Drain,
 {
     type Err = D::Err;
     type Ok = Option<D::Ok>;

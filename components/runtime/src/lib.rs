@@ -25,21 +25,13 @@ mod metrics;
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
 pub enum Error {
-    #[snafu(display(
-    "Runtime Failed to build runtime, err:{}.\nBacktrace:\n{}",
-    source,
-    backtrace
-    ))]
+    #[snafu(display("runtime Failed to build runtime, err:{}.\nBacktrace:\n{}", source, backtrace))]
     BuildRuntime {
         source: std::io::Error,
         backtrace: Backtrace,
     },
 
-    #[snafu(display(
-    "Runtime Failed to join task, err:{}.\nBacktrace:\n{}",
-    source,
-    backtrace
-    ))]
+    #[snafu(display("runtime Failed to join task, err:{}.\nBacktrace:\n{}", source, backtrace))]
     JoinTask {
         source: JoinError,
         backtrace: Backtrace,

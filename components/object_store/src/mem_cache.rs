@@ -147,11 +147,9 @@ impl ObjectStoreWithMemCache {
         Ok(bytes)
     }
 
-    async fn get_range_with_ro_cache(
-        &self,
-        location: &Path,
-        range: Range<usize>,
-    ) -> ObjectStoreResult<Bytes> {
+    async fn get_range_with_ro_cache(&self,
+                                     location: &Path,
+                                     range: Range<usize>) -> ObjectStoreResult<Bytes> {
         let cache_key = Self::cache_key(location, &range);
         if let Some(bytes) = self.memCache.peek(&cache_key) {
             return Ok(bytes);

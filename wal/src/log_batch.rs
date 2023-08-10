@@ -35,6 +35,7 @@ pub struct LogWriteEntry {
 #[derive(Debug)]
 pub struct LogWriteBatch {
     pub(crate) walLocation: WalLocation,
+    /// 只是values
     pub(crate) logWriteEntryVec: Vec<LogWriteEntry>,
 }
 

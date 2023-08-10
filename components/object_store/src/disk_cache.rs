@@ -37,12 +37,7 @@ pub const CASTAGNOLI: Crc<u32> = Crc::<u32>::new(&CRC_32_ISCSI);
 
 #[derive(Debug, Snafu)]
 enum Error {
-    #[snafu(display(
-    "IO failed, file:{}, source:{}.\nbacktrace:\n{}",
-    file,
-    source,
-    backtrace
-    ))]
+    #[snafu(display("io failed, file:{}, source:{}.\nbacktrace:\n{}", file, source, backtrace))]
     Io {
         file: String,
         source: std::io::Error,

@@ -35,12 +35,7 @@ use crate::table::data::TableData;
 
 #[derive(Debug, Snafu)]
 pub enum Error {
-    #[snafu(display(
-    "Failed to encode payloads, table:{}, wal_location:{:?}, err:{}",
-    table,
-    wal_location,
-    source
-    ))]
+    #[snafu(display("failed to encode payloads, table:{}, wal_location:{:?}, err:{}", table, wal_location, source))]
     EncodePayloads {
         table: String,
         wal_location: WalLocation,
@@ -257,20 +252,19 @@ impl<'a> Writer<'a> {
 }
 
 pub(crate) struct MemTableWriter<'a> {
-    table_data: TableDataRef,
+    tableData: TableDataRef,
     _serial_exec: &'a mut TableOpSerialExecutor,
 }
 
 impl<'a> MemTableWriter<'a> {
     pub fn new(tableData: TableDataRef, serial_exec: &'a mut TableOpSerialExecutor) -> Self {
         Self {
-            table_data: tableData,
+            tableData,
             _serial_exec: serial_exec,
         }
     }
 
-    // TODO(yingwen): How to trigger flush if we found memtables are full during
-    // inserting memtable? RocksDB checks memtable size in MemTableInserter
+    // TODO(yingwen): How to trigger flush if we found memtables are full during inserting memtable? RocksDB checks memtable size in MemTableInserter
     /// Write data into memtable.
     ///
     /// index_in_writer must match the schema in table_data.
@@ -278,61 +272,51 @@ impl<'a> MemTableWriter<'a> {
                  sequenceNumber: SequenceNumber,
                  rowGroupSlicer: &RowGroupSlicer,
                  indexInWriterSchema: IndexInWriterSchema) -> Result<()> {
-        let _timer = self.table_data.metrics.start_table_write_memtable_timer();
+        let _timer = self.tableData.metrics.start_table_write_memtable_timer();
+
         if rowGroupSlicer.is_empty() {
             return Ok(());
         }
 
-        let schema = &self.table_data.schema();
-        // Store all memtables we wrote and update their last sequence later.
-        let mut wrote_memtables: SmallVec<[_; 4]> = SmallVec::new();
-        let mut last_mutable_mem: Option<MemTableForWrite> = None;
+        let schema = &self.tableData.schema();
+
+        // store all memtables we wrote and update their last sequence later
+        let mut memTableForWriteVec: SmallVec<[_; 4]> = SmallVec::new();
+        let mut lastMemTableForWrite: Option<MemTableForWrite> = None;
 
         let mut ctx = PutContext::new(indexInWriterSchema);
+
         for (row_idx, row) in rowGroupSlicer.iter().enumerate() {
-            // TODO(yingwen): Add RowWithSchema and take RowWithSchema as input, then remove
-            // this unwrap()
+            // TODO(yingwen): Add RowWithSchema and take RowWithSchema as input, then remove this unwrap()
             let timestamp = row.timestamp(schema).unwrap();
+
             // skip expired row
-            if self.table_data.is_expired(timestamp) {
-                trace!("Skip expired row when write to memtable, row:{:?}", row);
+            if self.tableData.is_expired(timestamp) {
+                trace!("skip expired row when write to memtable, row:{:?}", row);
                 continue;
             }
-            if last_mutable_mem.is_none()
-                || !last_mutable_mem
-                .as_ref()
-                .unwrap()
-                .accept_timestamp(timestamp)
-            {
+
+            if lastMemTableForWrite.is_none() || !lastMemTableForWrite.as_ref().unwrap().accept_timestamp(timestamp) {
                 // The time range is not processed by current memtable, find next one.
-                let mutable_mem = self
-                    .table_data
-                    .find_or_create_mutable(timestamp, schema)
-                    .context(FindMutableMemTable {
-                        table: &self.table_data.name,
-                    })?;
-                wrote_memtables.push(mutable_mem.clone());
-                last_mutable_mem = Some(mutable_mem);
+                let memTableForWrite =
+                    self.tableData.findOrCreateMutable(timestamp, schema).context(FindMutableMemTable { table: &self.tableData.name})?;
+
+                memTableForWriteVec.push(memTableForWrite.clone());
+
+                lastMemTableForWrite = Some(memTableForWrite);
             }
 
-            // We have check the row num is less than `MAX_ROWS_TO_WRITE`, it is safe to
-            // cast it to u32 here
+            // we have check the row num is less than `MAX_ROWS_TO_WRITE`, it is safe to cast it to u32 here
             let key_seq = KeySequence::new(sequenceNumber, row_idx as u32);
-            // TODO(yingwen): Batch sample timestamp in sampling phase.
-            last_mutable_mem
-                .as_ref()
-                .unwrap()
-                .put(&mut ctx, key_seq, row, schema, timestamp)
-                .context(WriteMemTable {
-                    table: &self.table_data.name,
-                })?;
+
+            // TODO(yingwen): Batch sample ti mestamp in sampling phase.
+            lastMemTableForWrite.as_ref().unwrap().put(&mut ctx, key_seq, row, schema, timestamp)
+                .context(WriteMemTable { table: &self.tableData.name, })?;
         }
 
         // Update last sequence of memtable.
-        for mem_wrote in wrote_memtables {
-            mem_wrote
-                .set_last_sequence(sequenceNumber)
-                .context(UpdateMemTableSequence)?;
+        for memTableForWrite in memTableForWriteVec {
+            memTableForWrite.setLastSequence(sequenceNumber).context(UpdateMemTableSequence)?;
         }
 
         Ok(())
@@ -502,19 +486,19 @@ impl<'a> Writer<'a> {
             rows: encoded_rows,
         };
 
-        // Encode payload
-        let payload = WritePayload::Write(&writeRequestPb);
+        // encode payload
+        let writePayload = WritePayload::Write(&writeRequestPb);
         let tableLocation = self.tableData.table_location();
-        let wal_location = instance::createWalLocation(tableLocation.id, tableLocation.shard_info);
-        let log_batch_encoder = LogBatchEncoder::create(wal_location); // walLocation 是key
-        let log_batch = log_batch_encoder.encode(&payload).context(EncodePayloads {
+        let walLocation = instance::createWalLocation(tableLocation.id, tableLocation.shard_info);
+        let logBatchEncoder = LogBatchEncoder::create(walLocation); // walLocation 是key
+        let logWriteBatch = logBatchEncoder.encode(&writePayload).context(EncodePayloads {
             table: &self.tableData.name,
-            wal_location,
+            wal_location: walLocation,
         })?;
 
-        // Write to wal manager
+        // write to wal manager
         let write_ctx = WriteContext::default();
-        let sequence = self.instance.spaceStore.walManager.write(&write_ctx, &log_batch).await.context(WriteLogBatch { table: &self.tableData.name })?;
+        let sequence = self.instance.spaceStore.walManager.write(&write_ctx, &logWriteBatch).await.context(WriteLogBatch { table: &self.tableData.name })?;
 
         Ok(sequence)
     }
