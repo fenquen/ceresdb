@@ -54,7 +54,7 @@ use generic_error::BoxError;
 use influxql_query::logical_optimizer::range_predicate::find_time_range;
 use interpreters::{
     context::InterpreterContext as InterpreterContext,
-    factory::Factory,
+    factory::InterpreterFactory,
     interpreter::{InterpreterPtr, Output},
 };
 use log::{error, info};
@@ -185,11 +185,11 @@ impl<QueryExecutor0: QueryExecutor + 'static> Proxy<QueryExecutor0> {
     fn is_plan_expired(&self,
                        plan: &Plan,
                        catalog_name: &str,
-                       schema_name: &str,
+                       schemaName: &str,
                        table_name: &str) -> Result<bool> {
         if let Plan::Query(query) = &plan {
             let catalog = self.get_catalog(catalog_name)?;
-            let schema = self.get_schema(&catalog, schema_name)?;
+            let schema = self.get_schema(&catalog, schemaName)?;
             let table_ref = match self.get_table(&schema, table_name) {
                 Ok(Some(v)) => v,
                 _ => return Ok(false),
@@ -441,21 +441,17 @@ impl<QueryExecutor0: QueryExecutor + 'static> Proxy<QueryExecutor0> {
 
     async fn execute_plan(&self,
                           request_id: RequestId,
-                          catalog: &str,
-                          schema: &str,
+                          catalogName: &str,
+                          schemaName: &str,
                           plan: Plan,
                           deadline: Option<Instant>,
                           enable_partition_table_access: bool) -> Result<Output> {
-        self.instance
-            .limiter
-            .try_limit(&plan)
-            .box_err()
-            .context(Internal { msg: "Request is blocked" })?;
+        self.instance.limiter.tryLimit(&plan).box_err().context(Internal { msg: "request is blocked" })?;
 
         let interpreter =
             self.build_interpreter(request_id,
-                                   catalog,
-                                   schema,
+                                   catalogName,
+                                   schemaName,
                                    plan,
                                    deadline,
                                    enable_partition_table_access)?;
@@ -499,15 +495,12 @@ impl<QueryExecutor0: QueryExecutor + 'static> Proxy<QueryExecutor0> {
             .build();
 
         let interpreter_factory =
-            Factory::new(self.instance.query_executor.clone(),
-                         self.instance.catalog_manager.clone(),
-                         self.instance.table_engine.clone(),
-                         self.instance.table_manipulator.clone());
+            InterpreterFactory::new(self.instance.query_executor.clone(),
+                                    self.instance.catalog_manager.clone(),
+                                    self.instance.table_engine.clone(),
+                                    self.instance.table_manipulator.clone());
 
-        interpreter_factory
-            .create(interpreter_ctx, plan)
-            .box_err()
-            .context(Internal { msg: "Failed to create interpreter" })
+        interpreter_factory.create(interpreter_ctx, plan).box_err().context(Internal { msg: "Failed to create interpreter" })
     }
 
     async fn interpreter_execute_plan(interpreter: InterpreterPtr, deadline: Option<Instant>) -> Result<Output> {

@@ -84,30 +84,24 @@ pub struct InsertInterpreter {
     insertPlan: InsertPlan,
 }
 
-impl InsertInterpreter {
-    pub fn create(ctx: InterpreterContext, insertPlan: InsertPlan) -> InterpreterPtr {
-        Box::new(Self { ctx, insertPlan })
-    }
-}
-
 #[async_trait]
 impl Interpreter for InsertInterpreter {
     async fn execute(mut self: Box<Self>) -> InterpreterResult<Output> {
-        // Generate tsid if needed.
-        self.maybe_generate_tsid().context(Insert)?;
+        // generate tsid if needed.
+        self.generateTsId().context(Insert)?;
 
         let InsertPlan {
             table,
             rowGroup: mut rowGroup,
-            columnIndex_defaultVal,
+            columnIndex_defaultValue: columnIndex_defaultVal,
         } = self.insertPlan;
 
-        // Fill default values
+        // fill default values
         fill_default_values(table.clone(),
                             &mut rowGroup,
                             &columnIndex_defaultVal).context(Insert)?;
 
-        // Context is unused now
+        // context is unused now
         let _ctx = self.ctx;
 
         let writeRequest = WriteRequest { rowGroup };
@@ -119,37 +113,37 @@ impl Interpreter for InsertInterpreter {
 }
 
 impl InsertInterpreter {
-    fn maybe_generate_tsid(&mut self) -> Result<()> {
-        let schema = self.insertPlan.rowGroup.schema();
-        let tsid_idx = schema.index_of_tsid();
+    pub fn create(ctx: InterpreterContext, insertPlan: InsertPlan) -> InterpreterPtr {
+        Box::new(Self { ctx, insertPlan })
+    }
 
-        if let Some(idx) = tsid_idx {
-            // Vec of (`index of tag`, `column id of tag`).
-            let tag_idx_column_ids: Vec<_> = schema
-                .columns()
-                .iter()
-                .enumerate()
+    fn generateTsId(&mut self) -> Result<()> {
+        let schema = self.insertPlan.rowGroup.schema();
+
+        if let Some(tsIdColumnIndex) = schema.index_of_tsid() {
+            // vec of (`index of tag`, `column id of tag`).
+            let tagColumnIndex_tagColumnId: Vec<_> = schema.columns().iter().enumerate()
                 .filter_map(|(i, column)| {
                     if column.is_tag {
                         Some((i, column.id))
                     } else {
                         None
                     }
-                })
-                .collect();
+                }).collect();
 
             let mut hash_bytes = Vec::new();
+
             for i in 0..self.insertPlan.rowGroup.num_rows() {
                 let row = self.insertPlan.rowGroup.get_row_mut(i).unwrap();
 
                 let mut tsid_builder = TsidBuilder::new(&mut hash_bytes);
 
-                for (idx, column_id) in &tag_idx_column_ids {
-                    tsid_builder.maybe_write_datum(*column_id, &row[*idx])?;
+                for (tagColumnIndex, tagColumnId) in &tagColumnIndex_tagColumnId {
+                    tsid_builder.writeDatum(*tagColumnId, &row[*tagColumnIndex])?;
+                    // fenquen tsid的生成包含tag列的columnId和value
                 }
 
-                let tsid = tsid_builder.finish();
-                row[idx] = Datum::UInt64(tsid);
+                row[tsIdColumnIndex] = Datum::UInt64(tsid_builder.finish());
             }
         }
         Ok(())
@@ -157,8 +151,8 @@ impl InsertInterpreter {
 }
 
 struct TsidBuilder<'a> {
-    encoder: MemCompactEncoder,
-    hash_bytes: &'a mut Vec<u8>,
+    memCompactEncoder: MemCompactEncoder,
+    hashByteVec: &'a mut Vec<u8>,
 }
 
 impl<'a> TsidBuilder<'a> {
@@ -167,35 +161,32 @@ impl<'a> TsidBuilder<'a> {
         hash_bytes.clear();
 
         Self {
-            encoder: MemCompactEncoder,
-            hash_bytes,
+            memCompactEncoder: MemCompactEncoder,
+            hashByteVec: hash_bytes,
         }
     }
 
-    fn maybe_write_datum(&mut self, column_id: ColumnId, datum: &Datum) -> Result<()> {
-        // Null datum will be ignored, so tsid remains unchanged after adding a null
-        // column.
+    fn writeDatum(&mut self, tagColumnId: ColumnId, datum: &Datum) -> Result<()> {
+        // Null datum will be ignored, so tsid remains unchanged after adding a null column
         if datum.is_null() {
             return Ok(());
         }
 
-        // Write column id first.
-        self.encoder
-            .encode(self.hash_bytes, &Datum::UInt64(u64::from(column_id)))
-            .context(EncodeTsid)?;
-        // Write datum.
-        self.encoder
-            .encode(self.hash_bytes, datum)
-            .context(EncodeTsid)?;
+        // column id
+        self.memCompactEncoder.encode(self.hashByteVec, &Datum::UInt64(u64::from(tagColumnId))).context(EncodeTsid)?;
+
+        // datum
+        self.memCompactEncoder.encode(self.hashByteVec, datum).context(EncodeTsid)?;
+
         Ok(())
     }
 
     fn finish(self) -> u64 {
-        hash64(self.hash_bytes)
+        hash64(self.hashByteVec)
     }
 }
 
-/// Fill missing columns which can be calculated via default value expr.
+/// fill missing columns which can be calculated via default value expr.
 fn fill_default_values(table: TableRef,
                        row_groups: &mut RowGroup,
                        columnIndex_columnDefaultVal: &BTreeMap<usize, DfLogicalExpr>) -> Result<()> {
@@ -249,7 +240,7 @@ fn fill_default_values(table: TableRef,
         let from_type = physical_expr
             .data_type(&input_arrow_schema)
             .context(DatafusionDataType)?;
-        let to_type = row_groups.schema().column(*column_idx).data_type;
+        let to_type = row_groups.schema().column(*column_idx).datumKind;
 
         let casted_physical_expr = if from_type != to_type.into() {
             Arc::new(TryCastExpr::new(physical_expr, to_type.into()))
@@ -295,7 +286,7 @@ fn fill_column_to_row_group(
 ) -> Result<()> {
     match column {
         DfColumnarValue::Array(array) => {
-            let datum_kind = rows.schema().column(column_idx).data_type;
+            let datum_kind = rows.schema().column(column_idx).datumKind;
             let column_block = ColumnBlock::try_from_arrow_array_ref(&datum_kind, array)
                 .context(ConvertColumnBlock)?;
             for row_idx in 0..rows.num_rows() {
@@ -334,7 +325,7 @@ fn get_or_extract_column_from_row_groups(
         .get(&column_idx)
         .map(|c| Ok(c.clone()))
         .unwrap_or_else(|| {
-            let data_type = row_groups.schema().column(column_idx).data_type;
+            let data_type = row_groups.schema().column(column_idx).datumKind;
             let iter = row_groups.iter_column(column_idx);
             let mut builder = ColumnBlockBuilder::with_capacity(
                 &data_type,

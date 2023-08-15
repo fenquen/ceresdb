@@ -148,14 +148,14 @@ impl<'a> Parser<'a> {
             expecting_statement_delimiter = true;
         }
 
-        debug!("Parser parsed sql, sql:{}, stmts:{:#?}", sql, statementVec);
+        debug!("parse sql, sql:{}, statement:{:#?}", sql, statementVec);
 
         Ok(statementVec)
     }
 
-    // Report unexpected token
+    // report unexpected token
     fn expected<T>(&self, expected: &str, found: Token) -> Result<T> {
-        parser_err!(format!("Expected {expected}, found: {found}"))
+        parser_err!(format!("expected {expected}, found:{found}"))
     }
 
     // Parse a new expression

@@ -33,7 +33,7 @@ use crate::{
         udf::{create_unique_id, regex_match_expr},
         ColumnNames, PromAlignNode,
     },
-    provider::{ContextProviderAdapter, MetaProvider},
+    provider::{MetaAndContextProvider, MetaProvider},
 };
 
 const INIT_LEVEL: usize = 1;
@@ -139,7 +139,7 @@ impl Expr {
     ///           TableScan
     pub fn to_plan<P: MetaProvider>(
         self,
-        meta_provider: ContextProviderAdapter<'_, P>,
+        meta_provider: MetaAndContextProvider<'_, P>,
         read_parallelism: usize,
     ) -> Result<(Plan, Arc<ColumnNames>)> {
         let (logic_plan, column_name, _) =
@@ -154,7 +154,7 @@ impl Expr {
         Ok((
             Plan::Query(QueryPlan {
                 dataFusionLogicalPlan: logic_plan,
-                tables,
+                tableContainer: tables,
             }),
             column_name,
         ))
@@ -162,7 +162,7 @@ impl Expr {
 
     fn build_plan_iter<P: MetaProvider>(
         self,
-        meta_provider: &ContextProviderAdapter<'_, P>,
+        meta_provider: &MetaAndContextProvider<'_, P>,
         level: usize,
         read_parallelism: usize,
     ) -> Result<(LogicalPlan, Arc<ColumnNames>, String)> {
@@ -545,7 +545,7 @@ pub struct Selector {
 impl Selector {
     fn into_scan_plan<P: MetaProvider>(
         self,
-        meta_provider: &ContextProviderAdapter<'_, P>,
+        meta_provider: &MetaAndContextProvider<'_, P>,
     ) -> Result<(LogicalPlan, Arc<ColumnNames>, String)> {
         let Selector {
             query_range,
@@ -599,7 +599,7 @@ impl Selector {
     ) -> Result<(Vec<DataFusionExpr>, Vec<String>)> {
         if let Some(f) = schema.column_with_name(field) {
             ensure!(
-                f.data_type.is_f64_castable(),
+                f.datumKind.is_f64_castable(),
                 InvalidExpr {
                     msg: "field type must be f64-compatibile type",
                 }

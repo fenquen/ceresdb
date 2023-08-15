@@ -21,7 +21,7 @@ use common_types::{
 };
 use generic_error::BoxError;
 use log::{debug, trace};
-use skiplist::{KeyComparator, Skiplist};
+use skiplist::{KeyComparator, SkipList};
 use snafu::{ensure, ResultExt};
 
 use crate::memtable::{
@@ -41,7 +41,7 @@ struct Metrics {
 pub struct SkipListMemTable<A: Arena<Stats=BasicStats> + Clone + Sync + Send> {
     /// Schema of this memtable, is immutable.
     schema: Schema,
-    skiplist: Skiplist<BytewiseComparator, A>,
+    skiplist: SkipList<BytewiseComparator, A>,
     /// The last sequence of the rows in this memtable. Update to this field
     /// require external synchronization.
     last_sequence: AtomicU64,
@@ -75,46 +75,35 @@ impl<A: Arena<Stats=BasicStats> + Clone + Sync + Send + 'static> MemTable for Sk
     }
 
     // TODO(yingwen): Encode value if value_buf is not set.
-    // Now the caller is required to encode the row into the `value_buf` in
-    // PutContext first.
-    fn put(
-        &self,
-        ctx: &mut PutContext,
-        sequence: KeySequence,
-        row: &Row,
-        schema: &Schema,
-    ) -> Result<()> {
-        trace!("skiplist put row, sequence:{:?}, row:{:?}", sequence, row);
+    // Now the caller is required to encode the row into the `value_buf` in PutContext first.
+    fn put(&self,
+           ctx: &mut PutContext,
+           keySequence: KeySequence,
+           row: &Row,
+           schema: &Schema) -> Result<()> {
+        trace!("skiplist put row, keySequence:{:?}, row:{:?}", keySequence, row);
 
-        let key_encoder = ComparableInternalKey::new(sequence, schema);
+        let comparableInternalKey = ComparableInternalKey::new(keySequence, schema);
 
-        let internal_key = &mut ctx.key_buf;
+        let keyByteVec = &mut ctx.key_buf;
         // Reset key buffer
-        internal_key.clear();
+        keyByteVec.clear();
         // Reserve capacity for key
-        internal_key.reserve(key_encoder.estimate_encoded_size(row));
-        // Encode key
-        key_encoder
-            .encode(internal_key, row)
-            .context(EncodeInternalKey)?;
+        keyByteVec.reserve(comparableInternalKey.estimate_encoded_size(row));
+        // Encode key primary的列值+剩下的sequence量+剩下的rowId量
+        comparableInternalKey.encode(keyByteVec, row).context(EncodeInternalKey)?;
 
         // Encode row value. The ContiguousRowWriter will clear the buf.
         let row_value = &mut ctx.value_buf;
         let mut row_writer = ContiguousRowWriter::new(row_value, schema, &ctx.index_in_writer);
         row_writer.write_row(row).box_err().context(InvalidRow)?;
-        let encoded_size = internal_key.len() + row_value.len();
-        self.skiplist.put(internal_key, row_value);
 
-        // Update metrics
-        self.metrics
-            .row_raw_size
-            .fetch_add(row.size(), atomic::Ordering::Relaxed);
-        self.metrics
-            .row_count
-            .fetch_add(1, atomic::Ordering::Relaxed);
-        self.metrics
-            .row_encoded_size
-            .fetch_add(encoded_size, atomic::Ordering::Relaxed);
+        self.skiplist.put(keyByteVec, row_value);
+
+        // update metrics
+        self.metrics.row_raw_size.fetch_add(row.size(), atomic::Ordering::Relaxed);
+        self.metrics.row_count.fetch_add(1, atomic::Ordering::Relaxed);
+        self.metrics.row_encoded_size.fetch_add(keyByteVec.len()+row_value.len(), atomic::Ordering::Relaxed);
 
         Ok(())
     }

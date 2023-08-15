@@ -333,7 +333,7 @@ impl<W: AsyncWrite + Unpin + Send> HybridRecordEncoder<W> {
         let tsid_idx = schema.index_of_tsid().context(TsidRequired)?;
         let tsid_type = IndexedType {
             idx: tsid_idx,
-            data_type: schema.column(tsid_idx).data_type,
+            data_type: schema.column(tsid_idx).datumKind,
         };
 
         let mut non_collapsible_col_types = Vec::new();
@@ -347,20 +347,20 @@ impl<W: AsyncWrite + Unpin + Send> HybridRecordEncoder<W> {
             if schema.is_collapsible_column(idx) {
                 collapsible_col_types.push(IndexedType {
                     idx,
-                    data_type: schema.column(idx).data_type,
+                    data_type: schema.column(idx).datumKind,
                 });
                 collapsible_col_idx.push(idx as u32);
             } else {
                 // TODO: support non-string key columns
                 ensure!(
-                    matches!(col.data_type, DatumKind::String),
+                    matches!(col.datumKind, DatumKind::String),
                     StringKeyColumnRequired {
-                        type_name: col.data_type.to_string(),
+                        type_name: col.datumKind.to_string(),
                     }
                 );
                 non_collapsible_col_types.push(IndexedType {
                     idx,
-                    data_type: col.data_type,
+                    data_type: col.datumKind,
                 });
             }
         }

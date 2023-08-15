@@ -371,10 +371,10 @@ impl Default for StorageFormat {
 #[serde(default)]
 pub struct TableOptions {
     // The following options are immutable once table was created.
-    /// Segment duration of the table.
+
+    /// Segment duration of the table. 默认 DEFAULT_SEGMENT_DURATION 7200s
     ///
-    /// `None` means the table is doing the segment duration sampling and
-    /// the actual duration is still unknown.
+    /// `None` means the table is doing the segment duration sampling and the actual duration is still unknown.
     pub segment_duration: Option<ReadableDuration>,
     /// Table update mode, now support Overwrite(Default) and Append
     pub update_mode: UpdateMode,
@@ -382,6 +382,7 @@ pub struct TableOptions {
     pub storage_format_hint: StorageFormatHint,
 
     // The following options can be altered.
+
     /// Enable ttl
     pub enable_ttl: bool,
     /// Time-to-live of the data.
@@ -416,35 +417,19 @@ impl TableOptions {
     // for show create table
     pub fn to_raw_map(&self) -> HashMap<String, String> {
         let mut m = [
-            (
-                SEGMENT_DURATION.to_string(),
+            (SEGMENT_DURATION.to_string(),
                 self.segment_duration
                     .map(|v| v.to_string())
-                    .unwrap_or_else(String::new),
-            ),
+                    .unwrap_or_else(String::new),),
             (UPDATE_MODE.to_string(), self.update_mode.to_string()),
             (ENABLE_TTL.to_string(), self.enable_ttl.to_string()),
             (TTL.to_string(), format!("{}", self.ttl)),
-            (
-                ARENA_BLOCK_SIZE.to_string(),
-                format!("{}", self.arena_block_size),
-            ),
-            (
-                WRITE_BUFFER_SIZE.to_string(),
-                format!("{}", self.write_buffer_size),
-            ),
-            (
-                NUM_ROWS_PER_ROW_GROUP.to_string(),
-                format!("{}", self.num_rows_per_row_group),
-            ),
+            (ARENA_BLOCK_SIZE.to_string(), format!("{}", self.arena_block_size)),
+            (WRITE_BUFFER_SIZE.to_string(), format!("{}", self.write_buffer_size)),
+            (NUM_ROWS_PER_ROW_GROUP.to_string(), format!("{}", self.num_rows_per_row_group)),
             (COMPRESSION.to_string(), self.compression.to_string()),
-            (
-                STORAGE_FORMAT.to_string(),
-                self.storage_format_hint.to_string(),
-            ),
-        ]
-            .into_iter()
-            .collect();
+            (STORAGE_FORMAT.to_string(), self.storage_format_hint.to_string(), ),
+        ].into_iter().collect();
         self.compaction_strategy.fill_raw_map(&mut m);
 
         m

@@ -208,16 +208,16 @@ struct SkipListCore<A: Arena<Stats = BasicStats>> {
 /// FIXME(yingwen): Modify the skiplist to support arena that supports growth,
 /// otherwise it is hard to avoid memory usage not out of the arena capacity
 #[derive(Clone)]
-pub struct Skiplist<C, A: Arena<Stats = BasicStats> + Clone> {
+pub struct SkipList<C, A: Arena<Stats = BasicStats> + Clone> {
     core: Arc<SkipListCore<A>>,
     c: C,
 }
 
-impl<C, A: Arena<Stats = BasicStats> + Clone> Skiplist<C, A> {
-    pub fn with_arena(c: C, arena: A) -> Skiplist<C, A> {
+impl<C, A: Arena<Stats = BasicStats> + Clone> SkipList<C, A> {
+    pub fn with_arena(c: C, arena: A) -> SkipList<C, A> {
         let head = Node::alloc(&arena, &[], &[], MAX_HEIGHT - 1);
         let head = unsafe { NonNull::new_unchecked(head) };
-        Skiplist {
+        SkipList {
             core: Arc::new(SkipListCore {
                 height: AtomicUsize::new(0),
                 head,
@@ -242,7 +242,7 @@ impl<C, A: Arena<Stats = BasicStats> + Clone> Skiplist<C, A> {
     }
 }
 
-impl<C: KeyComparator, A: Arena<Stats = BasicStats> + Clone> Skiplist<C, A> {
+impl<C: KeyComparator, A: Arena<Stats = BasicStats> + Clone> SkipList<C, A> {
     /// Finds the node near to key.
     ///
     /// If less=true, it finds rightmost node such that node.key < key (if
@@ -505,7 +505,7 @@ impl<C: KeyComparator, A: Arena<Stats = BasicStats> + Clone> Skiplist<C, A> {
     }
 
     /// Returns a skiplist iterator
-    pub fn iter_ref(&self) -> IterRef<&Skiplist<C, A>, C, A> {
+    pub fn iter_ref(&self) -> IterRef<&SkipList<C, A>, C, A> {
         IterRef {
             list: self,
             cursor: ptr::null(),
@@ -515,7 +515,7 @@ impl<C: KeyComparator, A: Arena<Stats = BasicStats> + Clone> Skiplist<C, A> {
     }
 
     /// Returns a skiplist iterator
-    pub fn iter(&self) -> IterRef<Skiplist<C, A>, C, A> {
+    pub fn iter(&self) -> IterRef<SkipList<C, A>, C, A> {
         IterRef {
             list: self.clone(),
             cursor: ptr::null(),
@@ -530,18 +530,18 @@ impl<C: KeyComparator, A: Arena<Stats = BasicStats> + Clone> Skiplist<C, A> {
     }
 }
 
-impl<C, A: Arena<Stats = BasicStats> + Clone> AsRef<Skiplist<C, A>> for Skiplist<C, A> {
-    fn as_ref(&self) -> &Skiplist<C, A> {
+impl<C, A: Arena<Stats = BasicStats> + Clone> AsRef<SkipList<C, A>> for SkipList<C, A> {
+    fn as_ref(&self) -> &SkipList<C, A> {
         self
     }
 }
 
-unsafe impl<C: Send, A: Arena<Stats = BasicStats> + Clone + Send> Send for Skiplist<C, A> {}
-unsafe impl<C: Sync, A: Arena<Stats = BasicStats> + Clone + Sync> Sync for Skiplist<C, A> {}
+unsafe impl<C: Send, A: Arena<Stats = BasicStats> + Clone + Send> Send for SkipList<C, A> {}
+unsafe impl<C: Sync, A: Arena<Stats = BasicStats> + Clone + Sync> Sync for SkipList<C, A> {}
 
 pub struct IterRef<T, C, A>
 where
-    T: AsRef<Skiplist<C, A>>,
+    T: AsRef<SkipList<C, A>>,
     A: Arena<Stats = BasicStats> + Clone,
 {
     list: T,
@@ -550,7 +550,7 @@ where
     _arena: std::marker::PhantomData<A>,
 }
 
-impl<T: AsRef<Skiplist<C, A>>, C: KeyComparator, A: Arena<Stats = BasicStats> + Clone>
+impl<T: AsRef<SkipList<C, A>>, C: KeyComparator, A: Arena<Stats = BasicStats> + Clone>
     IterRef<T, C, A>
 {
     pub fn valid(&self) -> bool {
@@ -614,11 +614,11 @@ impl<T: AsRef<Skiplist<C, A>>, C: KeyComparator, A: Arena<Stats = BasicStats> + 
     }
 }
 
-unsafe impl<T: AsRef<Skiplist<C, A>>, C: Send, A: Arena<Stats = BasicStats> + Clone + Send> Send
+unsafe impl<T: AsRef<SkipList<C, A>>, C: Send, A: Arena<Stats = BasicStats> + Clone + Send> Send
     for IterRef<T, C, A>
 {
 }
-unsafe impl<T: AsRef<Skiplist<C, A>>, C: Sync, A: Arena<Stats = BasicStats> + Clone + Sync> Sync
+unsafe impl<T: AsRef<SkipList<C, A>>, C: Sync, A: Arena<Stats = BasicStats> + Clone + Sync> Sync
     for IterRef<T, C, A>
 {
 }

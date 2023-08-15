@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 // FIXME: Use cpu number as the default parallelism
-const DEFAULT_READ_PARALLELISM: usize = 8;
+const DEFAULT_READ_PARALLELISM: usize = 1;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default)]

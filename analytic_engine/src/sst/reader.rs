@@ -24,18 +24,14 @@ pub mod error {
         #[snafu(display("Failed to decode record batch, err:{source}"))]
         DecodeRecordBatch { source: GenericError },
 
-        #[snafu(display(
-            "Failed to decode sst meta data, file_path:{file_path}, err:{source}.\nBacktrace:\n{backtrace:?}",
-        ))]
+        #[snafu(display("failed to decode sst meta data, file_path:{file_path}, err:{source}.\nBacktrace:\n{backtrace:?}", ))]
         FetchAndDecodeSstMeta {
             file_path: String,
             source: parquet::errors::ParquetError,
             backtrace: Backtrace,
         },
 
-        #[snafu(display(
-            "Failed to decode page indexes for meta data, file_path:{file_path}, err:{source}.\nBacktrace:\n{backtrace:?}",
-        ))]
+        #[snafu(display("failed to decode page indexes for meta data, file_path:{file_path}, err:{source}.\nBacktrace:\n{backtrace:?}", ))]
         DecodePageIndexes {
             file_path: String,
             source: parquet::errors::ParquetError,
@@ -91,7 +87,5 @@ pub use error::*;
 pub trait SstReader {
     async fn meta_data(&mut self) -> Result<SstMetaData>;
 
-    async fn read(
-        &mut self,
-    ) -> Result<Box<dyn PrefetchableStream<Item = Result<RecordBatchWithKey>>>>;
+    async fn read(&mut self) -> Result<Box<dyn PrefetchableStream<Item=Result<RecordBatchWithKey>>>>;
 }

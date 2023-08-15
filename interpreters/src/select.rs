@@ -49,23 +49,14 @@ impl<T: QueryExecutor> Interpreter for SelectInterpreter<T> {
     async fn execute(self: Box<Self>) -> InterpreterResult<Output> {
         let request_id = self.ctx.request_id();
 
-        debug!("Interpreter execute select begin, request_id:{}, plan:{:?}",request_id, self.queryPlan);
+        debug!("interpreter execute select begin, request_id:{}, plan:{:?}",request_id, self.queryPlan);
 
-        let query_ctx = self
-            .ctx
-            .new_query_context() // 毫无意义的平移转换
-            .context(CreateQueryContext)
-            .context(Select)?;
+        let query_ctx = self.ctx.new_query_context().context(CreateQueryContext).context(Select)?;
 
-        let query = Query::new(self.queryPlan);
-        let record_batches = self
-            .queryExecutor
-            .execute_logical_plan(query_ctx, query)
-            .await
-            .context(ExecutePlan)
-            .context(Select)?;
+        //let query = Query::new(self.queryPlan);
+        let record_batches = self.queryExecutor.executeLogicalPlan(query_ctx, self.queryPlan).await.context(ExecutePlan).context(Select)?;
 
-        debug!("Interpreter execute select finish, request_id:{}",request_id);
+        debug!("interpreter execute select finish, request_id:{}",request_id);
 
         Ok(Output::Records(record_batches))
     }

@@ -286,7 +286,7 @@ impl<'a> MemTableWriter<'a> {
 
         let mut ctx = PutContext::new(indexInWriterSchema);
 
-        for (row_idx, row) in rowGroupSlicer.iter().enumerate() {
+        for (rowIndex, row) in rowGroupSlicer.iter().enumerate() {
             // TODO(yingwen): Add RowWithSchema and take RowWithSchema as input, then remove this unwrap()
             let timestamp = row.timestamp(schema).unwrap();
 
@@ -296,10 +296,10 @@ impl<'a> MemTableWriter<'a> {
                 continue;
             }
 
-            if lastMemTableForWrite.is_none() || !lastMemTableForWrite.as_ref().unwrap().accept_timestamp(timestamp) {
+            if lastMemTableForWrite.is_none() || !lastMemTableForWrite.as_ref().unwrap().acceptTimestamp(timestamp) {
                 // The time range is not processed by current memtable, find next one.
                 let memTableForWrite =
-                    self.tableData.findOrCreateMutable(timestamp, schema).context(FindMutableMemTable { table: &self.tableData.name})?;
+                    self.tableData.findOrCreateMutable(timestamp, schema).context(FindMutableMemTable { table: &self.tableData.name })?;
 
                 memTableForWriteVec.push(memTableForWrite.clone());
 
@@ -307,11 +307,11 @@ impl<'a> MemTableWriter<'a> {
             }
 
             // we have check the row num is less than `MAX_ROWS_TO_WRITE`, it is safe to cast it to u32 here
-            let key_seq = KeySequence::new(sequenceNumber, row_idx as u32);
+            let keySequence = KeySequence::new(sequenceNumber, rowIndex as u32);
 
             // TODO(yingwen): Batch sample ti mestamp in sampling phase.
-            lastMemTableForWrite.as_ref().unwrap().put(&mut ctx, key_seq, row, schema, timestamp)
-                .context(WriteMemTable { table: &self.tableData.name, })?;
+            lastMemTableForWrite.as_ref().unwrap().put(&mut ctx, keySequence, row, schema, timestamp)
+                .context(WriteMemTable { table: &self.tableData.name })?;
         }
 
         // Update last sequence of memtable.

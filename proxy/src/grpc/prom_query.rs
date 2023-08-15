@@ -109,7 +109,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
 
         self.instance
             .limiter
-            .try_limit(&plan)
+            .tryLimit(&plan)
             .box_err()
             .context(ErrWithCause {
                 code: StatusCode::FORBIDDEN,
@@ -233,7 +233,7 @@ impl RecordConverter {
                 msg: "Failed to find Timestamp column",
             })?;
         ensure!(
-            record_schema.column(timestamp_idx).data_type == DatumKind::Timestamp,
+            record_schema.column(timestamp_idx).datumKind == DatumKind::Timestamp,
             ErrNoCause {
                 code: StatusCode::BAD_REQUEST,
                 msg: "Timestamp column should be timestamp type"
@@ -245,7 +245,7 @@ impl RecordConverter {
                 code: StatusCode::BAD_REQUEST,
                 msg: format!("Failed to find {} column", column_name.field),
             })?;
-        let field_type = record_schema.column(field_idx).data_type;
+        let field_type = record_schema.column(field_idx).datumKind;
         ensure!(
             field_type.is_f64_castable(),
             ErrNoCause {

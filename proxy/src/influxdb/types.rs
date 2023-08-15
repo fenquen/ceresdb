@@ -288,7 +288,7 @@ impl InfluxqlResultBuilder {
         );
 
         // Query like `show measurements`, there will be not timestamp.
-        let has_timestamp = column_schemas.iter().any(|c| c.data_type.is_timestamp());
+        let has_timestamp = column_schemas.iter().any(|c| c.datumKind.is_timestamp());
         // Find the tags part and columns part from schema.
         let mut group_by_col_idxs = Vec::new();
         let mut value_col_idxs = Vec::new();
@@ -304,7 +304,7 @@ impl InfluxqlResultBuilder {
         // The group by tags will be placed after measurement and before time column.
         let mut searching_group_by_tags = has_timestamp;
         for (idx, col) in col_iter {
-            if col.data_type.is_timestamp() {
+            if col.datumKind.is_timestamp() {
                 searching_group_by_tags = false;
             }
 

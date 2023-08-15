@@ -52,22 +52,22 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
 
     pub(crate) async fn fetch_sql_query_output(&self,
                                                ctx: Context,
-                                               schema: &str,
+                                               schemaName: &str,
                                                sql: &str) -> Result<Output> {
         let request_id = RequestId::next_id();
         let beginTime = Instant::now();
         let deadline = ctx.timeout.map(|t| beginTime + t);
-        let catalog = self.instance.catalog_manager.default_catalog_name();
+        let catalogName = self.instance.catalog_manager.default_catalog_name();
 
-        info!("Handle sql query, request_id:{request_id}, schema:{schema}, sql:{sql}");
+        info!("Handle sql query, request_id:{}, schema:{}, sql:{}", request_id, schemaName, sql);
 
         let instance = &self.instance;
         // TODO(yingwen): Privilege check, cannot access data of other tenant
         // TODO(yingwen): Maybe move MetaProvider to instance
         let provider = CatalogMetaProvider {
             manager: instance.catalog_manager.clone(),
-            default_catalog: catalog,
-            default_schema: schema,
+            default_catalog: catalogName,
+            default_schema: schemaName,
             function_registry: &*instance.function_registry,
         };
         let frontend = Frontend::new(provider);
@@ -104,14 +104,13 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         // Open partition table if needed.
         let table_name = frontend::parse_table_name(&statementVec);
         if let Some(table_name) = &table_name {
-            self.maybe_open_partition_table_if_not_exist(catalog, schema, table_name).await?;
+            self.maybe_open_partition_table_if_not_exist(catalogName, schemaName, table_name).await?;
         }
 
         // Create logical plan
         // Note: Remember to store sql in error when creating logical plan
         let plan = frontend
-            // TODO(yingwen): Check error, some error may indicate that the sql is invalid. Now we
-            // return internal server error in those cases
+            // TODO(yingwen): Check error, some error may indicate that the sql is invalid. now return internal server error in those cases
             .statementToPlan(&mut sqlContext, statementVec.remove(0))
             .box_err()
             .with_context(|| ErrWithCause {
@@ -121,7 +120,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
 
         let mut plan_maybe_expired = false;
         if let Some(table_name) = &table_name {
-            match self.is_plan_expired(&plan, catalog, schema, table_name) {
+            match self.is_plan_expired(&plan, catalogName, schemaName, table_name) {
                 Ok(v) => plan_maybe_expired = v,
                 Err(err) => {
                     warn!("Plan expire check failed, err:{err}");
@@ -129,7 +128,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             }
         }
 
-        let output = self.execute_plan(request_id, catalog, schema, plan, deadline,ctx.enable_partition_table_access).await;
+        let output = self.execute_plan(request_id, catalogName, schemaName, plan, deadline, ctx.enable_partition_table_access).await;
 
         let output = output.box_err().with_context(|| ErrWithCause {
             code: StatusCode::INTERNAL_SERVER_ERROR,
@@ -137,7 +136,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         })?;
 
         let cost = beginTime.saturating_elapsed();
-        info!("handle sql query success, catalog:{catalog}, schema:{schema}, request_id:{request_id}, cost:{cost:?}, sql:{sql:?}");
+        info!("handle sql query success, catalog:{catalogName}, schema:{schemaName}, request_id:{request_id}, cost:{cost:?}, sql:{sql:?}");
 
         match &output {
             Output::AffectedRows(_) => Ok(output),
@@ -166,7 +165,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                                      sql: &str) -> Result<Option<ForwardResult<SqlQueryResponse, Error>>> {
         let table_name = frontend::parse_table_name_with_sql(sql)
             .box_err()
-            .with_context(|| Internal { msg: format!("Failed to parse table name with sql, sql:{sql}")})?;
+            .with_context(|| Internal { msg: format!("Failed to parse table name with sql, sql:{sql}") })?;
         if table_name.is_none() {
             warn!("Unable to forward sql query without table name, sql:{sql}",);
             return Ok(None);
@@ -188,21 +187,21 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
         };
         let do_query =
             |mut client: StorageServiceClient<Channel>, request: tonic::Request<SqlQueryRequest>, _: &Endpoint| {
-            let query = async move {
-                client
-                    .sql_query(request)
-                    .await
-                    .map(|resp| resp.into_inner())
-                    .box_err()
-                    .context(ErrWithCause {
-                        code: StatusCode::INTERNAL_SERVER_ERROR,
-                        msg: "Forwarded sql query failed",
-                    })
-            }
-                .boxed();
+                let query = async move {
+                    client
+                        .sql_query(request)
+                        .await
+                        .map(|resp| resp.into_inner())
+                        .box_err()
+                        .context(ErrWithCause {
+                            code: StatusCode::INTERNAL_SERVER_ERROR,
+                            msg: "Forwarded sql query failed",
+                        })
+                }
+                    .boxed();
 
-            Box::new(query) as _
-        };
+                Box::new(query) as _
+            };
 
         let forward_result = self.forwarder.forward(forward_req, do_query).await;
         Ok(match forward_result {

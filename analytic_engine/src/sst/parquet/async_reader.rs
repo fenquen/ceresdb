@@ -60,8 +60,9 @@ use crate::{
 };
 
 const PRUNE_ROW_GROUPS_METRICS_COLLECTOR_NAME: &str = "prune_row_groups";
-type SendableRecordBatchStream = Pin<Box<dyn Stream<Item = Result<ArrowRecordBatch>> + Send>>;
-type RecordBatchWithKeyStream = Box<dyn Stream<Item = Result<RecordBatchWithKey>> + Send + Unpin>;
+
+type SendableRecordBatchStream = Pin<Box<dyn Stream<Item=Result<ArrowRecordBatch>> + Send>>;
+type RecordBatchWithKeyStream = Box<dyn Stream<Item=Result<RecordBatchWithKey>> + Send + Unpin>;
 
 pub struct Reader<'a> {
     /// The path where the data is persisted.
@@ -416,11 +417,8 @@ impl<'a> Reader<'a> {
 
 impl<'a> Drop for Reader<'a> {
     fn drop(&mut self) {
-        debug!(
-            "Parquet reader dropped, path:{:?}, df_plan_metrics:{}",
-            self.path,
-            self.df_plan_metrics.clone_inner().to_string()
-        );
+        debug!("parquet reader dropped, path:{:?}, df_plan_metrics:{}",
+            self.path,self.df_plan_metrics.clone_inner().to_string());
     }
 }
 
@@ -543,7 +541,7 @@ impl<'a> SstReader for Reader<'a> {
 
     async fn read(
         &mut self,
-    ) -> Result<Box<dyn PrefetchableStream<Item = Result<RecordBatchWithKey>>>> {
+    ) -> Result<Box<dyn PrefetchableStream<Item=Result<RecordBatchWithKey>>>> {
         let mut streams = self.maybe_read_parallelly(1).await?;
         assert_eq!(streams.len(), 1);
         let stream = streams.pop().expect("impossible to fetch no stream");
@@ -659,7 +657,7 @@ impl<'a> ThreadedReader<'a> {
 
     fn read_record_batches_from_sub_reader(
         &mut self,
-        mut reader: Box<dyn Stream<Item = Result<RecordBatchWithKey>> + Send + Unpin>,
+        mut reader: Box<dyn Stream<Item=Result<RecordBatchWithKey>> + Send + Unpin>,
         tx: Sender<Result<RecordBatchWithKey>>,
         mut rx: watch::Receiver<()>,
     ) -> JoinHandle<()> {
@@ -687,7 +685,7 @@ impl<'a> SstReader for ThreadedReader<'a> {
 
     async fn read(
         &mut self,
-    ) -> Result<Box<dyn PrefetchableStream<Item = Result<RecordBatchWithKey>>>> {
+    ) -> Result<Box<dyn PrefetchableStream<Item=Result<RecordBatchWithKey>>>> {
         // Get underlying sst readers and channels.
         let sub_readers = self
             .inner

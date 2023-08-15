@@ -77,7 +77,7 @@ impl WriteRequests {
 
 pub struct TableImpl {
     space: SpaceRef,
-    instance: Arc<TableEngineInstance>,
+    tableEngineInstance: Arc<TableEngineInstance>,
     engine_type: String,
     /// Holds a strong reference to prevent the underlying table from being dropped when this handle exist.
     tableData: Arc<TableData>,
@@ -92,7 +92,7 @@ impl TableImpl {
         let space = space_table.space().clone();
         Self {
             space,
-            instance,
+            tableEngineInstance: instance,
             engine_type: ANALYTIC_ENGINE_TYPE.to_string(),
             tableData: table_data,
             pending_writes: Arc::new(pending_writes),
@@ -274,7 +274,7 @@ impl TableImpl {
                 // take responsibilities for merging and writing the
                 // requests in the queue.
                 let write_requests = WriteRequests::new(
-                    self.instance.clone(),
+                    self.tableEngineInstance.clone(),
                     self.space.clone(),
                     self.tableData.clone(),
                     self.pending_writes.clone(),
@@ -282,7 +282,7 @@ impl TableImpl {
 
                 match CancellationSafeFuture::new(
                     Self::write_requests(write_requests),
-                    self.instance.write_runtime().clone(),
+                    self.tableEngineInstance.write_runtime().clone(),
                 )
                     .await
                 {
@@ -305,7 +305,7 @@ impl TableImpl {
                 // The queue is full, return error.
                 error!(
                     "Pending_writes queue is full, max_rows_in_queue:{}, table:{}",
-                    self.instance.max_rows_in_write_queue,
+                    self.tableEngineInstance.max_rows_in_write_queue,
                     self.name(),
                 );
                 TooManyPendingWrites { table: self.name() }.fail()
@@ -379,7 +379,7 @@ impl TableImpl {
 
     #[inline]
     fn should_queue_write_request(&self, request: &WriteRequest) -> bool {
-        request.rowGroup.num_rows() < self.instance.max_rows_in_write_queue
+        request.rowGroup.num_rows() < self.tableEngineInstance.max_rows_in_write_queue
     }
 }
 
@@ -424,7 +424,7 @@ impl Table for TableImpl {
         let mut serial_exec = self.tableData.tableOpSerialExecutor.lock().await;
 
         let mut writer =
-            Writer::new(self.instance.clone(),
+            Writer::new(self.tableEngineInstance.clone(),
                         self.space.clone(),
                         self.tableData.clone(),
                         &mut serial_exec, );
@@ -433,10 +433,10 @@ impl Table for TableImpl {
     }
 
     async fn read(&self, mut readRequest: ReadRequest) -> Result<SendableRecordBatchStream> {
-        readRequest.opts.read_parallelism = 1;
+        readRequest.readOptions.read_parallelism = 1;
 
         let mut partitionedStreams =
-            self.instance.partitioned_read_from_table(&self.tableData, readRequest)
+            self.tableEngineInstance.partitionedReadFromTable(&self.tableData, readRequest)
                 .await.box_err().context(Scan { table: self.name() })?;
 
         assert_eq!(partitionedStreams.streams.len(), 1);
@@ -477,7 +477,7 @@ impl Table for TableImpl {
 
         let read_request = ReadRequest {
             request_id: request.request_id,
-            opts: ReadOptions::default(),
+            readOptions: ReadOptions::default(),
             projected_schema: request.projected_schema,
             predicate,
             metrics_collector: MetricsCollector::new(GET_METRICS_COLLECTOR_NAME.to_string()),
@@ -521,12 +521,9 @@ impl Table for TableImpl {
     }
 
     async fn partitioned_read(&self, request: ReadRequest) -> Result<PartitionedStreams> {
-        let streams = self
-            .instance
-            .partitioned_read_from_table(&self.tableData, request)
-            .await
-            .box_err()
-            .context(Scan { table: self.name() })?;
+        let streams =
+            self.tableEngineInstance.partitionedReadFromTable(&self.tableData,
+                                                              request).await.box_err().context(Scan { table: self.name() })?;
 
         Ok(streams)
     }
@@ -536,9 +533,8 @@ impl Table for TableImpl {
         let mut alterer = Alterer::new(
             self.tableData.clone(),
             &mut serial_exec,
-            self.instance.clone(),
-        )
-            .await;
+            self.tableEngineInstance.clone(),
+        ).await;
 
         alterer
             .alter_schema_of_table(request)
@@ -553,7 +549,7 @@ impl Table for TableImpl {
         let alterer = Alterer::new(
             self.tableData.clone(),
             &mut serial_exec,
-            self.instance.clone(),
+            self.tableEngineInstance.clone(),
         )
             .await;
 
@@ -566,7 +562,7 @@ impl Table for TableImpl {
     }
 
     async fn flush(&self, request: FlushRequest) -> Result<()> {
-        self.instance
+        self.tableEngineInstance
             .manual_flush_table(&self.tableData, request)
             .await
             .box_err()
@@ -574,7 +570,7 @@ impl Table for TableImpl {
     }
 
     async fn compact(&self) -> Result<()> {
-        self.instance
+        self.tableEngineInstance
             .manual_compact_table(&self.tableData)
             .await
             .box_err()

@@ -75,17 +75,18 @@ const CHAIN_ITER_METRICS_COLLECTOR_NAME_PREFIX: &str = "chain_iter";
 
 impl TableEngineInstance {
     /// Read data in multiple time range from table, and return `read_parallelism` output streams.
-    pub async fn partitioned_read_from_table(&self,
-                                             table_data: &TableData,
-                                             readRequest: ReadRequest) -> Result<PartitionedStreams> {
+    pub async fn partitionedReadFromTable(&self,
+                                          tableData: &TableData,
+                                          readRequest: ReadRequest) -> Result<PartitionedStreams> {
         debug!("instance read from table, space_id:{}, table:{}, table_id:{:?}, request:{:?}",
-            table_data.space_id, table_data.name, table_data.id, readRequest);
+            tableData.space_id, tableData.name, tableData.id, readRequest);
 
-        let table_options = table_data.table_options();
+        let table_options = tableData.table_options();
 
-        // Collect metrics.
-        table_data.metrics.on_read_request_begin();
+        tableData.metrics.on_read_request_begin();
+
         let needMergeSort = table_options.needDeDuplicate();
+
         readRequest.metrics_collector.collect(Metric::boolean(
             MERGE_SORT_METRIC_NAME.to_string(),
             needMergeSort,
@@ -93,10 +94,10 @@ impl TableEngineInstance {
         ));
 
         if needMergeSort {
-            let merge_iters = self.buildMergeIters(table_data, &readRequest, &table_options).await?;
+            let merge_iters = self.buildMergeIters(tableData, &readRequest, &table_options).await?;
             self.build_partitioned_streams(&readRequest, merge_iters)
         } else {
-            let chain_iters = self.build_chain_iters(table_data, &readRequest, &table_options).await?;
+            let chain_iters = self.build_chain_iters(tableData, &readRequest, &table_options).await?;
             self.build_partitioned_streams(&readRequest, chain_iters)
         }
     }
@@ -106,19 +107,19 @@ impl TableEngineInstance {
                                  partitioned_iters: Vec<impl RecordBatchWithKeyIterator + 'static>) -> Result<PartitionedStreams> {
 
         // 生成 Vec<Vec<>> 最外的元素数量有read_parallelism
-        let mut iterVecVec: Vec<_> = std::iter::repeat_with(Vec::new).take(request.opts.read_parallelism).collect();
+        let mut iterVecVec: Vec<_> = std::iter::repeat_with(Vec::new).take(request.readOptions.read_parallelism).collect();
 
         for (i, time_aligned_iter) in partitioned_iters.into_iter().enumerate() {
-            iterVecVec[i % request.opts.read_parallelism].push(time_aligned_iter);
+            iterVecVec[i % request.readOptions.read_parallelism].push(time_aligned_iter);
         }
 
-        let mut streams = Vec::with_capacity(request.opts.read_parallelism);
+        let mut streams = Vec::with_capacity(request.readOptions.read_parallelism);
         for iterVec in iterVecVec {
             let stream = iters_to_stream(iterVec, request.projected_schema.clone());
             streams.push(stream);
         }
 
-        assert_eq!(request.opts.read_parallelism, streams.len());
+        assert_eq!(request.readOptions.read_parallelism, streams.len());
 
         Ok(PartitionedStreams { streams })
     }
@@ -152,7 +153,7 @@ impl TableEngineInstance {
             let merge_config = MergeConfig {
                 request_id: readRequest.request_id,
                 metrics_collector: Some(metrics_collector),
-                deadline: readRequest.opts.deadline,
+                deadline: readRequest.readOptions.deadline,
                 space_id: tableData.space_id,
                 table_id: tableData.id,
                 sequence,
@@ -218,7 +219,7 @@ impl TableEngineInstance {
             let chain_config = ChainConfig {
                 request_id: request.request_id,
                 metrics_collector: Some(metrics_collector),
-                deadline: request.opts.deadline,
+                deadline: request.readOptions.deadline,
                 num_streams_to_prefetch: self.scan_options.num_streams_to_prefetch,
                 space_id: table_data.space_id,
                 table_id: table_data.id,

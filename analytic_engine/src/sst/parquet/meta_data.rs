@@ -136,7 +136,7 @@ impl RowGroupFilterBuilder {
                 }
 
                 if matches!(
-                    col.data_type,
+                    col.datumKind,
                     DatumKind::Null
                         | DatumKind::Double
                         | DatumKind::Float

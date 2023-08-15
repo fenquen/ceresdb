@@ -516,7 +516,7 @@ async fn handle_stream_read(
     let request_id = read_request.request_id;
     info!(
         "Handle stream read, request_id:{request_id}, table:{table_ident:?}, read_options:{:?}, predicate:{:?} ",
-        read_request.opts,
+        read_request.readOptions,
         read_request.predicate,
     );
 

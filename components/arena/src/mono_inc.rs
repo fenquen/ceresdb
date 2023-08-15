@@ -23,8 +23,7 @@ impl Collector for NoopCollector {
 
 const DEFAULT_ALIGN: usize = 8;
 
-/// A thread-safe arena. All allocated memory is aligned to 8. Organizes its
-/// allocated memory as blocks.
+/// A thread-safe arena. All allocated memory is aligned to 8. Organizes its allocated memory as blocks.
 #[derive(Clone)]
 pub struct MonoIncArena {
     core: Arc<Mutex<ArenaCore>>,

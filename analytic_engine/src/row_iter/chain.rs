@@ -134,7 +134,7 @@ impl<'a> Builder<'a> {
                 false,
                 // chain iterator only handle the case reading in no order so just read in asc
                 // order by default.
-                &memtable.mem,
+                &memtable.memTable,
                 false,
                 self.config.predicate.as_ref(),
                 self.config.deadline,

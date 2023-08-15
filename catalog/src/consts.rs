@@ -6,6 +6,7 @@
 pub const DEFAULT_CATALOG: &str = "ceresdb";
 /// Default schema name
 pub const DEFAULT_SCHEMA: &str = "public";
+
 /// Catalog name of the sys catalog
 pub const SYSTEM_CATALOG: &str = "system";
 /// Schema name of the sys catalog

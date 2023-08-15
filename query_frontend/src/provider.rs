@@ -18,7 +18,7 @@ use datafusion::{
 use df_operator::{registry::FunctionRegistry, scalar::ScalarUdf, udaf::AggregateUdf};
 use macros::define_result;
 use snafu::{OptionExt, ResultExt, Snafu};
-use table_engine::{provider::TableProviderAdapter, table::TableRef};
+use table_engine::{provider::TableProviderImpl, table::TableRef};
 
 use crate::container::{TableContainer, TableReference};
 
@@ -79,8 +79,7 @@ pub trait MetaProvider {
     /// Get table meta by table reference
     ///
     /// Note that this function may block current thread. We can't make this
-    /// function async as the underlying (aka. datafusion) planner needs a
-    /// sync provider.
+    /// function async as the underlying (aka. datafusion) planner needs a sync provider.
     fn table(&self, name: TableReference) -> Result<Option<TableRef>>;
 
     /// Get udf by name.
@@ -101,8 +100,7 @@ pub trait MetaProvider {
 /// - MetaProvider provides blocking method, but catalog::Manager may provide
 /// async method
 /// - Other meta data like default catalog and schema are needed
-// TODO(yingwen): Maybe support schema searching instead of using a fixed
-// default schema
+// TODO(yingwen): Maybe support schema searching instead of using a fixed default schema
 pub struct CatalogMetaProvider<'a> {
     pub manager: ManagerRef,
     pub default_catalog: &'a str,
@@ -191,19 +189,20 @@ impl<'a> MetaProvider for CatalogMetaProvider<'a> {
     }
 }
 
-/// An adapter to ContextProvider, not thread safe
-pub struct ContextProviderAdapter<'a, P> {
+/// 实现了metaProvider 和 contextProvider 其中前者的功能是通过代理实现的 fenquen
+/// 它不 thread safe 
+pub struct MetaAndContextProvider<'a, metaProviderType> {
     /// Local cache for TableProvider to avoid create multiple adapter for the
     /// same table, also save all the table needed during planning
-    table_cache: RefCell<TableContainer>,
+    tableContainer: RefCell<TableContainer>,
     /// Store the first error MetaProvider returns
     err: RefCell<Option<Error>>,
-    meta_provider: &'a P,
+    metaProvider: &'a metaProviderType,
     /// Read config for each table.
     config: ConfigOptions,
 }
 
-impl<'a, P: MetaProvider> ContextProviderAdapter<'a, P> {
+impl<'a, P: MetaProvider> MetaAndContextProvider<'a, P> {
     /// Create a adapter from meta provider
     pub fn new(meta_provider: &'a P, read_parallelism: usize) -> Self {
         let default_catalog = meta_provider.default_catalog_name().to_string();
@@ -212,9 +211,9 @@ impl<'a, P: MetaProvider> ContextProviderAdapter<'a, P> {
         config.execution.target_partitions = read_parallelism;
 
         Self {
-            table_cache: RefCell::new(TableContainer::new(default_catalog, default_schema)),
+            tableContainer: RefCell::new(TableContainer::new(default_catalog, default_schema)),
             err: RefCell::new(None),
-            meta_provider,
+            metaProvider: meta_provider,
             config,
         }
     }
@@ -226,7 +225,7 @@ impl<'a, P: MetaProvider> ContextProviderAdapter<'a, P> {
             return Err(e);
         }
 
-        Ok(self.table_cache.into_inner())
+        Ok(self.tableContainer.into_inner())
     }
 
     /// Save error if there is no existing error.
@@ -242,7 +241,7 @@ impl<'a, P: MetaProvider> ContextProviderAdapter<'a, P> {
     }
 
     pub fn table_source(&self, table_ref: TableRef) -> Arc<(dyn TableSource + 'static)> {
-        let table_adapter = Arc::new(TableProviderAdapter::new(table_ref));
+        let table_adapter = Arc::new(TableProviderImpl::new(table_ref));
 
         Arc::new(DefaultTableSource {
             table_provider: table_adapter,
@@ -250,56 +249,49 @@ impl<'a, P: MetaProvider> ContextProviderAdapter<'a, P> {
     }
 }
 
-impl<'a, P: MetaProvider> MetaProvider for ContextProviderAdapter<'a, P> {
+impl<'a, P: MetaProvider> MetaProvider for MetaAndContextProvider<'a, P> {
     fn default_catalog_name(&self) -> &str {
-        self.meta_provider.default_catalog_name()
+        self.metaProvider.default_catalog_name()
     }
 
     fn default_schema_name(&self) -> &str {
-        self.meta_provider.default_schema_name()
+        self.metaProvider.default_schema_name()
     }
 
     fn table(&self, name: TableReference) -> Result<Option<TableRef>> {
-        self.meta_provider.table(name)
+        self.metaProvider.table(name)
     }
 
     fn scalar_udf(&self, name: &str) -> Result<Option<ScalarUdf>> {
-        self.meta_provider.scalar_udf(name)
+        self.metaProvider.scalar_udf(name)
     }
 
     fn aggregate_udf(&self, name: &str) -> Result<Option<AggregateUdf>> {
-        self.meta_provider.aggregate_udf(name)
+        self.metaProvider.aggregate_udf(name)
     }
 
     fn all_tables(&self) -> Result<Vec<TableRef>> {
-        self.meta_provider.all_tables()
+        self.metaProvider.all_tables()
     }
 }
 
-impl<'a, P: MetaProvider> ContextProvider for ContextProviderAdapter<'a, P> {
+impl<'a, P: MetaProvider> ContextProvider for MetaAndContextProvider<'a, P> {
     fn get_table_provider(&self, name: TableReference) -> std::result::Result<Arc<(dyn TableSource + 'static)>, DataFusionError> {
-        // Find in local cache
-        if let Some(table_ref) = self.table_cache.borrow().get(name.clone()) {
+        // find in local cache
+        if let Some(table_ref) = self.tableContainer.borrow().get(name.clone()) {
             return Ok(self.table_source(table_ref));
         }
 
-        // Find in meta provider
+        // find in meta provider
         // TODO: possible to remove this clone?
-        match self.meta_provider.table(name.clone()) {
+        match self.metaProvider.table(name.clone()) {
             Ok(Some(table)) => {
-                self.table_cache.borrow_mut().insert(name, table.clone());
+                self.tableContainer.borrow_mut().insert(name, table.clone());
                 Ok(self.table_source(table))
             }
-            Ok(None) => Err(DataFusionError::Execution(format!(
-                "Table is not found, {:?}",
-                format_table_reference(name),
-            ))),
+            Ok(None) => Err(DataFusionError::Execution(format!("table is not found, {:?}", format_table_reference(name)))),
             Err(e) => {
-                let err_msg = format!(
-                    "fail to find table, {:?}, err:{}",
-                    format_table_reference(name),
-                    e
-                );
+                let err_msg = format!("fail to find table, {:?}, err:{}", format_table_reference(name), e);
                 self.maybe_set_err(e);
                 Err(DataFusionError::Execution(err_msg))
             }
@@ -310,7 +302,7 @@ impl<'a, P: MetaProvider> ContextProvider for ContextProviderAdapter<'a, P> {
     fn get_function_meta(&self, name: &str) -> Option<Arc<ScalarUDF>> {
         // We don't cache udf used by the query because now we will register all udf to
         // datafusion's context.
-        match self.meta_provider.scalar_udf(name) {
+        match self.metaProvider.scalar_udf(name) {
             Ok(Some(udf)) => Some(udf.to_datafusion_udf()),
             Ok(None) => None,
             Err(e) => {
@@ -322,7 +314,7 @@ impl<'a, P: MetaProvider> ContextProvider for ContextProviderAdapter<'a, P> {
 
     // AggregateUDF is not supported now
     fn get_aggregate_meta(&self, name: &str) -> Option<Arc<AggregateUDF>> {
-        match self.meta_provider.aggregate_udf(name) {
+        match self.metaProvider.aggregate_udf(name) {
             Ok(Some(udaf)) => Some(udaf.to_datafusion_udaf()),
             Ok(None) => None,
             Err(e) => {
@@ -349,22 +341,22 @@ impl<'a, P: MetaProvider> ContextProvider for ContextProviderAdapter<'a, P> {
     }
 }
 
-struct SchemaProviderAdapter {
-    catalog: String,
-    schema: String,
-    tables: Arc<TableContainer>,
+struct SchemaProviderImpl {
+    catalogName: String,
+    schemaName: String,
+    tableContainer: Arc<TableContainer>,
 }
 
 #[async_trait]
-impl SchemaProvider for SchemaProviderAdapter {
+impl SchemaProvider for SchemaProviderImpl {
     fn as_any(&self) -> &dyn Any {
         self
     }
 
     fn table_names(&self) -> Vec<String> {
         let mut names = Vec::new();
-        let _ = self.tables.visit::<_, ()>(|name, table| {
-            if name.catalog == self.catalog && name.schema == self.schema {
+        let _ = self.tableContainer.visit::<_, ()>(|name, table| {
+            if name.catalog == self.catalogName && name.schema == self.schemaName {
                 names.push(table.name().to_string());
             }
             Ok(())
@@ -374,45 +366,43 @@ impl SchemaProvider for SchemaProviderAdapter {
 
     async fn table(&self, name: &str) -> Option<Arc<dyn TableProvider>> {
         let name_ref = TableReference::Full {
-            catalog: Cow::from(&self.catalog),
-            schema: Cow::from(&self.schema),
+            catalog: Cow::from(&self.catalogName),
+            schema: Cow::from(&self.schemaName),
             table: Cow::from(name),
         };
 
-        self.tables
-            .get(name_ref)
-            .map(|table_ref| Arc::new(TableProviderAdapter::new(table_ref)) as _)
+        self.tableContainer.get(name_ref).map(|table_ref| Arc::new(TableProviderImpl::new(table_ref)) as _)
     }
 
     fn table_exist(&self, name: &str) -> bool {
-        self.tables.get(TableReference::parse_str(name)).is_some()
+        self.tableContainer.get(TableReference::parse_str(name)).is_some()
     }
 }
 
 #[derive(Default)]
-pub struct CatalogProviderAdapter {
-    schemas: HashMap<String, Arc<SchemaProviderAdapter>>,
+pub struct CatalogProviderImpl {
+    schemaName_schemaProvider: HashMap<String, Arc<SchemaProviderImpl>>,
 }
 
-impl CatalogProviderAdapter {
-    pub fn new_adapters(tables: Arc<TableContainer>) -> HashMap<String, CatalogProviderAdapter> {
-        let mut catalog_adapters = HashMap::with_capacity(tables.num_catalogs());
-        let _ = tables.visit::<_, ()>(|name, _| {
-            // Get or create catalog
-            let catalog = match catalog_adapters.get_mut(name.catalog.as_ref()) {
+impl CatalogProviderImpl {
+    pub fn new_adapters(tableContainer: Arc<TableContainer>) -> HashMap<String, CatalogProviderImpl> {
+        let mut catalogName_catalogProvider = HashMap::with_capacity(tableContainer.num_catalogs());
+
+        let _ = tableContainer.visit::<_, ()>(|resolvedTableReference, _| {
+            // get or create catalog
+            let catalogProvider = match catalogName_catalogProvider.get_mut(resolvedTableReference.catalog.as_ref()) {
                 Some(v) => v,
-                None => catalog_adapters
-                    .entry(name.catalog.to_string())
-                    .or_insert_with(CatalogProviderAdapter::default),
+                None => catalogName_catalogProvider.entry(resolvedTableReference.catalog.to_string()).or_insert_with(CatalogProviderImpl::default),
             };
-            // Get or create schema
-            if catalog.schemas.get(name.schema.as_ref()).is_none() {
-                catalog.schemas.insert(
-                    name.schema.to_string(),
-                    Arc::new(SchemaProviderAdapter {
-                        catalog: name.catalog.to_string(),
-                        schema: name.schema.to_string(),
-                        tables: tables.clone(),
+
+            // get or create schema
+            if catalogProvider.schemaName_schemaProvider.get(resolvedTableReference.schema.as_ref()).is_none() {
+                catalogProvider.schemaName_schemaProvider.insert(
+                    resolvedTableReference.schema.to_string(),
+                    Arc::new(SchemaProviderImpl {
+                        catalogName: resolvedTableReference.catalog.to_string(),
+                        schemaName: resolvedTableReference.schema.to_string(),
+                        tableContainer: tableContainer.clone(),
                     }),
                 );
             }
@@ -420,21 +410,21 @@ impl CatalogProviderAdapter {
             Ok(())
         });
 
-        catalog_adapters
+        catalogName_catalogProvider
     }
 }
 
-impl CatalogProvider for CatalogProviderAdapter {
+impl CatalogProvider for CatalogProviderImpl {
     fn as_any(&self) -> &dyn Any {
         self
     }
 
     fn schema_names(&self) -> Vec<String> {
-        self.schemas.keys().cloned().collect()
+        self.schemaName_schemaProvider.keys().cloned().collect()
     }
 
     fn schema(&self, name: &str) -> Option<Arc<dyn SchemaProvider>> {
-        self.schemas
+        self.schemaName_schemaProvider
             .get(name)
             .cloned()
             .map(|v| v as Arc<dyn SchemaProvider>)

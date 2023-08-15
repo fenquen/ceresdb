@@ -5,12 +5,13 @@
 use std::{sync::Arc, time::Instant};
 
 use async_trait::async_trait;
+use datafusion::error::DataFusionError;
 use common_types::record_batch::RecordBatch;
 use datafusion::prelude::SessionContext;
 use futures::TryStreamExt;
 use log::{debug, info};
 use macros::define_result;
-use query_frontend::{plan::QueryPlan, provider::CatalogProviderAdapter};
+use query_frontend::{plan::QueryPlan, provider::CatalogProviderImpl};
 use snafu::{Backtrace, ResultExt, Snafu};
 use table_engine::stream::SendableRecordBatchStream;
 use time_ext::InstantExt;
@@ -18,21 +19,23 @@ use time_ext::InstantExt;
 use crate::{
     config::Config,
     context::{Context, ContextRef},
-    logical_optimizer::{LogicalOptimizer, LogicalOptimizerImpl},
     physical_optimizer::{PhysicalOptimizer, PhysicalOptimizerImpl},
     physical_plan::PhysicalPlanPtr,
 };
+use crate::physical_plan::PhysicalPlanImpl;
 
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display("Failed to do logical optimization, err:{}", source))]
     LogicalOptimize {
-        source: crate::logical_optimizer::Error,
+        //source: crate::logical_optimizer::Error,
+        source: DataFusionError,
     },
 
     #[snafu(display("Failed to do physical optimization, err:{}", source))]
     PhysicalOptimize {
-        source: crate::physical_optimizer::Error,
+       // source: crate::physical_optimizer::Error,
+       source: DataFusionError,
     },
 
     #[snafu(display("Failed to execute physical plan, err:{}", source))]
@@ -65,17 +68,14 @@ impl Query {
     }
 }
 
-/// Query executor
-///
-/// Executes the logical plan
+/// execute the logical plan
 #[async_trait]
 pub trait QueryExecutor: Clone + Send + Sync {
     // TODO(yingwen): Maybe return a stream
     /// Execute the query, returning the query results as RecordBatchVec
     ///
-    /// REQUIRE: The meta data of tables in query should be found from
-    /// ContextRef
-    async fn execute_logical_plan(&self, ctx: ContextRef, query: Query) -> Result<RecordBatchVec>;
+    /// REQUIRE: The meta data of tables in query should be found from ContextRef
+    async fn executeLogicalPlan(&self, ctx: ContextRef, queryPlan: QueryPlan) -> Result<RecordBatchVec>;
 }
 
 #[derive(Clone, Default)]
@@ -91,60 +91,49 @@ impl QueryExecutorImpl {
 
 #[async_trait]
 impl QueryExecutor for QueryExecutorImpl {
-    async fn execute_logical_plan(&self, ctx: ContextRef, query: Query) -> Result<RecordBatchVec> {
-        let queryPlan = query.queryPlan;
-
-        // Register catalogs to datafusion execution context.
-        let catalogs = CatalogProviderAdapter::new_adapters(queryPlan.tables.clone());
-        let df_ctx = ctx.build_df_session_ctx(&self.config, ctx.request_id, ctx.deadline);
+    async fn executeLogicalPlan(&self, ctx: ContextRef, queryPlan: QueryPlan) -> Result<RecordBatchVec> {
+        // register catalogs to datafusion execution context.
+        let catalogs = CatalogProviderImpl::new_adapters(queryPlan.tableContainer.clone());
+        let dataFusionSessionContext = ctx.buildDataFusionSessionContext(&self.config, ctx.request_id, ctx.deadline);
 
         for (name, catalog) in catalogs {
-            df_ctx.register_catalog(&name, Arc::new(catalog));
+            dataFusionSessionContext.register_catalog(&name, Arc::new(catalog));
         }
+
         let begin_instant = Instant::now();
 
-        let physical_plan = optimize_plan(&ctx, df_ctx, queryPlan).await?;
+        // dataFusionLogicalPlan优化 dataFusion包办
+        let dataFusionLogicalPlan = dataFusionSessionContext.state().optimize(&queryPlan.dataFusionLogicalPlan).context(LogicalOptimize)?;
+        debug!("executor logical optimization finished, request_id:{}, plan: {:#?}",ctx.request_id, dataFusionLogicalPlan);
 
-        debug!(
-            "Executor physical optimization finished, request_id:{}, physical_plan: {:?}",
-            ctx.request_id, physical_plan
-        );
+        // dataFusionLogicalPlan变为物理 dataFusion包办
+        let dataFusionExecutionPlan = dataFusionSessionContext.state().create_physical_plan(&dataFusionLogicalPlan).await.context(PhysicalOptimize)?;
+        let physicalPlan = PhysicalPlanImpl::with_plan(dataFusionSessionContext, dataFusionExecutionPlan);
+        let physicalPlan:PhysicalPlanPtr = Box::new(physicalPlan);
+        debug!("executor physical optimization finished, request_id:{}, physical_plan: {:?}",ctx.request_id, physicalPlan);
 
-        let stream = physical_plan.execute().context(ExecutePhysical)?;
+        let stream = physicalPlan.execute().context(ExecutePhysical)?;
 
-        // Collect all records in the pool, as the stream may perform some costly
-        // calculation
-        let record_batches = collect(stream).await?;
+        // collect all records in the pool, as the stream may perform some costly calculation
+        let record_batches = stream.try_collect().await.context(Collect)?;
 
-        info!(
-            "Executor executed plan, request_id:{}, cost:{}ms, plan_and_metrics: {}",
-            ctx.request_id,
-            begin_instant.saturating_elapsed().as_millis(),
-            physical_plan.metrics_to_string()
-        );
+        info!("executor executed plan, request_id:{}, cost:{}ms, plan_and_metrics: {}",
+            ctx.request_id,begin_instant.saturating_elapsed().as_millis(),physicalPlan.metrics_to_string());
 
         Ok(record_batches)
     }
 }
 
-async fn optimize_plan(ctx: &Context,
-                       df_ctx: SessionContext,
-                       plan: QueryPlan) -> Result<PhysicalPlanPtr> {
-    let mut logical_optimizer = LogicalOptimizerImpl::with_context(df_ctx.clone());
-    let plan = logical_optimizer.optimize(plan).context(LogicalOptimize)?;
+async fn optimize(ctx: &Context,
+                  dataFusionSessionContext: SessionContext,
+                  queryPlan: QueryPlan) -> Result<PhysicalPlanPtr> {
+    // dataFusionLogicalPlan 优化
+    let dataFusionLogicalPlan = dataFusionSessionContext.state().optimize(&queryPlan.dataFusionLogicalPlan).context(LogicalOptimize)?;
+    debug!("executor logical optimization finished, request_id:{}, plan: {:#?}",ctx.request_id, dataFusionLogicalPlan);
 
-    debug!(
-        "Executor logical optimization finished, request_id:{}, plan: {:#?}",
-        ctx.request_id, plan
-    );
+    // dataFusionLogicalPlan变为物理
+    let dataFusionExecutionPlan = dataFusionSessionContext.state().create_physical_plan(&dataFusionLogicalPlan).await.context(PhysicalOptimize)?;
+    let physicalPlan = PhysicalPlanImpl::with_plan(dataFusionSessionContext, dataFusionExecutionPlan);
 
-    let mut physical_optimizer = PhysicalOptimizerImpl::with_context(df_ctx);
-    physical_optimizer
-        .optimize(plan)
-        .await
-        .context(PhysicalOptimize)
-}
-
-async fn collect(stream: SendableRecordBatchStream) -> Result<RecordBatchVec> {
-    stream.try_collect().await.context(Collect)
+    Ok(Box::new(physicalPlan))
 }

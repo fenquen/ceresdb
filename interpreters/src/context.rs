@@ -37,7 +37,7 @@ impl InterpreterContext {
         }
     }
 
-    /// Create a new context of query executor
+    /// Create a new context of query executor 毫无意义的平移转换
     pub fn new_query_context(&self) -> Result<QueryContextRef> {
         let ctx = QueryContext {
             request_id: self.request_id,

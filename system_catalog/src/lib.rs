@@ -129,7 +129,7 @@ impl Table for SystemTableAdapter {
         &self,
         request: ReadRequest,
     ) -> table_engine::table::Result<PartitionedStreams> {
-        let read_parallelism = request.opts.read_parallelism;
+        let read_parallelism = request.readOptions.read_parallelism;
         let stream = self.inner.read(request).await?;
         let mut streams = Vec::with_capacity(read_parallelism);
         streams.push(stream);

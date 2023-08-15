@@ -137,7 +137,7 @@ fn convert_records(records: RecordBatchVec) -> Response {
             let column_schema = schema.column(col_idx).clone();
             column_names.push(ResponseColumn {
                 name: column_schema.name,
-                data_type: column_schema.data_type,
+                data_type: column_schema.datumKind,
             });
         }
 

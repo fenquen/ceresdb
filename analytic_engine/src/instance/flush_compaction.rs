@@ -577,7 +577,7 @@ impl FlushTask {
         request_id: RequestId,
         memtable_state: &MemTableState,
     ) -> Result<Option<FileMeta>> {
-        let (min_key, max_key) = match (memtable_state.mem.min_key(), memtable_state.mem.max_key())
+        let (min_key, max_key) = match (memtable_state.memTable.min_key(), memtable_state.memTable.max_key())
         {
             (Some(min_key), Some(max_key)) => (min_key, max_key),
             _ => {
@@ -624,7 +624,7 @@ impl FlushTask {
                 storage_format_hint,
             })?;
 
-        let iter = build_mem_table_iter(memtable_state.mem.clone(), &self.table_data)?;
+        let iter = build_mem_table_iter(memtable_state.memTable.clone(), &self.table_data)?;
 
         let record_batch_stream: RecordBatchStream =
             Box::new(stream::iter(iter).map_err(|e| Box::new(e) as _));

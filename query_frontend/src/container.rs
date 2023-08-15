@@ -136,19 +136,16 @@ impl TableContainer {
     /// Visit all tables
     ///
     /// If f returns error, stop iteration and return the error
-    pub fn visit<F, E>(&self, mut f: F) -> Result<(), E>
-    where
-        F: FnMut(ResolvedTableReference, &TableRef) -> Result<(), E>,
-    {
+    pub fn visit<F, E>(&self, mut f: F) -> Result<(), E> where F: FnMut(ResolvedTableReference, &TableRef) -> Result<(), E> {
         // Visit default tables first
         for (table, adapter) in &self.default_tables {
-            // default_catalog/default_schema can be empty string, but that's
-            // ok since we have table under them
+            // default_catalog/default_schema can be empty string, but that's ok since we have table under them
             let table_ref = ResolvedTableReference {
                 catalog: Cow::from(&self.default_catalog),
                 schema: Cow::from(&self.default_schema),
                 table: Cow::from(table),
             };
+
             f(table_ref, adapter)?;
         }
 
@@ -161,6 +158,7 @@ impl TableContainer {
                         schema: Cow::from(schema),
                         table: Cow::from(table),
                     };
+
                     f(table_ref, adapter)?;
                 }
             }

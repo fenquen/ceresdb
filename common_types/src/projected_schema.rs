@@ -99,7 +99,7 @@ impl RowProjector {
     pub fn datum_kind(&self, index: usize) -> &DatumKind {
         assert!(index < self.source_schema.num_columns());
 
-        &self.source_schema.column(index).data_type
+        &self.source_schema.column(index).datumKind
     }
 }
 

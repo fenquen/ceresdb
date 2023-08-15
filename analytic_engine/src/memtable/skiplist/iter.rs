@@ -16,7 +16,7 @@ use common_types::{
 };
 use generic_error::BoxError;
 use log::trace;
-use skiplist::{ArenaSlice, IterRef, Skiplist};
+use skiplist::{ArenaSlice, IterRef, SkipList};
 use snafu::ResultExt;
 use time_ext::InstantExt;
 
@@ -41,7 +41,7 @@ enum State {
 /// Columnar iterator for [SkipListMemTable]
 pub struct ColumnarIterImpl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> {
     /// The internal skiplist iter
-    iter: IterRef<Skiplist<BytewiseComparator, A>, BytewiseComparator, A>,
+    iter: IterRef<SkipList<BytewiseComparator, A>, BytewiseComparator, A>,
 
     // Schema related:
     /// Schema of this memtable, used to decode row

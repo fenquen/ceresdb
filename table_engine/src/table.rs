@@ -334,12 +334,9 @@ pub struct GetRequest {
 
 #[derive(Clone, Debug)]
 pub struct ReadRequest {
-    /// Read request id.
     pub request_id: RequestId,
-    /// Read options.
-    pub opts: ReadOptions,
-    /// The schema and projection for read, the output data should match this
-    /// schema.
+    pub readOptions: ReadOptions,
+    /// The schema and projection for read, the output data should match this schema
     pub projected_schema: ProjectedSchema,
     /// Predicate of the query.
     pub predicate: PredicateRef,
@@ -366,7 +363,7 @@ impl TryFrom<ReadRequest> for ceresdbproto::remote_engine::TableReadRequest {
 
         Ok(Self {
             request_id: request.request_id.as_u64(),
-            opts: Some(request.opts.into()),
+            opts: Some(request.readOptions.into()),
             projected_schema: Some(request.projected_schema.into()),
             predicate: Some(predicate_pb),
             order: 0,
@@ -394,7 +391,7 @@ impl TryFrom<ceresdbproto::remote_engine::TableReadRequest> for ReadRequest {
         );
         Ok(Self {
             request_id: RequestId::next_id(),
-            opts,
+            readOptions: opts,
             projected_schema,
             predicate,
             metrics_collector: MetricsCollector::default(),

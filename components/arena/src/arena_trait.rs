@@ -10,8 +10,7 @@ use std::{alloc::Layout, ptr::NonNull, sync::Arc};
 /// All memory-relavent methods (`alloc()` etc.) are not "unsafe". Compare with
 /// "deallocate" which is not included in this trait, allocating is more safer
 /// and not likely to run into UB. However in fact, playing with raw pointer is
-/// always dangerous and needs to be careful for both who implements and uses
-/// this trait.
+/// always dangerous and needs to be careful for both who implements and uses this trait.
 pub trait Arena {
     type Stats;
 

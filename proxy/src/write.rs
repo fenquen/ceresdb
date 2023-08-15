@@ -769,7 +769,7 @@ fn write_table_request_to_insert_plan(
     Ok(InsertPlan {
         table,
         rowGroup: row_group,
-        columnIndex_defaultVal: BTreeMap::new(),
+        columnIndex_defaultValue: BTreeMap::new(),
     })
 }
 
@@ -788,7 +788,7 @@ fn write_entry_to_rows(
 
     // Fill tsid by default value.
     if let Some(tsid_idx) = schema.index_of_tsid() {
-        let kind = &schema.tsid_column().unwrap().data_type;
+        let kind = &schema.tsid_column().unwrap().datumKind;
         let default_datum = Datum::empty(kind);
         for row in &mut rows {
             row[tsid_idx] = default_datum.clone();
@@ -841,7 +841,7 @@ fn write_entry_to_rows(
                 table_name,
                 tag_name,
                 tag_value.clone(),
-                column_schema.data_type,
+                column_schema.datumKind,
             )?;
         }
     }
@@ -898,7 +898,7 @@ fn write_entry_to_rows(
                     table_name,
                     field_name,
                     field_value,
-                    column_schema.data_type,
+                    column_schema.datumKind,
                 )?;
             }
         }

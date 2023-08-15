@@ -141,7 +141,7 @@ pub type RegionId = u64;
 
 #[derive(Debug, Default, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct WalLocation {
-    /// fenquen regionId 和 shardId 相同 shardId和schemaId相同
+    /// fenquen regionId 是 shardId 是 schemaId 是 spaceId
     pub region_id: RegionId,
     pub table_id: TableId,
 }

@@ -98,7 +98,7 @@ impl<'a, W: std::io::Write> MysqlQueryResultWriter<'a, W> {
 }
 
 fn make_column_by_field(column_schema: &ColumnSchema) -> Column {
-    let column_type = convert_datum_kind_type(&column_schema.data_type);
+    let column_type = convert_datum_kind_type(&column_schema.datumKind);
     Column {
         table: "".to_string(),
         column: column_schema.name.clone(),

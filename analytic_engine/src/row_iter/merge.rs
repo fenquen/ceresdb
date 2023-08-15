@@ -196,7 +196,7 @@ impl<'a> MergeBuilder<'a> {
             let stream = record_batch_stream::filtered_stream_from_memtable(
                 self.config.projected_schema.clone(),
                 self.config.need_dedup,
-                &memtable.mem,
+                &memtable.memTable,
                 self.config.reverse,
                 self.config.predicate.as_ref(),
                 self.config.deadline,

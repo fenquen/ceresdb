@@ -15,6 +15,7 @@ use crate::{
 impl Encoder<Datum> for MemCompactEncoder {
     type Error = Error;
 
+    // fenquen 不管是64还是16位的都是encode到64
     fn encode<B: BufMut>(&self, buf: &mut B, value: &Datum) -> Result<()> {
         match value {
             Datum::Null => buf.try_put_u8(consts::NULL_FLAG).context(EncodeKey),
@@ -31,8 +32,7 @@ impl Encoder<Datum> for MemCompactEncoder {
                 self.encode(buf, v)
             }
             Datum::Varbinary(v) => {
-                buf.try_put_u8(consts::COMPACT_BYTES_FLAG)
-                    .context(EncodeKey)?;
+                buf.try_put_u8(consts::COMPACT_BYTES_FLAG).context(EncodeKey)?;
                 self.encode(buf, v)
             }
             // For string, just encode/decode like bytes.

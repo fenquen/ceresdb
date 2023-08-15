@@ -46,7 +46,7 @@ impl Validator {
     fn contains_sub_tables(plan: &Plan) -> bool {
         match plan {
             Plan::Query(plan) => {
-                let res = plan.tables.visit::<_, ()>(|name, _| {
+                let res = plan.tableContainer.visit::<_, ()>(|name, _| {
                     if partition::is_sub_partition_table(name.table.as_ref()) {
                         Err(())
                     } else {

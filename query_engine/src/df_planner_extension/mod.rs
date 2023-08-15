@@ -12,26 +12,22 @@ use datafusion::{
 };
 
 pub mod prom_align;
+
 use async_trait::async_trait;
 
-/// The adapter for extending the default datafusion planner.
-pub struct QueryPlannerAdapter;
+pub struct QueryPlannerImpl;
 
 #[async_trait]
-impl QueryPlanner for QueryPlannerAdapter {
-    async fn create_physical_plan(
-        &self,
-        logical_plan: &LogicalPlan,
-        session_state: &SessionState,
-    ) -> datafusion::error::Result<Arc<dyn ExecutionPlan>> {
+impl QueryPlanner for QueryPlannerImpl {
+    async fn create_physical_plan(&self,
+                                  logicalPlan: &LogicalPlan,
+                                  sessionState: &SessionState) -> datafusion::error::Result<Arc<dyn ExecutionPlan>> {
         let extension_planners: Vec<Arc<dyn ExtensionPlanner + Send + Sync>> = vec![
             Arc::new(prom_align::PromAlignPlanner),
             Arc::new(influxql_query::exec::context::IOxExtensionPlanner {}),
         ];
 
         let physical_planner = DefaultPhysicalPlanner::with_extension_planners(extension_planners);
-        physical_planner
-            .create_physical_plan(logical_plan, session_state)
-            .await
+        physical_planner.create_physical_plan(logicalPlan, sessionState).await
     }
 }

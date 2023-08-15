@@ -121,12 +121,12 @@ pub struct TableData {
     /// and memtables/ssts during query/compaction/flush .
     opts: ArcSwap<TableOptions>,
     /// MemTable factory of this table
-    memtable_factory: MemTableFactoryRef,
+    memTableFactory: MemTableFactoryRef,
     /// 来源space
     mem_usage_collector: CollectorRef,
 
     /// Current table version
-    current_version: TableVersion,
+    currentVersion: TableVersion,
     /// Last sequence visible to the reads
     ///
     /// Write to last_sequence should be guarded by a mutex and only done by
@@ -234,9 +234,9 @@ impl TableData {
             mutable_limit,
             mutable_limit_write_buffer_ratio: preflush_write_buffer_size_ratio,
             opts: ArcSwap::new(Arc::new(table_opts)),
-            memtable_factory,
+            memTableFactory: memtable_factory,
             mem_usage_collector,
-            current_version,
+            currentVersion: current_version,
             last_sequence: AtomicU64::new(0),
             last_memtable_id: AtomicU64::new(0),
             allocator: IdAllocator::new(0, 0, DEFAULT_ALLOC_STEP),
@@ -277,9 +277,9 @@ impl TableData {
             mutable_limit,
             mutable_limit_write_buffer_ratio: preflush_write_buffer_size_ratio,
             opts: ArcSwap::new(Arc::new(add_meta.opts)),
-            memtable_factory,
+            memTableFactory: memtable_factory,
             mem_usage_collector,
-            current_version,
+            currentVersion: current_version,
             last_sequence: AtomicU64::new(0),
             last_memtable_id: AtomicU64::new(0),
             allocator,
@@ -310,7 +310,7 @@ impl TableData {
 
     #[inline]
     pub fn current_version(&self) -> &TableVersion {
-        &self.current_version
+        &self.currentVersion
     }
 
     #[inline]
@@ -362,13 +362,13 @@ impl TableData {
     /// Returns total memtable memory usage in bytes.
     #[inline]
     pub fn memtable_memory_usage(&self) -> usize {
-        self.current_version.total_memory_usage()
+        self.currentVersion.total_memory_usage()
     }
 
     /// Returns mutable memtable memory usage in bytes.
     #[inline]
     pub fn mutable_memory_usage(&self) -> usize {
-        self.current_version.mutable_memory_usage()
+        self.currentVersion.mutable_memory_usage()
     }
 
     /// Find memtable for given timestamp to insert, create if not exists
@@ -378,57 +378,47 @@ impl TableData {
     /// guaranteed to have same schema of current table
     pub fn findOrCreateMutable(&self,
                                timestamp: Timestamp,
-                               table_schema: &Schema) -> Result<MemTableForWrite> {
+                               schema: &Schema) -> Result<MemTableForWrite> {
         let last_sequence = self.last_sequence();
 
-        if let Some(mem) = self
-            .current_version
-            .memtable_for_write(timestamp, table_schema.version())
-            .context(FindMemTable)?
-        {
-            return Ok(mem);
+        if let Some(memTableForWrite) = self.currentVersion.memtable_for_write(timestamp, schema.version()).context(FindMemTable)? {
+            return Ok(memTableForWrite);
         }
 
         // Mutable memtable for this timestamp not found, need to create a new one.
-        let table_options = self.table_options();
-        let memtable_opts = MemTableOptions {
-            schema: table_schema.clone(),
-            arena_block_size: table_options.arena_block_size,
+        let tableOptions = self.table_options();
+
+        let memTableOptions = MemTableOptions {
+            schema: schema.clone(),
+            arena_block_size: tableOptions.arena_block_size,
             creation_sequence: last_sequence,
             collector: self.mem_usage_collector.clone(),
         };
-        let mem = self
-            .memtable_factory
-            .create_memtable(memtable_opts)
-            .context(CreateMemTable)?;
 
-        match table_options.segment_duration() {
+        let memTable = self.memTableFactory.createMemTable(memTableOptions).context(CreateMemTable)?;
+
+        match tableOptions.segment_duration() {
             Some(segment_duration) => {
-                let time_range = TimeRange::bucket_of(timestamp, segment_duration).context(
-                    TimestampOverflow {
-                        timestamp,
-                        duration: segment_duration,
-                    },
-                )?;
-                let mem_state = MemTableState {
-                    mem,
+                let time_range = TimeRange::bucket_of(timestamp, segment_duration)
+                    .context(TimestampOverflow { timestamp, duration: segment_duration })?;
+
+                let memTableState = MemTableState {
+                    memTable,
                     time_range,
                     id: self.alloc_memtable_id(),
                 };
 
                 // Insert memtable into mutable memtables of current version.
-                self.current_version.insert_mutable(mem_state.clone());
+                self.currentVersion.insertMutableMemTable(memTableState.clone());
 
-                Ok(MemTableForWrite::Normal(mem_state))
+                Ok(MemTableForWrite::Normal(memTableState))
             }
             None => {
-                let sampling_mem = SamplingMemTable::new(mem, self.alloc_memtable_id());
-                debug!(
-                    "create sampling mem table:{}, schema:{:#?}",
-                    sampling_mem.id, table_schema
-                );
+                let sampling_mem = SamplingMemTable::new(memTable, self.alloc_memtable_id());
+                debug!("create sampling mem table:{}, schema:{:#?}",sampling_mem.id, schema);
+
                 // Set sampling memtables of current version.
-                self.current_version.set_sampling(sampling_mem.clone());
+                self.currentVersion.set_sampling(sampling_mem.clone());
 
                 Ok(MemTableForWrite::Sampling(sampling_mem))
             }
@@ -451,8 +441,8 @@ impl TableData {
             .try_into()
             .unwrap_or(usize::MAX);
 
-        let mutable_usage = self.current_version.mutable_memory_usage();
-        let total_usage = self.current_version.total_memory_usage();
+        let mutable_usage = self.currentVersion.mutable_memory_usage();
+        let total_usage = self.currentVersion.total_memory_usage();
         let in_flush = serial_exec.flush_scheduler().is_in_flush();
 
         // Inspired by https://github.com/facebook/rocksdb/blob/main/include/rocksdb/write_buffer_manager.h#L94

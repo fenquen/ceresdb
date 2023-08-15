@@ -122,11 +122,7 @@ pub enum Error {
     #[snafu(display("Failed to read table key header, err:{}", source))]
     ReadTableKeyHeader { source: bytes_ext::Error },
 
-    #[snafu(display(
-    "Invalid entry key header, value:{}.\nBacktrace:\n{}",
-    value,
-    backtrace
-    ))]
+    #[snafu(display("invalid entry key header, value:{}.\nBacktrace:\n{}", value, backtrace))]
     InvalidKeyHeader { value: u8, backtrace: Backtrace },
 
     #[snafu(display("Invalid table key type, value:{}.\nBacktrace:\n{}", value, backtrace))]
@@ -492,7 +488,7 @@ impl SysCatalogTable {
                        visitOptions: VisitOptions) -> Result<()> {
         let readRequest = ReadRequest {
             request_id: RequestId::next_id(),
-            opts,
+            readOptions: opts,
             // The schema of sys catalog table is never changed
             projected_schema: ProjectedSchema::no_projection(self.table.schema()),
             predicate: PredicateBuilder::default().build(),

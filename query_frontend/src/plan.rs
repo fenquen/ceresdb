@@ -60,10 +60,10 @@ pub enum Plan {
 
 pub struct QueryPlan {
     pub dataFusionLogicalPlan: DataFusionLogicalPlan,
-    // Contains the TableProviders so we can register the them to ExecutionContext later.
-    // Use TableProviderAdapter here so we can get the underlying TableRef and also be
-    // able to cast to Arc<dyn TableProvider + Send + Sync>
-    pub tables: Arc<TableContainer>,
+
+    // contains the TableProviders so we can register the them to ExecutionContext later.
+    // use TableProviderAdapter here so we can get the underlying TableRef and also be able to cast to Arc<dyn TableProvider + Send + Sync>
+    pub tableContainer: Arc<TableContainer>,
 }
 
 impl Debug for QueryPlan {
@@ -122,8 +122,8 @@ pub struct InsertPlan {
     pub table: TableRef,
     /// RowGroup to insert
     pub rowGroup: RowGroup,
-    /// Column indexes in schema to its default-value-expr which is used to fill values
-    pub columnIndex_defaultVal: BTreeMap<usize, DfLogicalExpr>,
+    /// 可能不会涉及到表的全部的column 用到了defaultValue说明是insert时候未提到
+    pub columnIndex_defaultValue: BTreeMap<usize, DfLogicalExpr>,
 }
 
 #[derive(Debug)]

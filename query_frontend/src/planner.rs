@@ -62,7 +62,7 @@ use crate::{
         ShowTablesPlan,
     },
     promql::{remote_query_to_plan, ColumnNames, Expr as PromExpr, RemoteQueryPlan},
-    provider::{ContextProviderAdapter, MetaProvider},
+    provider::{MetaAndContextProvider, MetaProvider},
 };
 
 // We do not carry backtrace in sql error because it is mainly used in server
@@ -140,11 +140,7 @@ pub enum Error {
     #[snafu(display("Tag column not found, name:{}", name))]
     TagColumnNotFound { name: String },
 
-    #[snafu(display(
-    "Timestamp key column can not be tag, name:{}.\nBacktrace:\n{:?}",
-    name,
-    backtrace
-    ))]
+    #[snafu(display("timestamp key column can not be tag, name:{}.\nBacktrace:\n{:?}", name, backtrace))]
     TimestampKeyTag { name: String, backtrace: Backtrace },
 
     #[snafu(display("Timestamp column not found, name:{}", name))]
@@ -192,21 +188,13 @@ pub enum Error {
     #[snafu(display("Invalid insert stmt, source should be a set"))]
     InsertSourceBodyNotSet,
 
-    #[snafu(display(
-    "Invalid insert stmt, source expr is not value, source_expr:{:?}.\nBacktrace:\n{}",
-    source_expr,
-    backtrace,
-    ))]
+    #[snafu(display("invalid insert stmt, source expr is not value, source_expr:{:?}.\nBacktrace:\n{}", source_expr, backtrace, ))]
     InsertExprNotValue {
         source_expr: Expr,
         backtrace: Backtrace,
     },
 
-    #[snafu(display(
-    "Invalid insert stmt, source expr has no valid negative value, source_expr:{:?}.\nBacktrace:\n{}",
-    source_expr,
-    backtrace,
-    ))]
+    #[snafu(display("invalid insert stmt, source expr has no valid negative value, source_expr:{:?}.\nBacktrace:\n{}", source_expr, backtrace))]
     InsertExprNoNegativeValue {
         source_expr: Expr,
         backtrace: Backtrace,
@@ -295,9 +283,9 @@ impl<'a, P: MetaProvider> Planner<'a, P> {
     /// Takes the ownership of statement because some statements like INSERT
     /// statements contains lots of data
     pub fn statementToPlan(&self, statement: Statement) -> Result<Plan> {
-        trace!("Statement to plan, request_id:{}, statement:{:?}",self.request_id,statement);
+        trace!("statement to plan, request_id:{}, statement:{:?}",self.request_id,statement);
 
-        let adapter = ContextProviderAdapter::new(self.metaProvider, self.read_parallelism);
+        let adapter = MetaAndContextProvider::new(self.metaProvider, self.read_parallelism);
         // SqlToRel needs to hold the reference to adapter, thus we can't both holds the
         // adapter and the SqlToRel in Planner, which is a self-referential
         // case. We wrap a PlannerDelegate to workaround this and avoid the usage of pin.
@@ -318,26 +306,26 @@ impl<'a, P: MetaProvider> Planner<'a, P> {
     }
 
     pub fn promql_expr_to_plan(&self, expr: PromExpr) -> Result<(Plan, Arc<ColumnNames>)> {
-        let adapter = ContextProviderAdapter::new(self.metaProvider, self.read_parallelism);
+        let adapter = MetaAndContextProvider::new(self.metaProvider, self.read_parallelism);
         // SqlToRel needs to hold the reference to adapter, thus we can't both holds the
         // adapter and the SqlToRel in Planner, which is a self-referential
         // case. We wrap a PlannerDelegate to workaround this and avoid the usage of
         // pin.
         let planner = PlannerDelegate::new(adapter);
 
-        expr.to_plan(planner.meta_provider, self.read_parallelism)
+        expr.to_plan(planner.metaAndContextProvider, self.read_parallelism)
             .context(BuildPromPlanError)
     }
 
     pub fn remote_prom_req_to_plan(&self, query: PromRemoteQuery) -> Result<RemoteQueryPlan> {
-        let adapter = ContextProviderAdapter::new(self.metaProvider, self.read_parallelism);
+        let adapter = MetaAndContextProvider::new(self.metaProvider, self.read_parallelism);
         let planner = PlannerDelegate::new(adapter);
 
-        remote_query_to_plan(query, planner.meta_provider).context(BuildPromPlanError)
+        remote_query_to_plan(query, planner.metaAndContextProvider).context(BuildPromPlanError)
     }
 
     pub fn influxql_stmt_to_plan(&self, statement: InfluxqlStatement) -> Result<Plan> {
-        let adapter = ContextProviderAdapter::new(self.metaProvider, self.read_parallelism);
+        let adapter = MetaAndContextProvider::new(self.metaProvider, self.read_parallelism);
         let planner = crate::influxql::planner::Planner::new(adapter);
         planner
             .statement_to_plan(statement)
@@ -522,11 +510,11 @@ fn ensure_data_type_compatible(
     );
 
     ensure!(
-        column_schema.data_type == data_type,
+        column_schema.datumKind == data_type,
         InvalidWriteEntry {
             msg: format!(
                 "Column: {} in table: {} data type is not same, expected: {}, actual: {}",
-                column_name, table_name, column_schema.data_type, data_type,
+                column_name, table_name, column_schema.datumKind, data_type,
             ),
         }
     );
@@ -556,48 +544,46 @@ pub fn try_get_data_type_from_value(value: &PbValue) -> Result<DatumKind> {
 /// A planner wraps the datafusion's logical planner, and delegate sql like
 /// select/explain to datafusion's planner.
 pub(crate) struct PlannerDelegate<'a, P: MetaProvider> {
-    meta_provider: ContextProviderAdapter<'a, P>,
+    metaAndContextProvider: MetaAndContextProvider<'a, P>,
 }
 
 impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
-    pub(crate) fn new(meta_provider: ContextProviderAdapter<'a, P>) -> Self {
-        Self { meta_provider }
+    pub(crate) fn new(metaAndContextProvider: MetaAndContextProvider<'a, P>) -> Self {
+        Self { metaAndContextProvider }
     }
 
     pub(crate) fn sql_statement_to_plan(self, mut sqlStatement: SqlStatement) -> Result<Plan> {
         match sqlStatement {
-            // Query statement use data fusion planner
+            // query statement use data fusion planner
             SqlStatement::Explain { .. } | SqlStatement::Query(_) => {
                 normalize_func_name(&mut sqlStatement);
                 self.sqlStatement2DatafusionLogicalPlan(sqlStatement)
             }
-            SqlStatement::Insert { .. } => self.insert_to_plan(sqlStatement),
+            SqlStatement::Insert { .. } => self.stmt2InsertPlan(sqlStatement),
             _ => UnsupportedStatement.fail(),
         }
     }
 
     fn sqlStatement2DatafusionLogicalPlan(self, sqlStatement: SqlStatement) -> Result<Plan> {
-        let df_planner = SqlToRel::new_with_options(&self.meta_provider, DEFAULT_PARSER_OPTS);
+        let df_planner = SqlToRel::new_with_options(&self.metaAndContextProvider, DEFAULT_PARSER_OPTS);
 
         let dataFusionLogicalPlan = df_planner.sql_statement_to_plan(sqlStatement).context(DatafusionPlan)?;
 
-        debug!("Sql statement to data fusion plan, df_plan:\n{:#?}", dataFusionLogicalPlan);
+        debug!("sql statement to data fusion plan, df_plan:\n{:#?}", dataFusionLogicalPlan);
 
         // Get all tables needed in the plan
-        let tables = self.meta_provider.try_into_container().context(FindMeta)?;
+        let tableContainer = self.metaAndContextProvider.try_into_container().context(FindMeta)?;
 
         Ok(Plan::Query(QueryPlan {
             dataFusionLogicalPlan,
-            tables: Arc::new(tables),
+            tableContainer: Arc::new(tableContainer),
         }))
     }
 
     fn buildTsidColumnSchema() -> Result<ColumnSchema> {
         column_schema::Builder::new(TSID_COLUMN.to_string(), DatumKind::UInt64)
             .is_nullable(false).build()
-            .context(InvalidColumnSchema {
-                column_name: TSID_COLUMN,
-            })
+            .context(InvalidColumnSchema { column_name: TSID_COLUMN })
     }
 
     fn create_table_schema(columns: &[Ident],
@@ -681,7 +667,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
 
                     // Ensure the timestamp key's type is timestamp.
                     ensure!(
-                        timestamp_column.data_type == DatumKind::Timestamp,
+                        timestamp_column.datumKind == DatumKind::Timestamp,
                         InvalidTimestampKey
                     );
                     // Ensure the timestamp key is not a tag.
@@ -770,7 +756,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
         let options = parse_options(stmt.options)?;
 
         // ensure default value options are valid
-        ensure_column_default_value_valid(table_schema.columns(), &self.meta_provider)?;
+        ensure_column_default_value_valid(table_schema.columns(), &self.metaAndContextProvider)?;
 
         // TODO: support create table on other catalog/schema
         let table_name = stmt.table_name.to_string();
@@ -795,7 +781,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
         debug!("Drop table to plan, stmt:{:?}", stmt);
 
         let (table_name, partition_info) =
-            if let Some(table) = self.find_table(&stmt.table_name.to_string())? {
+            if let Some(table) = self.findTable(&stmt.table_name.to_string())? {
                 let table_name = table.name().to_string();
                 let partition_info = table.partition_info();
                 (table_name, partition_info)
@@ -824,110 +810,96 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
         let table_name = stmt.table_name.to_string();
 
         let table = self
-            .find_table(&table_name)?
+            .findTable(&table_name)?
             .context(TableNotFound { name: table_name })?;
 
         Ok(Plan::Describe(DescribeTablePlan { table }))
     }
 
     // REQUIRE: SqlStatement must be INSERT stmt
-    fn insert_to_plan(&self, sql_stmt: SqlStatement) -> Result<Plan> {
-        match sql_stmt {
+    fn stmt2InsertPlan(&self, sqlStatement: SqlStatement) -> Result<Plan> {
+        match sqlStatement {
             SqlStatement::Insert {
                 table_name,
                 columns,
                 source,
                 ..
             } => {
-                let table_name = TableName::from(table_name).to_string();
+                let tableName = TableName::from(table_name).to_string();
 
-                let table = self
-                    .find_table(&table_name)?
-                    .context(TableNotFound { name: table_name })?;
+                let table = self.findTable(&tableName)?.context(TableNotFound { name: tableName })?;
 
                 let schema = table.schema();
+
                 // Column name and its index in insert stmt: {column name} => index
-                let column_names_idx: HashMap<_, _> = columns
-                    .iter()
-                    .enumerate()
-                    .map(|(idx, ident)| (&ident.value, idx))
-                    .collect();
-                ensure!(
-                    column_names_idx.len() == columns.len(),
-                    InsertDuplicateColumns
-                );
+                let columnName_insertIndex: HashMap<_, _> = columns.iter().enumerate().map(|(idx, ident)| (&ident.value, idx)).collect();
+                ensure!(columnName_insertIndex.len() == columns.len(), InsertDuplicateColumns);
 
-                validate_insert_stmt(table.name(), &schema, &column_names_idx)?;
+                validateInsertStmt(table.name(), &schema, &columnName_insertIndex)?;
 
-                let df_fields = schema
-                    .columns()
-                    .iter()
-                    .map(|column_schema| {
+                // 以下dataFusion化
+                let dataFusionFieldVec = schema.columns().iter()
+                    .map(|columnSchema| {
                         DFField::new_unqualified(
-                            &column_schema.name,
-                            column_schema.data_type.to_arrow_data_type(),
-                            column_schema.is_nullable,
+                            &columnSchema.name,
+                            columnSchema.datumKind.to_arrow_data_type(),
+                            columnSchema.is_nullable,
                         )
-                    })
-                    .collect::<Vec<_>>();
-                let df_schema = DFSchema::new_with_metadata(df_fields, HashMap::new())
-                    .context(CreateDatafusionSchema)?;
-                let df_planner =
-                    SqlToRel::new_with_options(&self.meta_provider, DEFAULT_PARSER_OPTS);
+                    }).collect::<Vec<_>>();
 
-                // Index in insert values stmt of each column in table schema
-                let mut column_index_in_insert = Vec::with_capacity(schema.num_columns());
-                // Column index in schema to its default-value-expr
-                let mut default_value_map = BTreeMap::new();
+                let dataFusionSchema = DFSchema::new_with_metadata(dataFusionFieldVec, HashMap::new()).context(CreateDatafusionSchema)?;
+                let dataFusionPlanner =
+                    SqlToRel::new_with_options(&self.metaAndContextProvider,
+                                               DEFAULT_PARSER_OPTS);
 
-                // Check all not null columns are provided in stmt, also init
-                // `column_index_in_insert`
-                for (idx, column) in schema.columns().iter().enumerate() {
-                    if let Some(tsid_idx) = schema.index_of_tsid() {
+                // fenquen 要注区分 insertIndex 和column本身index区别 因为 insert时候可能不会涉及全部的column
+                // 这个是涉及到表的全部的column的
+                let mut insertModeVec = Vec::with_capacity(schema.num_columns());
+
+                // 可能不会涉及到表的全部的column
+                let mut columnIndex_defaultValue = BTreeMap::new();
+
+                // Check all not null columns are provided in stmt, also init `column_index_in_insert`
+                for (idx, columnSchema) in schema.columns().iter().enumerate() {
+                    if let Some(tsid_idx) = schema.tsid_index {
                         if idx == tsid_idx {
-                            // This is a tsid column.
-                            column_index_in_insert.push(InsertMode::Auto);
+                            insertModeVec.push(InsertMode::Auto);
                             continue;
                         }
                     }
-                    match column_names_idx.get(&column.name) {
-                        Some(idx_in_insert) => {
-                            // This column in schema is also in insert stmt
-                            column_index_in_insert.push(InsertMode::Direct(*idx_in_insert));
-                        }
-                        None => {
-                            // This column in schema is not in insert stmt
-                            if let Some(expr) = &column.default_value {
-                                let expr = df_planner
-                                    .sql_to_expr(
-                                        expr.clone(),
-                                        &df_schema,
-                                        &mut PlannerContext::new(),
-                                    )
-                                    .context(DatafusionExpr)?;
 
-                                default_value_map.insert(idx, expr);
-                                column_index_in_insert.push(InsertMode::Auto);
-                            } else if column.is_nullable {
-                                column_index_in_insert.push(InsertMode::Null);
+                    match columnName_insertIndex.get(&columnSchema.name) {
+                        // insert时候涉及到该column
+                        Some(insertIndex) => insertModeVec.push(InsertMode::Direct(*insertIndex)),
+                        // insert时候未涉及该column
+                        None => {
+                            // 有defaultValue
+                            if let Some(expr) = &columnSchema.default_value {
+                                let expr =
+                                    dataFusionPlanner.sql_to_expr(expr.clone(),
+                                                                  &dataFusionSchema,
+                                                                  &mut PlannerContext::new()).context(DatafusionExpr)?;
+
+                                columnIndex_defaultValue.insert(idx, expr);
+                                insertModeVec.push(InsertMode::Auto);
+                            } else if columnSchema.is_nullable { // nullable
+                                insertModeVec.push(InsertMode::Null);
                             } else {
-                                // Column can not be null and input does not contains that column
                                 return InsertMissingColumn {
                                     table: table.name(),
-                                    column: &column.name,
-                                }
-                                    .fail();
+                                    column: &columnSchema.name,
+                                }.fail();
                             }
                         }
                     }
                 }
 
-                let rows = build_row_group(schema, source, column_index_in_insert)?;
+                let rowGroup = build_row_group(schema, source, insertModeVec)?;
 
                 Ok(Plan::Insert(InsertPlan {
                     table,
-                    rowGroup: rows,
-                    columnIndex_defaultVal: default_value_map,
+                    rowGroup,
+                    columnIndex_defaultValue,
                 }))
             }
             // We already known this stmt is a INSERT stmt
@@ -939,7 +911,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
         let table_name = stmt.table_name.to_string();
 
         let table = self
-            .find_table(&table_name)?
+            .findTable(&table_name)?
             .context(TableNotFound { name: table_name })?;
         let plan = AlterTablePlan {
             table,
@@ -951,7 +923,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
     fn alter_add_column_to_plan(&self, stmt: AlterAddColumn) -> Result<Plan> {
         let table_name = stmt.table_name.to_string();
         let table = self
-            .find_table(&table_name)?
+            .findTable(&table_name)?
             .context(TableNotFound { name: table_name })?;
         let plan = AlterTablePlan {
             table,
@@ -961,7 +933,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
     }
 
     fn exists_table_to_plan(&self, stmt: ExistsTable) -> Result<Plan> {
-        let table = self.find_table(&stmt.table_name.to_string())?;
+        let table = self.findTable(&stmt.table_name.to_string())?;
         match table {
             Some(_) => Ok(Plan::Exists(ExistsTablePlan { exists: true })),
             None => Ok(Plan::Exists(ExistsTablePlan { exists: false })),
@@ -971,7 +943,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
     fn show_create_to_plan(&self, show_create: ShowCreate) -> Result<Plan> {
         let table_name = show_create.table_name.to_string();
         let table = self
-            .find_table(&table_name)?
+            .findTable(&table_name)?
             .context(TableNotFound { name: table_name })?;
         let plan = ShowCreatePlan {
             table,
@@ -992,11 +964,9 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
         Ok(Plan::Show(ShowPlan::ShowDatabase))
     }
 
-    pub(crate) fn find_table(&self, table_name: &str) -> Result<Option<TableRef>> {
-        let table_ref = get_table_ref(table_name);
-        self.meta_provider
-            .table(table_ref)
-            .context(MetaProviderFindTable)
+    pub(crate) fn findTable(&self, tableName: &str) -> Result<Option<TableRef>> {
+        let table_ref = get_table_ref(tableName);
+        self.metaAndContextProvider.table(table_ref).context(MetaProviderFindTable)
     }
 }
 
@@ -1030,107 +1000,76 @@ fn normalize_func_name(sql_stmt: &mut SqlStatement) {
 
 #[derive(Debug)]
 enum InsertMode {
-    // Insert the value in expr with given index directly.
+    /// 在insert时候涉及到了该column
     Direct(usize),
-    // No value provided, insert a null.
+    /// 在insert时候未涉及到该column 且该column没有默认值且是nullable
     Null,
-    // Auto generated column, just temporary fill by default value, the real value will
-    // be filled by interpreter.
+    /// 在insert时候未涉及到该column 且该column是有默认值的or是tsid到后来自动生成
     Auto,
 }
 
-/// Parse [Datum] from the [Expr].
-fn parse_data_value_from_expr(data_type: DatumKind, expr: &mut Expr) -> Result<Datum> {
+fn parseDataValFromExpr(datumKind: DatumKind, expr: &mut Expr) -> Result<Datum> {
     match expr {
-        Expr::Value(value) => {
-            Datum::try_from_sql_value(&data_type, mem::replace(value, Value::Null))
-                .context(InsertConvertValue)
-        }
-        Expr::UnaryOp {
-            op,
-            expr: child_expr,
-        } => {
-            let is_negative = match op {
+        Expr::Value(value) => Datum::fromValue(&datumKind, mem::replace(value, Value::Null)).context(InsertConvertValue),
+        Expr::UnaryOp { op: unaryOperator, expr: child_expr } => {
+            let negative = match unaryOperator {
                 UnaryOperator::Minus => true,
                 UnaryOperator::Plus => false,
-                _ => InsertExprNotValue {
-                    source_expr: Expr::UnaryOp {
-                        op: *op,
-                        expr: child_expr.clone(),
-                    },
-                }
-                    .fail()?,
+                _ => InsertExprNotValue { source_expr: Expr::UnaryOp { op: *unaryOperator, expr: child_expr.clone() } }.fail()?,
             };
-            let mut datum = parse_data_value_from_expr(data_type, child_expr)?;
-            if is_negative {
-                datum = datum
-                    .to_negative()
-                    .with_context(|| InsertExprNoNegativeValue {
-                        source_expr: expr.clone(),
-                    })?;
+
+            let mut datum = parseDataValFromExpr(datumKind, child_expr)?;
+
+            if negative {
+                datum = datum.to_negative().with_context(|| InsertExprNoNegativeValue { source_expr: expr.clone() })?;
             }
+
             Ok(datum)
         }
-        _ => InsertExprNotValue {
-            source_expr: expr.clone(),
-        }
-            .fail(),
+        _ => InsertExprNotValue { source_expr: expr.clone() }.fail(),
     }
 }
 
-/// Build RowGroup
-fn build_row_group(
-    schema: Schema,
-    source: Box<Query>,
-    column_index_in_insert: Vec<InsertMode>,
-) -> Result<RowGroup> {
+fn build_row_group(schema: Schema,
+                   source: Box<Query>,
+                   insertModeVec: Vec<InsertMode>) -> Result<RowGroup> {
     // Build row group by schema
     match *source.body {
         SetExpr::Values(Values {
                             explicit_row: _,
                             rows,
                         }) => {
-            let mut row_group_builder = RowGroupBuilder::with_capacity(schema.clone(), rows.len());
-            for mut exprs in rows {
-                // Try to build row
-                let mut row_builder = row_group_builder.row_builder();
+            let mut rowGroupBuilder = RowGroupBuilder::with_capacity(schema.clone(), rows.len());
+            for mut row in rows {
+                // build row
+                let mut row_builder = rowGroupBuilder.row_builder();
 
-                // For each column in schema, append datum into row builder
-                for (index_opt, column_schema) in
-                column_index_in_insert.iter().zip(schema.columns())
-                {
-                    match index_opt {
+                // for each column in schema, append datum into row builder
+                for (insertMode, columnSchema) in insertModeVec.iter().zip(schema.columns()) {
+                    match insertMode {
                         InsertMode::Direct(index) => {
-                            let exprs_len = exprs.len();
-                            let expr = exprs.get_mut(*index).context(InsertValuesNotEnough {
+                            let exprs_len = row.len();
+                            let expr = row.get_mut(*index).context(InsertValuesNotEnough {
                                 len: exprs_len,
                                 index: *index,
                             })?;
 
-                            let datum = parse_data_value_from_expr(column_schema.data_type, expr)?;
+                            let datum = parseDataValFromExpr(columnSchema.datumKind, expr)?;
                             row_builder = row_builder.append_datum(datum).context(BuildRow)?;
                         }
-                        InsertMode::Null => {
-                            // This is a null column
-                            row_builder =
-                                row_builder.append_datum(Datum::Null).context(BuildRow)?;
-                        }
-                        InsertMode::Auto => {
-                            // This is an auto generated column, fill by default value.
-                            let kind = &column_schema.data_type;
-                            row_builder = row_builder
-                                .append_datum(Datum::empty(kind))
-                                .context(BuildRow)?;
-                        }
+                        // null column
+                        InsertMode::Null => row_builder = row_builder.append_datum(Datum::Null).context(BuildRow)?,
+                        // 先暂时用各个类型的0值来填充
+                        InsertMode::Auto => row_builder = row_builder.append_datum(Datum::empty(&columnSchema.datumKind)).context(BuildRow)?,
                     }
                 }
 
-                // Finish this row and append into row group
+                // finish this row and append into row group
                 row_builder.finish().context(BuildRow)?;
             }
 
             // Build the whole row group
-            Ok(row_group_builder.build())
+            Ok(rowGroupBuilder.build())
         }
         _ => InsertSourceBodyNotSet.fail(),
     }
@@ -1141,21 +1080,19 @@ fn is_tsid_column(name: &str) -> bool {
     name == TSID_COLUMN
 }
 
-fn validate_insert_stmt(
-    table_name: &str,
-    schema: &Schema,
-    column_name_idx: &HashMap<&String, usize>,
-) -> Result<()> {
-    for name in column_name_idx.keys() {
+// 确保用户是不能自己单独专门insert tsid这个字段的 fenquen
+fn validateInsertStmt(table_name: &str,
+                      schema: &Schema,
+                      columnName_columnIndex: &HashMap<&String, usize>) -> Result<()> {
+    for name in columnName_columnIndex.keys() {
         if is_tsid_column(name.as_str()) {
             return Err(Error::InsertReservedColumn {
                 table: table_name.to_string(),
                 column: name.to_string(),
             });
         }
-        schema.column_with_name(name).context(UnknownInsertColumn {
-            name: name.to_string(),
-        })?;
+
+        schema.column_with_name(name).context(UnknownInsertColumn { name: name.to_string() })?;
     }
 
     Ok(())
@@ -1256,7 +1193,7 @@ fn parse_column(col: &ColumnDef) -> Result<ColumnSchema> {
 // Ensure default value option of columns are valid.
 fn ensure_column_default_value_valid<P: MetaProvider>(
     columns: &[ColumnSchema],
-    meta_provider: &ContextProviderAdapter<'_, P>,
+    meta_provider: &MetaAndContextProvider<'_, P>,
 ) -> Result<()> {
     let df_planner = SqlToRel::new_with_options(meta_provider, DEFAULT_PARSER_OPTS);
     let mut df_schema = DFSchema::empty();
@@ -1294,11 +1231,11 @@ fn ensure_column_default_value_valid<P: MetaProvider>(
                 .data_type(&arrow_schema)
                 .context(DatafusionDataType)?;
             ensure! {
-                can_cast_types(&from_type, &column_def.data_type.into()),
+                can_cast_types(&from_type, &column_def.datumKind.into()),
                 InvalidDefaultValueCoercion::<Expr, ArrowDataType, ArrowDataType>{
                     expr: expr.clone(),
                     from: from_type,
-                    to: column_def.data_type.into(),
+                    to: column_def.datumKind.into(),
                 },
             }
         }
@@ -1322,10 +1259,10 @@ fn ensure_column_default_value_valid<P: MetaProvider>(
 // Workaround for TableReference::from(&str)
 // it will always convert table to lowercase when not quoted
 // TODO: support catalog/schema
-pub fn get_table_ref(table_name: &str) -> TableReference {
+pub fn get_table_ref(tableName: &str) -> TableReference {
     TableReference::from(ResolvedTableReference {
         catalog: Cow::from(DEFAULT_CATALOG),
         schema: Cow::from(DEFAULT_SCHEMA),
-        table: Cow::from(table_name),
+        table: Cow::from(tableName),
     })
 }

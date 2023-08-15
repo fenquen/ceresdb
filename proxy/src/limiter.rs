@@ -108,7 +108,7 @@ impl Limiter {
                     .iter()
                     .try_for_each(|blocked_table| {
                         if query
-                            .tables
+                            .tableContainer
                             .get(query_frontend::planner::get_table_ref(blocked_table))
                             .is_some()
                         {
@@ -153,7 +153,7 @@ impl Limiter {
     /// Try to limit the plan according the configured limiter.
     ///
     /// Error will throws if the plan is forbidden to execute.
-    pub fn try_limit(&self, plan: &Plan) -> Result<()> {
+    pub fn tryLimit(&self, plan: &Plan) -> Result<()> {
         self.try_limit_by_block_list(plan)?;
         self.try_limit_by_rules(plan)
     }

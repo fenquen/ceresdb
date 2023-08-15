@@ -23,14 +23,14 @@ use crate::{
 };
 
 /// A factory to create interpreters
-pub struct Factory<Q> {
+pub struct InterpreterFactory<Q> {
     query_executor: Q,
     catalog_manager: ManagerRef,
     table_engine: TableEngineRef,
     table_manipulator: TableManipulatorRef,
 }
 
-impl<Q: QueryExecutor + 'static> Factory<Q> {
+impl<Q: QueryExecutor + 'static> InterpreterFactory<Q> {
     pub fn new(query_executor: Q,
                catalog_manager: ManagerRef,
                table_engine: TableEngineRef,
@@ -59,9 +59,7 @@ impl<Q: QueryExecutor + 'static> Factory<Q> {
                                           p,
                                           self.table_engine,
                                           self.table_manipulator),
-            Plan::Drop(p) => {
-                DropInterpreter::create(ctx, p, self.table_engine, self.table_manipulator)
-            }
+            Plan::Drop(p) => DropInterpreter::create(ctx, p, self.table_engine, self.table_manipulator),
             Plan::Describe(p) => DescribeInterpreter::create(p),
             Plan::AlterTable(p) => AlterTableInterpreter::create(p),
             Plan::Show(p) => ShowInterpreter::create(ctx, p, self.catalog_manager),

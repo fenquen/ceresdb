@@ -179,7 +179,7 @@ impl<'a, T: Deref<Target = [u8]>> ContiguousRowReaderWithNulls<'a, T> {
                 Some(true) => fixed_byte_offsets.push((*expect_offset - acc_null_bytes) as isize),
                 Some(false) => {
                     fixed_byte_offsets.push(-1);
-                    acc_null_bytes += byte_size_of_datum(&schema.column(index).data_type);
+                    acc_null_bytes += byte_size_of_datum(&schema.column(index).datumKind);
                 }
                 None => fixed_byte_offsets.push(-1),
             }

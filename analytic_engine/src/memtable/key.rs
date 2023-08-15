@@ -96,14 +96,14 @@ impl KeySequence {
 /// REQUIRE: The schema of row to encode matches the Self::schema
 pub struct ComparableInternalKey<'a> {
     /// Sequence number of the row
-    sequence: KeySequence,
+    keySequence: KeySequence,
     /// Schema of row
     schema: &'a Schema,
 }
 
 impl<'a> ComparableInternalKey<'a> {
     pub fn new(sequence: KeySequence, schema: &'a Schema) -> Self {
-        Self { sequence, schema }
+        Self { keySequence: sequence, schema }
     }
 }
 
@@ -115,7 +115,7 @@ impl<'a> Encoder<Row> for ComparableInternalKey<'a> {
         for idx in self.schema.primary_key_indexes() {
             encoder.encode(buf, &value[*idx]).context(EncodeKeyDatum)?;
         }
-        SequenceCodec.encode(buf, &self.sequence)?;
+        SequenceCodec.encode(buf, &self.keySequence)?;
 
         Ok(())
     }
@@ -137,10 +137,10 @@ struct SequenceCodec;
 impl Encoder<KeySequence> for SequenceCodec {
     type Error = Error;
 
-    fn encode<B: BufMut>(&self, buf: &mut B, value: &KeySequence) -> Result<()> {
+    fn encode<B: BufMut>(&self, buf: &mut B, keySequence: &KeySequence) -> Result<()> {
         // Encode sequence number and index in descend order
-        encode_sequence_number(buf, value.sequence())?;
-        let reversed_index = RowIndex::MAX - value.row_index();
+        encode_sequence_number(buf, keySequence.sequence())?;
+        let reversed_index = RowIndex::MAX - keySequence.row_index();
         buf.try_put_u32(reversed_index).context(EncodeIndex)?;
 
         Ok(())

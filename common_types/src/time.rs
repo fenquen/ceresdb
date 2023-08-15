@@ -246,6 +246,7 @@ impl TimeRange {
         }
 
         let inclusive_start = timestamp.checked_floor_by_i64(bucket_duration_ms)?;
+
         // end = start + bucket_duration
         let exclusive_end = inclusive_start.checked_add_i64(bucket_duration_ms)?;
 

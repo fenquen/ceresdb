@@ -168,7 +168,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
 
         self.instance
             .limiter
-            .try_limit(&plan)
+            .tryLimit(&plan)
             .box_err()
             .context(ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,

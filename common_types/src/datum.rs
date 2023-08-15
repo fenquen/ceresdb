@@ -37,9 +37,7 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
-    #[snafu(display(
-        "Invalid insert value, kind:{kind}, value:{value:?}.\nBacktrace:\n{backtrace}"
-    ))]
+    #[snafu(display("invalid insert value, kind:{kind}, value:{value:?}.\nBacktrace:\n{backtrace}"))]
     InvalidValueType {
         kind: DatumKind,
         value: Value,
@@ -739,16 +737,13 @@ impl Datum {
             // Date(v) represent the days from Unix epoch(1970-01-01),
             // so it is necessary to add `EPOCH_DAYS_FROM_CE` to generate
             // `NaiveDate`.
-            Datum::Date(v) => NaiveDate::from_num_days_from_ce_opt((*v) + EPOCH_DAYS_FROM_CE)
-                .unwrap()
-                .to_string(),
-
+            Datum::Date(v) => NaiveDate::from_num_days_from_ce_opt((*v) + EPOCH_DAYS_FROM_CE).unwrap().to_string(),
             Datum::Time(v) => Datum::format_datum_time(v),
         }
     }
 
-    pub fn try_from_sql_value(kind: &DatumKind, value: Value) -> Result<Datum> {
-        match (kind, value) {
+    pub fn fromValue(datumKind: &DatumKind, value: Value) -> Result<Datum> {
+        match (datumKind, value) {
             (DatumKind::Null, Value::Null) => Ok(Datum::Null),
             (DatumKind::Timestamp, Value::Number(n, _long)) => {
                 let n = n.parse::<i64>().context(InvalidTimestamp)?;
@@ -820,7 +815,7 @@ impl Datum {
                 Ok(Datum::Int8(n))
             }
             (DatumKind::Boolean, Value::Boolean(b)) => Ok(Datum::Boolean(b)),
-            (_, value) => InvalidValueType { kind: *kind, value }.fail(),
+            (_, value) => InvalidValueType { kind: *datumKind, value }.fail(),
         }
     }
 

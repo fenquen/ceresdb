@@ -108,7 +108,7 @@ impl<'a> Decoder<Row> for WalRowDecoder<'a> {
 
         for idx in 0..num_columns {
             let column_schema = &self.schema.column(idx);
-            let datum_kind = &column_schema.data_type;
+            let datum_kind = &column_schema.datumKind;
             let decoder = MemCompactDecoder;
 
             // Decode each column

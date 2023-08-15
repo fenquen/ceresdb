@@ -5,7 +5,7 @@
 use std::sync::{atomic::AtomicU64, Arc};
 
 use arena::MonoIncArena;
-use skiplist::Skiplist;
+use skiplist::SkipList;
 
 use crate::memtable::{
     factory::{Factory, Options, Result},
@@ -13,21 +13,20 @@ use crate::memtable::{
     MemTableRef,
 };
 
-/// Factory to create memtable
 #[derive(Debug)]
 pub struct SkiplistMemTableFactory;
 
 impl Factory for SkiplistMemTableFactory {
-    fn create_memtable(&self, opts: Options) -> Result<MemTableRef> {
-        let arena = MonoIncArena::with_collector(opts.arena_block_size as usize, opts.collector);
-        let skiplist = Skiplist::with_arena(BytewiseComparator, arena);
-        let memtable = Arc::new(SkipListMemTable {
+    fn createMemTable(&self, opts: Options) -> Result<MemTableRef> {
+        let monoIncArena = MonoIncArena::with_collector(opts.arena_block_size as usize, opts.collector);
+        let skipList = SkipList::with_arena(BytewiseComparator, monoIncArena);
+        let memTable = Arc::new(SkipListMemTable {
             schema: opts.schema,
-            skiplist,
+            skiplist: skipList,
             last_sequence: AtomicU64::new(opts.creation_sequence),
             metrics: Default::default(),
         });
 
-        Ok(memtable)
+        Ok(memTable)
     }
 }

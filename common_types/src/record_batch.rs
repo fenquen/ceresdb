@@ -163,7 +163,7 @@ fn build_column_blocks_from_arrow_record_batch(
         .iter()
         .zip(arrow_record_batch.columns())
     {
-        let column = ColumnBlock::try_from_arrow_array_ref(&column_schema.data_type, array)
+        let column = ColumnBlock::try_from_arrow_array_ref(&column_schema.datumKind, array)
             .context(CreateColumnBlock)?;
         column_blocks.push(column);
     }
@@ -214,10 +214,10 @@ impl RecordBatch {
         // Validate schema and column_blocks.
         for (column_schema, column_block) in schema.columns().iter().zip(column_blocks.iter()) {
             ensure!(
-                column_schema.data_type == column_block.datum_kind(),
+                column_schema.datumKind == column_block.datum_kind(),
                 MismatchRecordSchema {
                     column_name: &column_schema.name,
-                    schema_type: column_schema.data_type,
+                    schema_type: column_schema.datumKind,
                     column_type: column_block.datum_kind(),
                 }
             );
@@ -491,7 +491,7 @@ impl RecordBatchWithKeyBuilder {
             .iter()
             .map(|column_schema| {
                 ColumnBlockBuilder::with_capacity(
-                    &column_schema.data_type,
+                    &column_schema.datumKind,
                     0,
                     column_schema.is_dictionary,
                 )
@@ -509,7 +509,7 @@ impl RecordBatchWithKeyBuilder {
             .iter()
             .map(|column_schema| {
                 ColumnBlockBuilder::with_capacity(
-                    &column_schema.data_type,
+                    &column_schema.datumKind,
                     capacity,
                     column_schema.is_dictionary,
                 )
@@ -675,7 +675,7 @@ impl ArrowRecordBatchProjector {
                     next_arrow_column_idx += 1;
 
                     let column_block =
-                        ColumnBlock::try_from_arrow_array_ref(&column_schema.data_type, array)
+                        ColumnBlock::try_from_arrow_array_ref(&column_schema.datumKind, array)
                             .context(CreateColumnBlock)?;
 
                     column_blocks.push(column_block);
@@ -683,7 +683,7 @@ impl ArrowRecordBatchProjector {
                 None => {
                     // Need to push row with specific type.
                     let null_block = ColumnBlock::new_null_with_type(
-                        &column_schema.data_type,
+                        &column_schema.datumKind,
                         num_rows,
                         column_schema.is_dictionary,
                     )

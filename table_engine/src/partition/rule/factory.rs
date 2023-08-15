@@ -47,7 +47,7 @@ impl PartitionRuleFactory {
                             "column in key partition info not found in schema, column:{col}"
                         ),
                     })
-                    .map(|col_schema| ColumnWithType::new(col, col_schema.data_type))
+                    .map(|col_schema| ColumnWithType::new(col, col_schema.datumKind))
             })
             .collect::<Result<Vec<_>>>()?;
 

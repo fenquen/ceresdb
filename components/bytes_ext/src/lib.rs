@@ -24,8 +24,7 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-/// Now is just an alias to `Vec<u8>`, prefer to use this alias instead of
-/// `Vec<u8>`
+/// Now is just an alias to `Vec<u8>`, prefer to use this alias instead of `Vec<u8>`
 pub type ByteVec = Vec<u8>;
 
 /// Read bytes from a buffer.
@@ -90,8 +89,7 @@ pub trait SafeBuf {
 
 /// Write bytes to a buffer.
 ///
-/// Unlike [`bytes::BufMut`], failed write operations will throw error rather
-/// than panic.
+/// Unlike [`bytes::BufMut`], failed write operations will throw error rather than panic.
 pub trait SafeBufMut {
     /// Write bytes into self from src, advance the buffer position
     ///
@@ -139,10 +137,7 @@ pub trait SafeBufMut {
     }
 }
 
-impl<T> SafeBufMut for T
-where
-    T: BufMut,
-{
+impl<T> SafeBufMut for T where T: BufMut {
     fn try_put(&mut self, src: &[u8]) -> Result<()> {
         ensure!(self.remaining_mut() >= src.len(), WouldOverflow);
         self.put(src);
@@ -151,10 +146,7 @@ where
     }
 }
 
-impl<T> SafeBuf for T
-where
-    T: Buf,
-{
+impl<T> SafeBuf for T where T: Buf {
     fn try_copy_to_slice(&mut self, dst: &mut [u8]) -> Result<()> {
         ensure!(self.remaining() >= dst.len(), UnexpectedEof);
         self.copy_to_slice(dst);

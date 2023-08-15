@@ -48,9 +48,7 @@ pub struct PartitionedStreams {
 
 impl PartitionedStreams {
     pub fn one_stream(stream: SendableRecordBatchStream) -> Self {
-        Self {
-            streams: vec![stream],
-        }
+        Self { streams: vec![stream] }
     }
 }
 

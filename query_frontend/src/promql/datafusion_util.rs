@@ -105,7 +105,7 @@ impl UserDefinedLogicalNode for PromAlignNode {
         &self,
         _exprs: &[Expr],
         inputs: &[LogicalPlan],
-    ) -> std::sync::Arc<dyn UserDefinedLogicalNode> {
+    ) -> Arc<dyn UserDefinedLogicalNode> {
         Arc::new(PromAlignNode {
             input: inputs[0].clone(),
             func: self.func,

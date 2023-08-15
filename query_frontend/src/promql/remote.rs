@@ -21,7 +21,7 @@ use crate::{
         datafusion_util::{default_sort_exprs, timerange_to_expr},
         error::*,
     },
-    provider::{ContextProviderAdapter, MetaProvider},
+    provider::{MetaAndContextProvider, MetaProvider},
 };
 
 pub const NAME_LABEL: &str = "__name__";
@@ -42,7 +42,7 @@ pub struct RemoteQueryPlan {
 /// ```
 pub fn remote_query_to_plan<P: MetaProvider>(
     query: Query,
-    meta_provider: ContextProviderAdapter<'_, P>,
+    meta_provider: MetaAndContextProvider<'_, P>,
 ) -> Result<RemoteQueryPlan> {
     let (metric, field, mut filters) = normalize_matchers(query.matchers)?;
 
@@ -78,7 +78,7 @@ pub fn remote_query_to_plan<P: MetaProvider>(
             })?,
     );
     Ok(RemoteQueryPlan {
-        plan: Plan::Query(QueryPlan { dataFusionLogicalPlan: df_plan, tables }),
+        plan: Plan::Query(QueryPlan { dataFusionLogicalPlan: df_plan, tableContainer: tables }),
         field_col_name: field,
         timestamp_col_name: timestamp_col_name.to_string(),
     })

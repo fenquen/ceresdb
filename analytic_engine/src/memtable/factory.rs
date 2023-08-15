@@ -28,10 +28,8 @@ pub struct Options {
     pub collector: CollectorRef,
 }
 
-/// MemTable factory
 pub trait Factory: fmt::Debug {
-    /// Create a new memtable instance
-    fn create_memtable(&self, opts: Options) -> Result<MemTableRef>;
+    fn createMemTable(&self, memTableOptions: Options) -> Result<MemTableRef>;
 }
 
 /// MemTable Factory reference

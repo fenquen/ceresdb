@@ -386,7 +386,7 @@ impl ColumnSchemas {
         let mut columnByteOffsetVec = Vec::with_capacity(columns.len());
         for column_schema in &columns {
             columnByteOffsetVec.push(current_offset);
-            current_offset += contiguous::byte_size_of_datum(&column_schema.data_type);
+            current_offset += contiguous::byte_size_of_datum(&column_schema.datumKind);
         }
 
         Self {
@@ -605,7 +605,7 @@ pub struct Schema {
     // TODO(yingwen): Maybe we can remove the restriction that timestamp column must exists in schema (mainly for projected schema)
     timestamp_index: usize,
     /// Index of tsid key column
-    tsid_index: Option<usize>,
+    pub tsid_index: Option<usize>,
     /// Column schemas, only holds arc pointer so the Schema can be cloned without much overhead.
     column_schemas: Arc<ColumnSchemas>,
     /// Version of the schema, schemas with same version should be identical.
@@ -680,7 +680,6 @@ impl Schema {
         result
     }
 
-    /// Returns index of the tsid column.
     pub fn index_of_tsid(&self) -> Option<usize> {
         self.tsid_index
     }
@@ -1052,7 +1051,7 @@ impl Builder {
         ensure!(!columnSchema.is_nullable, NullKeyColumn { name: columnSchema.name });
 
         // FIXME(xikai): it seems not reasonable to decide the timestamp column in this way.
-        if DatumKind::Timestamp == columnSchema.data_type {
+        if DatumKind::Timestamp == columnSchema.datumKind {
             ensure!(
                 self.timestamp_index.is_none(),
                 TimestampKeyExists {
@@ -1113,10 +1112,10 @@ impl Builder {
         // Check datum kind if this is a key column
         if is_key {
             ensure!(
-                column.data_type.is_key_kind(),
+                column.datumKind.is_key_kind(),
                 KeyColumnType {
                     name: &column.name,
-                    kind: column.data_type,
+                    kind: column.datumKind,
                 }
             );
         }
@@ -1224,17 +1223,10 @@ impl Builder {
 
         let tsid_index = Self::find_tsid_index(&self.columns);
         if tsid_index.is_some() {
-            ensure!(
-                self.primary_key_indexes.len() == 2,
-                InvalidPrimaryKeyWithTsid
-            );
+            ensure!(self.primary_key_indexes.len() == 2,InvalidPrimaryKeyWithTsid);
         }
 
-        let arrowFieldVec = self
-            .columns
-            .iter()
-            .map(|c| c.to_arrow_field())
-            .collect::<Vec<_>>();
+        let arrowFieldVec = self.columns.iter().map(|c| c.to_arrow_field()).collect::<Vec<_>>();
         let meta = self.build_arrow_schema_meta();
 
         Ok(Schema {

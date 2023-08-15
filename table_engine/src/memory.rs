@@ -229,7 +229,7 @@ fn row_group_to_record_batch(
                 ),
             })?;
         let cols = rows.iter_column(col_index);
-        let column_block = build_column_block(&column.data_type, cols, column.is_dictionary)?;
+        let column_block = build_column_block(&column.datumKind, cols, column.is_dictionary)?;
         column_blocks.push(column_block);
     }
 

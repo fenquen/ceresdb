@@ -35,12 +35,7 @@ pub enum Error {
     #[snafu(display("Insufficient bytes to decode value.\nBacktrace:\n{}", backtrace))]
     DecodeEmptyValue { backtrace: Backtrace },
 
-    #[snafu(display(
-        "Invalid flag, expect:{}, actual:{}.\nBacktrace:\n{}",
-        expect,
-        actual,
-        backtrace
-    ))]
+    #[snafu(display("invalid flag, expect:{}, actual:{}.\nBacktrace:\n{}", expect, actual, backtrace))]
     InvalidKeyFlag {
         expect: u8,
         actual: u8,
@@ -68,10 +63,8 @@ pub enum Error {
 
 define_result!(Error);
 
-/// Mem compact encoder
 pub struct MemCompactEncoder;
 
-/// Mem compact decoder
 pub struct MemCompactDecoder;
 
 impl MemCompactDecoder {

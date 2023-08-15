@@ -84,9 +84,9 @@ define_result!(Error);
 /// Options for put and context for tracing
 pub struct PutContext {
     /// Buffer for encoding key, can reuse during put
-    pub key_buf: ByteVec,
+    pub key_buf: Vec<u8>,
     /// Buffer for encoding value, can reuse during put
-    pub value_buf: ByteVec,
+    pub value_buf: Vec<u8>,
     /// Used to encode row.
     pub index_in_writer: IndexInWriterSchema,
 }
@@ -170,7 +170,7 @@ pub trait MemTable {
     /// handle duplicate entries is implementation specific.
     fn put(&self,
            ctx: &mut PutContext,
-           sequence: KeySequence,
+           keySequence: KeySequence,
            row: &Row,
            schema: &Schema) -> Result<()>;
 
@@ -209,8 +209,6 @@ pub struct Metrics {
     pub row_count: usize,
 }
 
-/// A reference to memtable
 pub type MemTableRef = Arc<dyn MemTable + Send + Sync>;
 
-/// A pointer to columnar iterator
 pub type ColumnarIterPtr = Box<dyn Iterator<Item=Result<RecordBatchWithKey>> + Send + Sync>;

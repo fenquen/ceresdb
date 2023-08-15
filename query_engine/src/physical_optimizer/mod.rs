@@ -9,6 +9,7 @@ use datafusion::{
     error::DataFusionError, physical_optimizer::optimizer::PhysicalOptimizerRule,
     prelude::SessionContext,
 };
+use datafusion::logical_expr::LogicalPlan;
 use macros::define_result;
 use query_frontend::plan::QueryPlan;
 use snafu::{Backtrace, ResultExt, Snafu};
@@ -17,7 +18,7 @@ use crate::{
     physical_optimizer::{
         coalesce_batches::CoalesceBatchesAdapter, repartition::RepartitionAdapter,
     },
-    physical_plan::{DataFusionPhysicalPlan, PhysicalPlanPtr},
+    physical_plan::{PhysicalPlanImpl, PhysicalPlanPtr},
 };
 
 pub mod coalesce_batches;
@@ -44,7 +45,7 @@ define_result!(Error);
 #[async_trait]
 pub trait PhysicalOptimizer {
     /// Create a physical plan from a logical plan
-    async fn optimize(&mut self, logical_plan: QueryPlan) -> Result<PhysicalPlanPtr>;
+    async fn optimize(&mut self, logical_plan: LogicalPlan) -> Result<PhysicalPlanPtr>;
 }
 
 pub struct PhysicalOptimizerImpl {
@@ -59,14 +60,14 @@ impl PhysicalOptimizerImpl {
 
 #[async_trait]
 impl PhysicalOptimizer for PhysicalOptimizerImpl {
-    async fn optimize(&mut self, logical_plan: QueryPlan) -> Result<PhysicalPlanPtr> {
+    async fn optimize(&mut self, dataFusionLogicalPlan: LogicalPlan) -> Result<PhysicalPlanPtr> {
         let exec_plan = self
             .ctx
             .state()
-            .create_physical_plan(&logical_plan.dataFusionLogicalPlan)
+            .create_physical_plan(&dataFusionLogicalPlan)
             .await
             .context(DataFusionOptimize)?;
-        let physical_plan = DataFusionPhysicalPlan::with_plan(self.ctx.clone(), exec_plan);
+        let physical_plan = PhysicalPlanImpl::with_plan(self.ctx.clone(), exec_plan);
 
         Ok(Box::new(physical_plan))
     }

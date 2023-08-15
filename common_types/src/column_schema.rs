@@ -168,11 +168,10 @@ pub struct ColumnSchema {
     /// Column name
     pub name: String,
     /// Data type of the column
-    pub data_type: DatumKind,
+    pub datumKind: DatumKind,
     /// Is nullable
     pub is_nullable: bool,
-    /// Is tag, tag is just a hint for a column, there is no restriction that a
-    /// tag column must be a part of primary key
+    /// is tag, tag is just a hint for a column, there is no restriction that a tag column must be a part of primary key
     pub is_tag: bool,
     // Whether to use dictionary types for encoding column 1直都false
     pub is_dictionary: bool,
@@ -225,11 +224,11 @@ impl ColumnSchema {
         writer_schema: &ColumnSchema,
     ) -> std::result::Result<(), CompatError> {
         ensure!(
-            self.data_type == writer_schema.data_type,
+            self.datumKind == writer_schema.datumKind,
             IncompatDataType {
                 name: &self.name,
-                expect: writer_schema.data_type,
-                given: self.data_type,
+                expect: writer_schema.datumKind,
+                given: self.datumKind,
             }
         );
 
@@ -292,7 +291,7 @@ impl TryFrom<schema_pb::ColumnSchema> for ColumnSchema {
         Ok(Self {
             id: column_schema.id,
             name: column_schema.name,
-            data_type: DatumKind::from(data_type),
+            datumKind: DatumKind::from(data_type),
             is_nullable: column_schema.is_nullable,
             is_tag: column_schema.is_tag,
             is_dictionary: column_schema.is_dictionary,
@@ -316,11 +315,7 @@ impl TryFrom<&Arc<Field>> for ColumnSchema {
         Ok(Self {
             id,
             name: field.name().clone(),
-            data_type: DatumKind::from_data_type(field.data_type()).context(
-                UnsupportedDataType {
-                    data_type: field.data_type().clone(),
-                },
-            )?,
+            datumKind: DatumKind::from_data_type(field.data_type()).context(UnsupportedDataType { data_type: field.data_type().clone()})?,
             is_nullable: field.is_nullable(),
             is_tag,
             is_dictionary,
@@ -347,7 +342,7 @@ impl From<&ColumnSchema> for Field {
             )
         } else {
             Field::new(&col_schema.name,
-                       col_schema.data_type.into(),
+                       col_schema.datumKind.into(),
                        col_schema.is_nullable,
             )
         };
@@ -495,7 +490,7 @@ impl Builder {
         Ok(ColumnSchema {
             id: self.id,
             name: self.name,
-            data_type: self.data_type,
+            datumKind: self.data_type,
             is_nullable: self.is_nullable,
             is_tag: self.is_tag,
             is_dictionary: self.is_dictionary,
@@ -516,7 +511,7 @@ impl From<ColumnSchema> for schema_pb::ColumnSchema {
 
         schema_pb::ColumnSchema {
             name: src.name,
-            data_type: schema_pb::DataType::from(src.data_type) as i32,
+            data_type: schema_pb::DataType::from(src.datumKind) as i32,
             is_nullable: src.is_nullable,
             id: src.id,
             is_tag: src.is_tag,

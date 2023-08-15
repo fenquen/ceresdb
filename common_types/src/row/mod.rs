@@ -504,10 +504,10 @@ pub fn check_datum_type(datum: &Datum, column_schema: &ColumnSchema) -> Result<(
         );
     } else {
         ensure!(
-            datum.kind() == column_schema.data_type,
+            datum.kind() == column_schema.datumKind,
             TypeMismatch {
                 column: &column_schema.name,
-                expect: column_schema.data_type,
+                expect: column_schema.datumKind,
                 given: datum.kind(),
             }
         );

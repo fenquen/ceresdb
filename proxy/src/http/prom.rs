@@ -144,7 +144,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
 
         self.instance
             .limiter
-            .try_limit(&plan)
+            .tryLimit(&plan)
             .box_err()
             .context(ErrWithCause {
                 code: StatusCode::INTERNAL_SERVER_ERROR,
@@ -276,9 +276,9 @@ impl Converter {
             .filter(|(_, col)| col.is_tag)
             .map(|(i, col)| {
                 ensure!(
-                    matches!(col.data_type, DatumKind::String),
+                    matches!(col.datumKind, DatumKind::String),
                     InternalNoCause {
-                        msg: format!("Tag must be string type, current:{}", col.data_type)
+                        msg: format!("Tag must be string type, current:{}", col.datumKind)
                     }
                 );
 
@@ -287,29 +287,29 @@ impl Converter {
             .collect::<Result<Vec<_>>>()?;
 
         ensure!(
-            matches!(schema.column(tsid_idx).data_type, DatumKind::UInt64),
+            matches!(schema.column(tsid_idx).datumKind, DatumKind::UInt64),
             InternalNoCause {
                 msg: format!(
                     "Tsid must be u64, current:{}",
-                    schema.column(tsid_idx).data_type
+                    schema.column(tsid_idx).datumKind
                 )
             }
         );
         ensure!(
-            schema.column(timestamp_idx).data_type.is_timestamp(),
+            schema.column(timestamp_idx).datumKind.is_timestamp(),
             InternalNoCause {
                 msg: format!(
                     "Timestamp wrong type, current:{}",
-                    schema.column(timestamp_idx).data_type
+                    schema.column(timestamp_idx).datumKind
                 )
             }
         );
         ensure!(
-            schema.column(value_idx).data_type.is_f64_castable(),
+            schema.column(value_idx).datumKind.is_f64_castable(),
             InternalNoCause {
                 msg: format!(
                     "Value must be f64 compatible type, current:{}",
-                    schema.column(value_idx).data_type
+                    schema.column(value_idx).datumKind
                 )
             }
         );

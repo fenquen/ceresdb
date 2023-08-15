@@ -26,7 +26,7 @@ use table_engine::table::TableRef;
 use crate::{
     influxql::error::*,
     plan::{Plan, QueryPlan, QueryType, ShowPlan, ShowTablesPlan},
-    provider::{ContextProviderAdapter, MetaProvider},
+    provider::{MetaAndContextProvider, MetaProvider},
 };
 
 // Same with iox
@@ -34,7 +34,7 @@ pub const CERESDB_MEASUREMENT_COLUMN_NAME: &str = "iox::measurement";
 
 // Port from https://github.com/ceresdb/influxql/blob/36fc4d873e/iox_query_influxql/src/frontend/planner.rs#L28
 struct InfluxQLSchemaProvider<'a, P: MetaProvider> {
-    context_provider: ContextProviderAdapter<'a, P>,
+    context_provider: MetaAndContextProvider<'a, P>,
     tables_cache: OnceCell<Vec<TableRef>>,
 }
 
@@ -131,7 +131,7 @@ fn convert_to_influxql_schema(ceresdb_arrow_schema: ArrowSchemaRef) -> Result<Sc
 }
 
 impl<'a, P: MetaProvider> Planner<'a, P> {
-    pub fn new(context_provider: ContextProviderAdapter<'a, P>) -> Self {
+    pub fn new(context_provider: MetaAndContextProvider<'a, P>) -> Self {
         Self {
             schema_provider: InfluxQLSchemaProvider {
                 context_provider,
@@ -168,7 +168,7 @@ impl<'a, P: MetaProvider> Planner<'a, P> {
                             msg: "get tables from context_provider",
                         })?,
                 );
-                Ok(Plan::Query(QueryPlan { dataFusionLogicalPlan: df_plan, tables }))
+                Ok(Plan::Query(QueryPlan { dataFusionLogicalPlan: df_plan, tableContainer: tables }))
             }
         }
     }

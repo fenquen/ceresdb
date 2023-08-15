@@ -27,7 +27,7 @@ use datafusion::{
 use table_engine::provider::CeresdbOptions;
 
 use crate::{
-    config::Config, df_planner_extension::QueryPlannerAdapter,
+    config::Config, df_planner_extension::QueryPlannerImpl,
     logical_optimizer::type_conversion::TypeConversion, physical_optimizer,
 };
 
@@ -42,45 +42,40 @@ pub struct Context {
 }
 
 impl Context {
-    pub fn build_df_session_ctx(
-        &self,
-        config: &Config,
-        request_id: RequestId,
-        deadline: Option<Instant>,
-    ) -> SessionContext {
-        let timeout =
-            deadline.map(|deadline| deadline.duration_since(Instant::now()).as_millis() as u64);
-        let ceresdb_options = CeresdbOptions {
+    pub fn buildDataFusionSessionContext(&self,
+                                         config: &Config,
+                                         request_id: RequestId,
+                                         deadline: Option<Instant>) -> SessionContext {
+        let timeout = deadline.map(|deadline| deadline.duration_since(Instant::now()).as_millis() as u64);
+
+        let ceresDbOptions = CeresdbOptions {
             request_id: request_id.as_u64(),
             request_timeout: timeout,
         };
-        let mut df_session_config = SessionConfig::new()
+
+        let mut dataFusionSessionConfig = SessionConfig::new()
             .with_default_catalog_and_schema(
                 self.default_catalog.clone(),
                 self.default_schema.clone(),
-            )
-            .with_target_partitions(config.read_parallelism);
+            ).with_target_partitions(config.read_parallelism);
 
-        df_session_config
-            .options_mut()
-            .extensions
-            .insert(ceresdb_options);
+        dataFusionSessionConfig.options_mut().extensions.insert(ceresDbOptions);
 
-        let logical_optimize_rules = Self::logical_optimize_rules();
-        let state =
-            SessionState::with_config_rt(df_session_config, Arc::new(RuntimeEnv::default()))
-                .with_query_planner(Arc::new(QueryPlannerAdapter))
+        let dataFusionSessionState =
+            SessionState::with_config_rt(dataFusionSessionConfig, Arc::new(RuntimeEnv::default()))
+                .with_query_planner(Arc::new(QueryPlannerImpl))
                 .with_analyzer_rules(Self::analyzer_rules())
-                .with_optimizer_rules(logical_optimize_rules);
-        let state = influxql_query::logical_optimizer::register_iox_logical_optimizers(state);
-        let physical_optimizer =
-            Self::apply_adapters_for_physical_optimize_rules(state.physical_optimizers());
-        SessionContext::with_state(state.with_physical_optimizer_rules(physical_optimizer))
+                .with_optimizer_rules(Self::logical_optimize_rules());
+
+        //let state = influxql_query::logical_optimizer::register_iox_logical_optimizers(state);
+
+        let physical_optimizer = Self::apply_adapters_for_physical_optimize_rules(dataFusionSessionState.physical_optimizers());
+        let dataFusionSessionState = dataFusionSessionState.with_physical_optimizer_rules(physical_optimizer);
+
+        SessionContext::with_state(dataFusionSessionState)
     }
 
-    fn apply_adapters_for_physical_optimize_rules(
-        default_rules: &[Arc<dyn PhysicalOptimizerRule + Send + Sync>],
-    ) -> Vec<Arc<dyn PhysicalOptimizerRule + Send + Sync>> {
+    fn apply_adapters_for_physical_optimize_rules(default_rules: &[Arc<dyn PhysicalOptimizerRule + Send + Sync>]) -> Vec<Arc<dyn PhysicalOptimizerRule + Send + Sync>> {
         let mut new_rules = Vec::with_capacity(default_rules.len());
         for rule in default_rules {
             new_rules.push(physical_optimizer::may_adapt_optimize_rule(rule.clone()))

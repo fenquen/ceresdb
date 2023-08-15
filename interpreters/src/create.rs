@@ -45,9 +45,7 @@ impl CreateInterpreter {
             tableManipulator: table_manipulator,
         })
     }
-}
 
-impl CreateInterpreter {
     async fn executeCreate(self: Box<Self>) -> Result<Output> {
         self.tableManipulator.createTable(self.interpreterContext,
                                           self.createTablePlan,
