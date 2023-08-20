@@ -43,10 +43,10 @@ use crate::{
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display(
-        "Expect the same schema, expect:{:?}, given:{:?}.\nBacktrace:\n{}",
-        expect,
-        given,
-        backtrace
+    "Expect the same schema, expect:{:?}, given:{:?}.\nBacktrace:\n{}",
+    expect,
+    given,
+    backtrace
     ))]
     MismatchedSchema {
         expect: RecordSchemaWithKey,
@@ -169,14 +169,8 @@ impl<'a> MergeBuilder<'a> {
         }
         let mut streams = Vec::with_capacity(streams_num);
 
-        debug!(
-            "Build merge iterator, table_id:{:?}, request_id:{}, sampling_mem:{:?}, memtables:{:?}, ssts:{:?}",
-            self.config.table_id,
-            self.config.request_id,
-            self.sampling_mem,
-            self.memtables,
-            self.ssts
-        );
+        debug!("build merge iterator, table_id:{:?}, request_id:{}, sampling_mem:{:?}, memtables:{:?}, ssts:{:?}",
+            self.config.table_id,self.config.request_id,self.sampling_mem,self.memtables,self.ssts);
 
         if let Some(v) = &self.sampling_mem {
             let stream = record_batch_stream::filtered_stream_from_memtable(
@@ -187,8 +181,7 @@ impl<'a> MergeBuilder<'a> {
                 self.config.predicate.as_ref(),
                 self.config.deadline,
                 self.config.metrics_collector.clone(),
-            )
-            .context(BuildStreamFromMemtable)?;
+            ).context(BuildStreamFromMemtable)?;
             streams.push(stream);
         }
 
@@ -202,7 +195,7 @@ impl<'a> MergeBuilder<'a> {
                 self.config.deadline,
                 self.config.metrics_collector.clone(),
             )
-            .context(BuildStreamFromMemtable)?;
+                .context(BuildStreamFromMemtable)?;
             streams.push(stream);
         }
 
@@ -218,8 +211,8 @@ impl<'a> MergeBuilder<'a> {
                     self.config.store_picker,
                     self.config.metrics_collector.clone(),
                 )
-                .await
-                .context(BuildStreamFromSst)?;
+                    .await
+                    .context(BuildStreamFromSst)?;
                 streams.push(stream);
                 sst_ids.push(f.id());
             }
@@ -325,15 +318,12 @@ impl BufferedStreamState {
     /// Take record batch slice with at most `len` rows from cursor and advance
     /// the cursor.
     fn take_record_batch_slice(&mut self, len: usize) -> RecordBatchWithKey {
-        let len_to_fetch = cmp::min(
-            self.buffered_record_batch.record_batch.num_rows() - self.cursor,
-            len,
-        );
-        let record_batch = self
-            .buffered_record_batch
-            .record_batch
-            .slice(self.cursor, len_to_fetch);
+        let len_to_fetch = cmp::min(self.buffered_record_batch.record_batch.num_rows() - self.cursor, len);
+
+        let record_batch = self.buffered_record_batch.record_batch.slice(self.cursor, len_to_fetch);
+
         self.cursor += record_batch.num_rows();
+
         record_batch
     }
 
@@ -773,12 +763,8 @@ impl MergeIterator {
     /// Fetch at most `num_rows_to_fetch` rows from the hottest
     /// `BufferedStream`.
     ///
-    /// If the inner builder is empty, returns a slice of the record batch in
-    /// stream.
-    async fn fetch_rows_from_one_stream(
-        &mut self,
-        num_rows_to_fetch: usize,
-    ) -> Result<Option<RecordBatchWithKey>> {
+    /// If the inner builder is empty, returns a slice of the record batch in stream.
+    async fn fetch_rows_from_one_stream(&mut self, num_rows_to_fetch: usize) -> Result<Option<RecordBatchWithKey>> {
         assert_eq!(self.hot.len(), 1);
         self.metrics.times_fetch_rows_from_one += 1;
 
@@ -791,8 +777,7 @@ impl MergeIterator {
 
             Some(record_batch)
         } else {
-            let fetched_row_num = buffered_stream
-                .append_rows_to(&mut self.record_batch_builder, num_rows_to_fetch)?;
+            let fetched_row_num = buffered_stream.append_rows_to(&mut self.record_batch_builder, num_rows_to_fetch)?;
 
             self.metrics.total_rows_fetch_from_one += fetched_row_num;
 
@@ -827,15 +812,13 @@ impl MergeIterator {
 
         self.record_batch_builder.clear();
 
-        while !self.hot.is_empty() && self.record_batch_builder.len() < self.iter_options.batch_size
-        {
+        while !self.hot.is_empty() && self.record_batch_builder.len() < self.iter_options.batch_size {
             // no need to do merge sort if only one batch in the hot heap.
             if self.hot.len() == 1 {
                 let fetch_row_num = self.iter_options.batch_size - self.record_batch_builder.len();
 
                 if let Some(record_batch) = self.fetch_rows_from_one_stream(fetch_row_num).await? {
-                    // The builder is empty and we have fetch a record batch from this stream, just
-                    // return that batch.
+                    // The builder is empty and we have fetch a record batch from this stream, just return that batch.
                     return Ok(Some(record_batch));
                 }
                 // Else, some rows may have been pushed into the builder.
@@ -847,10 +830,7 @@ impl MergeIterator {
         if self.record_batch_builder.is_empty() {
             Ok(None)
         } else {
-            let record_batch = self
-                .record_batch_builder
-                .build()
-                .context(BuildRecordBatch)?;
+            let record_batch = self.record_batch_builder.build().context(BuildRecordBatch)?;
             Ok(Some(record_batch))
         }
     }

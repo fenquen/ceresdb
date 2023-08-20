@@ -34,6 +34,7 @@ use crate::{
     stream::{SendableRecordBatchStream, ToDfStream},
     table::{self, ReadOptions, ReadRequest, TableRef},
 };
+use crate::predicate::Predicate;
 
 const SCAN_TABLE_METRICS_COLLECTOR_NAME: &str = "scan_table";
 
@@ -124,19 +125,19 @@ impl TableProviderImpl {
     }
 
     pub async fn scan_table(&self,
-                            state: &SessionState,
+                            dataFusionSessionState: &SessionState,
                             projection: Option<&Vec<usize>>,
                             filters: &[Expr], // 下落到tablescan的where
                             limit: Option<usize>) -> Result<Arc<dyn ExecutionPlan>> {
-        let ceresdb_options = state.config_options().extensions.get::<CeresdbOptions>().unwrap();
-        let request_id = RequestId::from(ceresdb_options.request_id);
-        let deadline = ceresdb_options.request_timeout.map(|n| Instant::now() + Duration::from_millis(n));
-        let read_parallelism = state.config().target_partitions();
+        let ceresdbOptions = dataFusionSessionState.config_options().extensions.get::<CeresdbOptions>().unwrap();
+        let request_id = RequestId::from(ceresdbOptions.request_id);
+        let deadline = ceresdbOptions.request_timeout.map(|n| Instant::now() + Duration::from_millis(n));
+        let read_parallelism = dataFusionSessionState.config().target_partitions();
 
         debug!("scan table, table:{}, request_id:{}, projection:{:?}, filters:{:?}, limit:{:?}, deadline:{:?}, parallelism:{}",
             self.table.name(),request_id,projection,filters,limit,deadline,read_parallelism,);
 
-        let predicate = self.check_and_build_predicate_from_filters(filters);
+        let predicate = self.buildPredicate(filters);
 
         let mut scan_table = ScanTable {
             projected_schema: ProjectedSchema::new(self.read_schema.clone(), projection.cloned()).map_err(|e| { DataFusionError::Internal(format!("invalid projection, plan:{self:?}, projection:{projection:?}, err:{e:?}")) })?,
@@ -149,24 +150,21 @@ impl TableProviderImpl {
             metrics_collector: MetricsCollector::new(SCAN_TABLE_METRICS_COLLECTOR_NAME.to_string()),
         };
 
-        scan_table.maybe_init_stream(state).await?;
+        scan_table.initStream(dataFusionSessionState).await?;
 
         Ok(Arc::new(scan_table))
     }
 
-    fn check_and_build_predicate_from_filters(&self, filters: &[Expr]) -> PredicateRef {
-        let unique_keys = self.read_schema.unique_keys();
+    fn buildPredicate(&self, filters: &[Expr]) -> Arc<Predicate> {
+        let uniqueKeyColumnNames = self.read_schema.unique_keys();
 
-        let push_down_filters = filters
-            .iter()
-            .filter_map(|filter| {
-                if Self::only_filter_unique_key_columns(filter, &unique_keys) {
+        let push_down_filters = filters.iter().filter_map(|filter| {
+                if Self::only_filter_unique_key_columns(filter, &uniqueKeyColumnNames) {
                     Some(filter.clone())
                 } else {
                     None
                 }
-            })
-            .collect::<Vec<_>>();
+            }).collect::<Vec<_>>();
 
         PredicateBuilder::default()
             .add_pushdown_exprs(&push_down_filters)
@@ -174,12 +172,11 @@ impl TableProviderImpl {
             .build()
     }
 
+    // 如果说落地到tablescan的filter的多个column要是有不是表的unique key,那么 the`filter` shouldn't be pushed down.
     fn only_filter_unique_key_columns(filter: &Expr, unique_keys: &[&str]) -> bool {
-        let filter_cols = visitor::find_columns_by_expr(filter);
-        for filter_col in filter_cols {
-            // If a column which is not part of the unique key occurred in `filter`, the
-            // `filter` shouldn't be pushed down.
-            if !unique_keys.contains(&filter_col.as_str()) {
+        let filterColumnNames = visitor::find_columns_by_expr(filter);
+        for filterColumnName in filterColumnNames {
+            if !unique_keys.contains(&filterColumnName.as_str()) {
                 return false;
             }
         }
@@ -204,11 +201,11 @@ impl TableProvider for TableProviderImpl {
     }
 
     async fn scan(&self,
-                  state: &SessionState,
+                  dataFusionSessionState: &SessionState,
                   projection: Option<&Vec<usize>>,
                   filters: &[Expr],
                   limit: Option<usize>) -> Result<Arc<dyn ExecutionPlan>> {
-        self.scan_table(state, projection, filters, limit).await
+        self.scan_table(dataFusionSessionState, projection, filters, limit).await
     }
 
     fn supports_filter_pushdown(&self, _filter: &Expr) -> Result<TableProviderFilterPushDown> {
@@ -276,7 +273,7 @@ struct ScanTable {
 }
 
 impl ScanTable {
-    async fn maybe_init_stream(&mut self, state: &SessionState) -> Result<()> {
+    async fn initStream(&mut self, state: &SessionState) -> Result<()> {
         let readRequest = ReadRequest {
             request_id: self.request_id,
             readOptions: ReadOptions {
@@ -289,7 +286,7 @@ impl ScanTable {
             metrics_collector: self.metrics_collector.clone(),
         };
 
-        let read_res = self.table.partitioned_read(readRequest).await;
+        let read_res = self.table.partitionedRead(readRequest).await;
 
         let mut stream_state = self.stream_state.lock().unwrap();
         if stream_state.inited {

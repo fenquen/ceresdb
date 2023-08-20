@@ -50,12 +50,12 @@ impl LevelsController {
         self.levelHandlers[level.as_usize()].latest_sst()
     }
 
-    /// Pick the ssts and collect it by `append_sst`.
+    /// pick the ssts and collect it by `append_sst`.
     pub fn pick_ssts(&self,
-                     time_range: TimeRange,
+                     timeRange: TimeRange,
                      mut append_sst: impl FnMut(Level, &[FileHandle])) {
         for levelHandler in self.levelHandlers.iter() {
-            let ssts = levelHandler.pick_ssts(time_range);
+            let ssts = levelHandler.pick_ssts(timeRange);
             append_sst(levelHandler.level, &ssts);
         }
     }

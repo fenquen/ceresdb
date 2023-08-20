@@ -212,7 +212,7 @@ impl Table for PartitionTableImpl {
         .fail()
     }
 
-    async fn partitioned_read(&self, request: ReadRequest) -> Result<PartitionedStreams> {
+    async fn partitionedRead(&self, request: ReadRequest) -> Result<PartitionedStreams> {
         let _timer = PARTITION_TABLE_PARTITIONED_READ_DURATION_HISTOGRAM
             .with_label_values(&["total"])
             .start_timer();

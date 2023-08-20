@@ -279,7 +279,7 @@ pub struct WriteRequest {
 #[derive(Clone, Debug)]
 pub struct ReadOptions {
     pub batch_size: usize,
-    /// Suggested read parallelism, the actual returned stream should equal to
+    /// suggested read parallelism, the actual returned stream should equal to
     pub read_parallelism: usize,
     pub deadline: Option<Instant>,
 }
@@ -458,7 +458,7 @@ pub trait Table: fmt::Debug {
     async fn get(&self, request: GetRequest) -> Result<Option<Row>>;
 
     /// Read multiple partition of the table in parallel.
-    async fn partitioned_read(&self, request: ReadRequest) -> Result<PartitionedStreams>;
+    async fn partitionedRead(&self, readRequest: ReadRequest) -> Result<PartitionedStreams>;
 
     /// Alter table schema to the schema specific in [AlterSchemaRequest] if
     /// the `pre_schema_version` is equal to current schema version.

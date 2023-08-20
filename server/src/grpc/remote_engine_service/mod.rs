@@ -523,7 +523,7 @@ async fn handle_stream_read(
     let begin = Instant::now();
     let table = find_table_by_identifier(&ctx, &table_ident)?;
     let res = table
-        .partitioned_read(read_request)
+        .partitionedRead(read_request)
         .await
         .box_err()
         .with_context(|| ErrWithCause {

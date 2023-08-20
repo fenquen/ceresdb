@@ -436,7 +436,7 @@ impl Table for TableImpl {
         readRequest.readOptions.read_parallelism = 1;
 
         let mut partitionedStreams =
-            self.tableEngineInstance.partitionedReadFromTable(&self.tableData, readRequest)
+            self.tableEngineInstance.partitionedRead(&self.tableData, readRequest)
                 .await.box_err().context(Scan { table: self.name() })?;
 
         assert_eq!(partitionedStreams.streams.len(), 1);
@@ -520,10 +520,9 @@ impl Table for TableImpl {
         Ok(None)
     }
 
-    async fn partitioned_read(&self, request: ReadRequest) -> Result<PartitionedStreams> {
+    async fn partitionedRead(&self, readRequest: ReadRequest) -> Result<PartitionedStreams> {
         let streams =
-            self.tableEngineInstance.partitionedReadFromTable(&self.tableData,
-                                                              request).await.box_err().context(Scan { table: self.name() })?;
+            self.tableEngineInstance.partitionedRead(&self.tableData, readRequest).await.box_err().context(Scan { table: self.name() })?;
 
         Ok(streams)
     }

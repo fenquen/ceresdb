@@ -62,7 +62,7 @@ pub enum Error {
     #[snafu(display("Failed to build chain iterator, table:{}, err:{}", table, source))]
     BuildChainIterator {
         table: String,
-        source: crate::row_iter::chain::Error,
+        source: chain::Error,
     },
 }
 
@@ -75,9 +75,9 @@ const CHAIN_ITER_METRICS_COLLECTOR_NAME_PREFIX: &str = "chain_iter";
 
 impl TableEngineInstance {
     /// Read data in multiple time range from table, and return `read_parallelism` output streams.
-    pub async fn partitionedReadFromTable(&self,
-                                          tableData: &TableData,
-                                          readRequest: ReadRequest) -> Result<PartitionedStreams> {
+    pub async fn partitionedRead(&self,
+                                 tableData: &TableData,
+                                 readRequest: ReadRequest) -> Result<PartitionedStreams> {
         debug!("instance read from table, space_id:{}, table:{}, table_id:{:?}, request:{:?}",
             tableData.space_id, tableData.name, tableData.id, readRequest);
 
@@ -128,7 +128,7 @@ impl TableEngineInstance {
                              tableData: &TableData,
                              readRequest: &ReadRequest,
                              tableOptions: &TableOptions) -> Result<Vec<DedupIterator<MergeIterator>>> {
-        // Current visible sequence
+        // current visible sequence
         let sequence = tableData.last_sequence();
         let projected_schema = readRequest.projected_schema.clone();
         let sst_read_options = SstReadOptions {
@@ -148,7 +148,7 @@ impl TableEngineInstance {
         let iter_options = self.make_iter_options(tableOptions.num_rows_per_row_group);
 
         let mut iters = Vec::with_capacity(readViews.len());
-        for (idx, read_view) in readViews.into_iter().enumerate() {
+        for (idx, readView) in readViews.into_iter().enumerate() {
             let metrics_collector = readRequest.metrics_collector.span(format!("{}_{}", MERGE_ITER_METRICS_COLLECTOR_NAME_PREFIX, idx));
             let merge_config = MergeConfig {
                 request_id: readRequest.request_id,
@@ -169,9 +169,9 @@ impl TableEngineInstance {
 
             let merge_iter =
                 MergeBuilder::new(merge_config)
-                    .sampling_mem(read_view.sampling_mem)
-                    .memtables(read_view.memtables)
-                    .ssts_of_level(read_view.leveled_ssts)
+                    .sampling_mem(readView.sampling_mem)
+                    .memtables(readView.memtables)
+                    .ssts_of_level(readView.allLeveSatisfiedSsts)
                     .build().await.context(BuildMergeIterator { table: &tableData.name })?;
 
             let dedup_iter =
@@ -189,12 +189,10 @@ impl TableEngineInstance {
         Ok(iters)
     }
 
-    async fn build_chain_iters(
-        &self,
-        table_data: &TableData,
-        request: &ReadRequest,
-        table_options: &TableOptions,
-    ) -> Result<Vec<ChainIterator>> {
+    async fn build_chain_iters(&self,
+                               table_data: &TableData,
+                               request: &ReadRequest,
+                               table_options: &TableOptions) -> Result<Vec<ChainIterator>> {
         let projected_schema = request.projected_schema.clone();
 
         let sst_read_options = SstReadOptions {
@@ -213,9 +211,7 @@ impl TableEngineInstance {
 
         let mut iters = Vec::with_capacity(read_views.len());
         for (idx, read_view) in read_views.into_iter().enumerate() {
-            let metrics_collector = request
-                .metrics_collector
-                .span(format!("{CHAIN_ITER_METRICS_COLLECTOR_NAME_PREFIX}_{idx}"));
+            let metrics_collector = request.metrics_collector.span(format!("{CHAIN_ITER_METRICS_COLLECTOR_NAME_PREFIX}_{idx}"));
             let chain_config = ChainConfig {
                 request_id: request.request_id,
                 metrics_collector: Some(metrics_collector),
@@ -229,11 +225,13 @@ impl TableEngineInstance {
                 sst_factory: &self.spaceStore.sst_factory,
                 store_picker: self.spaceStore.store_picker(),
             };
+
             let builder = chain::Builder::new(chain_config);
+
             let chain_iter = builder
                 .sampling_mem(read_view.sampling_mem)
                 .memtables(read_view.memtables)
-                .ssts(read_view.leveled_ssts)
+                .ssts(read_view.allLeveSatisfiedSsts)
                 .build()
                 .await
                 .context(BuildChainIterator {
@@ -250,9 +248,10 @@ impl TableEngineInstance {
                                     timeRange: TimeRange,
                                     tableVersion: &TableVersion,
                                     tableOptions: &TableOptions) -> Vec<ReadView> {
-        let readView = tableVersion.pick_read_view(timeRange);
+        // 得到对应的timeRange的memTable和sst
+        let readView = tableVersion.pickReadView(timeRange);
 
-        let segment_duration = match tableOptions.segment_duration {
+        let segmentDuration = match tableOptions.segment_duration {
             Some(v) => v.0,
             None => {
                 // Segment duration is unknown, the table maybe still in sampling phase
@@ -261,31 +260,32 @@ impl TableEngineInstance {
             }
         };
 
+        // the table contains sampling memtable, just return one partition
         if readView.contains_sampling() {
-            // The table contains sampling memtable, just return one partition.
             return vec![readView];
         }
 
         // Collect the aligned ssts and memtables into the map.
         // {aligned timestamp} => {read view}
-        let mut read_view_by_time = BTreeMap::new();
-        for (level, leveled_ssts) in readView.leveled_ssts.into_iter().enumerate() {
-            for fileHandle in leveled_ssts {
-                let aligned_ts = fileHandle.time_range().inclusive_start.truncate_by(segment_duration);
-                let entry = read_view_by_time.entry(aligned_ts).or_insert_with(ReadView::default);
+        let mut alignedTs_readView = BTreeMap::new();
+        for (level, sstsInOneLevel) in readView.allLeveSatisfiedSsts.into_iter().enumerate() {
+            for fileHandle in sstsInOneLevel {
+                let aligned_ts = fileHandle.time_range().inclusive_start.truncate_by(segmentDuration);
 
-                entry.leveled_ssts[level].push(fileHandle);
+                let entry = alignedTs_readView.entry(aligned_ts).or_insert_with(ReadView::default);
+
+                entry.allLeveSatisfiedSsts[level].push(fileHandle);
             }
         }
 
         for memtable in readView.memtables {
-            let aligned_ts = memtable.time_range.inclusive_start().truncate_by(segment_duration);
+            let aligned_ts = memtable.time_range.inclusive_start().truncate_by(segmentDuration);
 
-            let entry = read_view_by_time.entry(aligned_ts).or_insert_with(ReadView::default);
+            let entry = alignedTs_readView.entry(aligned_ts).or_insert_with(ReadView::default);
             entry.memtables.push(memtable);
         }
 
-        read_view_by_time.into_values().collect()
+        alignedTs_readView.into_values().collect()
     }
 
     fn make_iter_options(&self, num_rows_per_row_group: usize) -> IterOptions {
@@ -314,9 +314,7 @@ impl<I: RecordBatchWithKeyIterator + 'static> StreamStateOnMultiIters<I> {
         &mut self.iters[self.curr_iter_idx]
     }
 
-    async fn fetch_next_batch(
-        &mut self,
-    ) -> Option<std::result::Result<RecordBatchWithKey, I::Error>> {
+    async fn fetch_next_batch(&mut self) -> Option<std::result::Result<RecordBatchWithKey, I::Error>> {
         loop {
             if self.is_exhausted() {
                 return None;
@@ -344,18 +342,12 @@ fn iters_to_stream(iters: Vec<impl RecordBatchWithKeyIterator + 'static>,
         while let Some(value) = state.fetch_next_batch().await {
             let record_batch = value
                 .box_err()
-                .context(ErrWithSource {
-                    msg: "Read record batch",
-                })
+                .context(ErrWithSource {msg: "Read record batch",})
                 .and_then(|batch_with_key| {
                     // TODO(yingwen): Try to use projector to do this, which pre-compute row indexes to project.
-                    batch_with_key
-                        .try_project(&state.projected_schema)
-                        .box_err()
-                        .context(ErrWithSource {
-                            msg: "Project record batch",
-                        })
+                    batch_with_key.try_project(&state.projected_schema).box_err().context(ErrWithSource {msg: "Project record batch"})
                 });
+
             yield record_batch?;
         }
     };

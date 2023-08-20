@@ -43,16 +43,10 @@ impl Timestamp {
 
     /// Return current (non-negative) unix timestamp in millis.
     pub fn now() -> Self {
-        SystemTime::now()
-            .duration_since(time::UNIX_EPOCH)
+        SystemTime::now().duration_since(time::UNIX_EPOCH)
             .map(|duration| {
-                duration
-                    .as_millis()
-                    .try_into()
-                    .map(Timestamp)
-                    .unwrap_or(Timestamp::MAX)
-            })
-            .unwrap_or(Timestamp::ZERO)
+                duration.as_millis().try_into().map(Timestamp).unwrap_or(Timestamp::MAX)
+            }).unwrap_or(Timestamp::ZERO)
     }
 
     /// Returns the earliest expired timestamp.
@@ -91,14 +85,10 @@ impl Timestamp {
             self.0.checked_sub(duration_ms - 1)?
         };
 
-        normalized_ts
-            .checked_div(duration_ms)
-            .and_then(|v| v.checked_mul(duration_ms))
-            .map(Timestamp)
+        normalized_ts.checked_div(duration_ms).and_then(|v| v.checked_mul(duration_ms)).map(Timestamp)
     }
 
-    /// Returns the result of this `timestamp + offset_ms`, or None if overflow
-    /// occurred.
+    /// Returns the result of this `timestamp + offset_ms`, or None if overflow occurred.
     ///
     /// The `offset_ms` is in millis resolution
     pub fn checked_add_i64(&self, offset_ms: i64) -> Option<Self> {
@@ -113,8 +103,7 @@ impl Timestamp {
         self.0.checked_sub(other.0).map(Timestamp)
     }
 
-    /// Returns the result of this `timestamp` - `duration`, or None if overflow
-    /// occurred.
+    /// Returns the result of this `timestamp` - `duration`, or None if overflow occurred.
     pub fn checked_sub_duration(&self, duration: Duration) -> Option<Self> {
         let duration_millis = duration.as_millis().try_into().ok()?;
         self.0.checked_sub(duration_millis).map(Timestamp)
@@ -129,8 +118,7 @@ impl Timestamp {
     /// occurred.
     #[must_use]
     pub fn sub_duration_or_min(&self, duration: Duration) -> Timestamp {
-        self.checked_sub_duration(duration)
-            .unwrap_or(Timestamp::MIN)
+        self.checked_sub_duration(duration).unwrap_or(Timestamp::MIN)
     }
 }
 
@@ -185,8 +173,7 @@ impl TimeRange {
         Self::new(
             Timestamp::new(inclusive_start),
             Timestamp::new(exclusive_end),
-        )
-        .unwrap()
+        ).unwrap()
     }
 
     /// Create a time range only including the single timestamp.

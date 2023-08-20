@@ -21,7 +21,7 @@ use common_types::{
 use log::{error, info, warn};
 use macros::define_result;
 use metric_ext::Meter;
-use object_store::ObjectStoreRef;
+use object_store::{ObjectStore, ObjectStoreRef};
 use runtime::{JoinHandle, Runtime};
 use snafu::{ResultExt, Snafu};
 use table_engine::table::TableId;
@@ -40,13 +40,13 @@ pub enum Error {
 
 define_result!(Error);
 
+/// currently there are only two levels: 0, 1.
 pub const SST_LEVEL_NUM: usize = 2;
 
 #[derive(Default, Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Level(u16);
 
 impl Level {
-    // Currently there are only two levels: 0, 1.
     pub const MAX: Self = Self(1);
     pub const MIN: Self = Self(0);
 
@@ -108,8 +108,8 @@ impl LevelHandler {
         self.fileHandleSet.latest()
     }
 
-    pub fn pick_ssts(&self, time_range: TimeRange) -> Vec<FileHandle> {
-        self.fileHandleSet.files_by_time_range(time_range)
+    pub fn pick_ssts(&self, timeRange: TimeRange) -> Vec<FileHandle> {
+        self.fileHandleSet.files_by_time_range(timeRange)
     }
 
     #[inline]
@@ -172,7 +172,7 @@ impl FileHandle {
             fileHandleInner: Arc::new(FileHandleInner {
                 meta,
                 purge_queue,
-                being_compacted: AtomicBool::new(false),
+                compacting: AtomicBool::new(false),
                 metrics: SstMetrics::default(),
             }),
         }
@@ -220,7 +220,7 @@ impl FileHandle {
 
     #[inline]
     pub fn being_compacted(&self) -> bool {
-        self.fileHandleInner.being_compacted.load(Ordering::Relaxed)
+        self.fileHandleInner.compacting.load(Ordering::Relaxed)
     }
 
     #[inline]
@@ -230,7 +230,7 @@ impl FileHandle {
 
     #[inline]
     pub fn set_being_compacted(&self, value: bool) {
-        self.fileHandleInner.being_compacted.store(value, Ordering::Relaxed);
+        self.fileHandleInner.compacting.store(value, Ordering::Relaxed);
     }
 
     #[inline]
@@ -279,8 +279,7 @@ impl fmt::Debug for SstMetrics {
 struct FileHandleInner {
     meta: FileMeta,
     purge_queue: FilePurgeQueue,
-    /// The file is being compacting.
-    being_compacted: AtomicBool,
+    compacting: AtomicBool,
     metrics: SstMetrics,
 }
 
@@ -359,11 +358,11 @@ impl FileHandleSet {
         None
     }
 
-    fn files_by_time_range(&self, time_range: TimeRange) -> Vec<FileHandle> {
+    fn files_by_time_range(&self, timeRange: TimeRange) -> Vec<FileHandle> {
         // Seek to first sst whose end time >= time_range.inclusive_start().
-        let seek_key = FileOrdKey::for_seek(time_range.inclusive_start());
+        let seek_key = FileOrdKey::for_seek(timeRange.inclusive_start());
         self.file_map.range(seek_key..).filter_map(|(_key, fileHandle)| {
-            if fileHandle.intersect_with_time_range(time_range) {
+            if fileHandle.intersect_with_time_range(timeRange) {
                 Some(fileHandle.clone())
             } else {
                 None
@@ -459,12 +458,11 @@ impl FilePurgeQueue {
 
     fn push_file(&self, file_id: FileId) {
         if self.inner.closed.load(Ordering::SeqCst) {
-            warn!("Purger closed, ignore file_id:{file_id}");
+            warn!("purger closed, ignore file_id:{file_id}");
             return;
         }
 
-        // Send the file id via a channel to file purger and delete the file from sst
-        // store in background.
+        // Send the file id via a channel to file purger and delete the file from sst store in background.
         let request = FilePurgeRequest {
             space_id: self.inner.space_id,
             table_id: self.inner.table_id,
@@ -472,10 +470,7 @@ impl FilePurgeQueue {
         };
 
         if let Err(send_res) = self.inner.sender.send(Request::Purge(request)) {
-            error!(
-                "Failed to send delete file request, request:{:?}",
-                send_res.0
-            );
+            error!("failed to send delete file request, request:{:?}",send_res.0);
         }
     }
 }
@@ -508,17 +503,16 @@ pub struct FilePurger {
 
 impl FilePurger {
     pub fn start(runtime: &Runtime, store: ObjectStoreRef) -> Self {
-        // We must use unbound channel, so the sender wont block when the handle is
-        // dropped.
-        let (tx, rx) = mpsc::unbounded_channel();
+        // we must use unbound channel, so the sender wont block when the handle is dropped.
+        let (sender, receiver) = mpsc::unbounded_channel();
 
         // Spawn a background job to purge files.
         let handle = runtime.spawn(async {
-            Self::purge_file_loop(store, rx).await;
+            Self::purge_file_loop(store, receiver).await;
         });
 
         Self {
-            sender: tx,
+            sender,
             handle: Mutex::new(Some(handle)),
         }
     }
@@ -543,8 +537,8 @@ impl FilePurger {
         FilePurgeQueue::new(space_id, table_id, self.sender.clone())
     }
 
-    async fn purge_file_loop(store: ObjectStoreRef, mut receiver: UnboundedReceiver<Request>) {
-        info!("File purger start");
+    async fn purge_file_loop(store: Arc<dyn ObjectStore>, mut receiver: UnboundedReceiver<Request>) {
+        info!("file purger start");
 
         while let Some(request) = receiver.recv().await {
             match request {
@@ -555,25 +549,17 @@ impl FilePurger {
                         purge_request.file_id,
                     );
 
-                    info!(
-                        "File purger delete file, purge_request:{:?}, sst_file_path:{}",
-                        purge_request,
-                        sst_file_path.to_string()
-                    );
+                    info!("file purger delete file, purge_request:{:?}, sst_file_path:{}",purge_request,sst_file_path.to_string());
 
                     if let Err(e) = store.delete(&sst_file_path).await {
-                        error!(
-                            "File purger failed to delete file, sst_file_path:{}, err:{}",
-                            sst_file_path.to_string(),
-                            e
-                        );
+                        error!("file purger failed to delete file, sst_file_path:{}, err:{}",sst_file_path.to_string(),e);
                     }
                 }
                 Request::Exit => break,
             }
         }
 
-        info!("File purger exit");
+        info!("file purger exit");
     }
 }
 

@@ -261,17 +261,12 @@ impl MemTableView {
         }
     }
 
-    /// Get the memory usage of mutable memtables.
     fn mutable_memory_usage(&self) -> usize {
         self.mutableMemTableSet.memory_usage()
-            + self
-            .samplingMemTable
-            .as_ref()
-            .map(|v| v.memory_usage())
-            .unwrap_or(0)
+            + self.samplingMemTable.as_ref().map(|v| v.memory_usage()).unwrap_or(0)
     }
 
-    /// Get the total memory usage of mutable and immutable memtables.
+    /// get the total memory usage of mutable and immutable memtables.
     fn total_memory_usage(&self) -> usize {
         let mutable_usage = self.mutable_memory_usage();
         let immutable_usage = self.immutableMemTableSet.memory_usage();
@@ -294,16 +289,14 @@ impl MemTableView {
     fn suggest_duration(&mut self) -> Option<Duration> {
         if let Some(v) = &mut self.samplingMemTable {
             if !v.freezed {
-                // Other memtable should be empty during sampling phase.
+                // other memtable should be empty during sampling phase.
                 assert!(self.mutableMemTableSet.is_empty());
                 assert!(self.immutableMemTableSet.is_empty());
 
-                // The sampling memtable is still active, we need to compute the
-                // segment duration and then freeze the memtable.
+                // the sampling memtable is still active, we need to compute the segment duration and then freeze the memtable.
                 let segment_duration = v.suggest_segment_duration();
 
-                // But we cannot freeze the sampling memtable now, because the
-                // segment duration may not yet been persisted.
+                // but we cannot freeze the sampling memtable now, because the segment duration may not yet been persisted.
                 return Some(segment_duration);
             }
         }
@@ -356,13 +349,13 @@ impl MemTableView {
         self.immutableMemTableSet.0.remove(&id);
     }
 
-    /// Collect memtables itersect with `time_range`
+    /// collect memtables itersect with `time_range`
     fn memtables_for_read(&self,
-                          time_range: TimeRange,
-                          mems: &mut MemTableVec,
+                          timeRange: TimeRange,
+                          mems: &mut Vec<MemTableState>,
                           sampling_mem: &mut Option<SamplingMemTable>) {
-        self.mutableMemTableSet.memtables_for_read(time_range, mems);
-        self.immutableMemTableSet.memtables_for_read(time_range, mems);
+        self.mutableMemTableSet.memtables_for_read(timeRange, mems);
+        self.immutableMemTableSet.memtables_for_read(timeRange, mems);
 
         *sampling_mem = self.samplingMemTable.clone();
     }
@@ -386,11 +379,7 @@ impl MutableMemTableSet {
     /// Get memtale by timestamp for write
     fn memtable_for_write(&self, timestamp: Timestamp) -> Option<&MemTableState> {
         // Find the first memtable whose end time (exclusive) > timestamp
-        if let Some((_, memtable)) = self
-            .0
-            .range((Bound::Excluded(timestamp), Bound::Unbounded))
-            .next()
-        {
+        if let Some((_, memtable)) = self.0.range((Bound::Excluded(timestamp), Bound::Unbounded)).next() {
             if memtable.time_range.contains(timestamp) {
                 return Some(memtable);
             }
@@ -416,27 +405,23 @@ impl MutableMemTableSet {
 
     /// Move all mutable memtables to immutable memtables.
     fn move_to_inmem(&mut self, immem: &mut ImmutableMemTableSet) -> Option<SequenceNumber> {
-        let last_seq = self
-            .0
-            .values()
-            .map(|m| {
+        let last_seq = self.0.values().map(|m| {
                 let last_sequence = m.memTable.last_sequence();
                 immem.0.insert(m.id, m.clone());
 
                 last_sequence
-            })
-            .max();
+            }).max();
 
         self.0.clear();
         last_seq
     }
 
-    fn memtables_for_read(&self, time_range: TimeRange, mems: &mut MemTableVec) {
+    fn memtables_for_read(&self, timeRange: TimeRange, mems: &mut Vec<MemTableState>) {
         // seek to first memtable whose end time (exclusive) > time_range.start
-        let iter = self.0.range((Bound::Excluded(time_range.inclusive_start), Bound::Unbounded));
+        let iter = self.0.range((Bound::Excluded(timeRange.inclusive_start), Bound::Unbounded));
         for (_endTs, memTableState) in iter {
-            // We need to iterate all candidate memtables as their start time is unspecific
-            if memTableState.time_range.intersect_with(time_range) {
+            // we need to iterate all candidate memtables as their start time is unspecific
+            if memTableState.time_range.intersect_with(timeRange) {
                 mems.push(memTableState.clone());
             }
         }
@@ -447,8 +432,6 @@ impl MutableMemTableSet {
     }
 }
 
-/// Immutable memtables set
-///
 /// MemTables are ordered by memtable id, so lookup by memtable id is fast
 #[derive(Debug)]
 struct ImmutableMemTableSet(BTreeMap<MemTableId, MemTableState>);
@@ -478,10 +461,8 @@ pub type LeveledFiles = Vec<Vec<FileHandle>>;
 pub struct ReadView {
     pub sampling_mem: Option<SamplingMemTable>,
     pub memtables: Vec<MemTableState>,
-    /// Ssts to read in each level.
-    ///
-    /// The `ReadView` MUST ensure the length of `leveled_ssts` >= MAX_LEVEL.
-    pub leveled_ssts: Vec<Vec<FileHandle>>,
+    /// ssts to read in each level,MUST ensure the length of `leveled_ssts` >= MAX_LEVEL.
+    pub allLeveSatisfiedSsts: Vec<Vec<FileHandle>>,
 }
 
 impl Default for ReadView {
@@ -489,7 +470,7 @@ impl Default for ReadView {
         Self {
             sampling_mem: None,
             memtables: Vec::new(),
-            leveled_ssts: vec![Vec::new(); SST_LEVEL_NUM],
+            allLeveSatisfiedSsts: vec![Vec::new(); SST_LEVEL_NUM],
         }
     }
 }
@@ -506,7 +487,7 @@ struct TableVersionInner {
     memTableView: MemTableView,
 
     /// All ssts
-    levels_controller: LevelsController,
+    levelsController: LevelsController,
 
     /// The earliest sequence number of the entries already flushed (inclusive).
     /// All log entry with sequence <= `flushed_sequence` can be deleted
@@ -553,7 +534,7 @@ impl TableVersion {
         Self {
             tableVersionInner: RwLock::new(TableVersionInner {
                 memTableView: MemTableView::new(),
-                levels_controller: LevelsController::new(purge_queue),
+                levelsController: LevelsController::new(purge_queue),
                 flushed_sequence: 0,
                 max_file_id: 0,
             }),
@@ -652,14 +633,14 @@ impl TableVersion {
         // Add sst files to level first.
         for add_file in edit.files_to_add {
             inner
-                .levels_controller
+                .levelsController
                 .add_sst_to_level(add_file.level, add_file.file);
         }
 
         // Remove ssts from level.
         for delete_file in edit.files_to_delete {
             inner
-                .levels_controller
+                .levelsController
                 .remove_ssts_from_level(delete_file.level, &[delete_file.file_id]);
         }
 
@@ -678,31 +659,31 @@ impl TableVersion {
         inner.max_file_id = cmp::max(inner.max_file_id, meta.max_file_id);
 
         for add_file in meta.files.into_values() {
-            inner.levels_controller.add_sst_to_level(add_file.level, add_file.file);
+            inner.levelsController.add_sst_to_level(add_file.level, add_file.file);
         }
     }
 
-    pub fn pick_read_view(&self, time_range: TimeRange) -> ReadView {
+    /// 得到对应的timeRange的memTable和sst
+    pub fn pickReadView(&self, timeRange: TimeRange) -> ReadView {
         let mut sampling_mem = None;
         let mut memtables = Vec::new();
-        let mut leveled_ssts = vec![Vec::new(); SST_LEVEL_NUM];
+        let mut allLeveSatisfiedSsts = vec![Vec::new(); SST_LEVEL_NUM];
 
         {
-            // Pick memtables for read.
+            // 得到 memtables for read.
             let tableVersionInner = self.tableVersionInner.read().unwrap();
+            tableVersionInner.memTableView.memtables_for_read(timeRange, &mut memtables, &mut sampling_mem);
 
-            tableVersionInner.memTableView.memtables_for_read(time_range, &mut memtables, &mut sampling_mem);
-
-            // Pick ssts for read.
-            tableVersionInner.levels_controller.pick_ssts(time_range, |level, ssts| {
-                leveled_ssts[level.as_usize()].extend_from_slice(ssts)
+            // 得到 ssts for read.
+            tableVersionInner.levelsController.pick_ssts(timeRange, |level, satisfiedSstsInOneLevel| {
+                allLeveSatisfiedSsts[level.as_usize()].extend_from_slice(satisfiedSstsInOneLevel)
             });
         }
 
         ReadView {
             sampling_mem,
             memtables,
-            leveled_ssts,
+            allLeveSatisfiedSsts,
         }
     }
 
@@ -712,19 +693,19 @@ impl TableVersion {
                                picker: &CompactionPickerRef) -> picker::Result<CompactionTask> {
         let mut inner = self.tableVersionInner.write().unwrap();
 
-        picker.pick_compaction(picker_ctx, &mut inner.levels_controller)
+        picker.pick_compaction(picker_ctx, &mut inner.levelsController)
     }
 
     pub fn has_expired_sst(&self, expire_time: Option<Timestamp>) -> bool {
         let inner = self.tableVersionInner.read().unwrap();
 
-        inner.levels_controller.has_expired_sst(expire_time)
+        inner.levelsController.has_expired_sst(expire_time)
     }
 
     pub fn expired_ssts(&self, expire_time: Option<Timestamp>) -> Vec<ExpiredFiles> {
         let inner = self.tableVersionInner.read().unwrap();
 
-        inner.levels_controller.expired_ssts(expire_time)
+        inner.levelsController.expired_ssts(expire_time)
     }
 
     pub fn flushed_sequence(&self) -> SequenceNumber {
@@ -735,7 +716,7 @@ impl TableVersion {
 
     pub fn snapshot(&self) -> TableVersionSnapshot {
         let inner = self.tableVersionInner.read().unwrap();
-        let controller = &inner.levels_controller;
+        let controller = &inner.levelsController;
         let files = controller
             .levels()
             .flat_map(|level| {

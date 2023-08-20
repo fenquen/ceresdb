@@ -163,27 +163,15 @@ impl<I: RecordBatchWithKeyIterator> RecordBatchWithKeyIterator for DedupIterator
     }
 
     async fn next_batch(&mut self) -> Result<Option<RecordBatchWithKey>> {
-        match self
-            .iter
-            .next_batch()
-            .await
-            .box_err()
-            .context(ReadFromSubIter)?
-        {
+        match self.iter.next_batch().await.box_err().context(ReadFromSubIter)? {
             Some(record_batch) => {
-                trace!(
-                    "DedupIterator received next record batch, request_id:{}, batch:{:?}",
-                    self.request_id,
-                    record_batch
-                );
+                trace!("dedupIterator received next record batch, request_id:{}, batch:{:?}",self.request_id,record_batch);
 
                 self.dedup_batch(record_batch).map(Some)
             }
             None => {
-                info!(
-                    "DedupIterator received none record batch, request_id:{}, total_duplications:{}, total_selected_rows:{}",
-                    self.request_id, self.total_duplications, self.total_selected_rows,
-                );
+                info!("dedupIterator received none record batch, request_id:{}, total_duplications:{}, total_selected_rows:{}",
+                    self.request_id, self.total_duplications, self.total_selected_rows,);
 
                 Ok(None)
             }

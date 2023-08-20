@@ -9,8 +9,8 @@ use std::{
 
 /// Simple partitioned `RwLock`
 pub struct PartitionedRwLock<T, B>
-where
-    B: BuildHasher,
+    where
+        B: BuildHasher,
 {
     partitions: Vec<RwLock<T>>,
     partition_mask: usize,
@@ -18,12 +18,12 @@ where
 }
 
 impl<T, B> PartitionedRwLock<T, B>
-where
-    B: BuildHasher,
+    where
+        B: BuildHasher,
 {
     pub fn try_new<F, E>(init_fn: F, partition_bit: usize, hash_builder: B) -> Result<Self, E>
-    where
-        F: Fn(usize) -> Result<T, E>,
+        where
+            F: Fn(usize) -> Result<T, E>,
     {
         let partition_num = 1 << partition_bit;
         let partitions = (1..partition_num)
@@ -65,23 +65,14 @@ where
 
 /// Simple partitioned `Mutex`
 #[derive(Debug)]
-pub struct PartitionedMutex<T, B>
-where
-    B: BuildHasher,
-{
+pub struct PartitionedMutex<T, B> where B: BuildHasher {
     partitions: Vec<Mutex<T>>,
     partition_mask: usize,
     hash_builder: B,
 }
 
-impl<T, B> PartitionedMutex<T, B>
-where
-    B: BuildHasher,
-{
-    pub fn try_new<F, E>(init_fn: F, partition_bit: usize, hash_builder: B) -> Result<Self, E>
-    where
-        F: Fn(usize) -> Result<T, E>,
-    {
+impl<T, B> PartitionedMutex<T, B> where B: BuildHasher {
+    pub fn try_new<F, E>(init_fn: F, partition_bit: usize, hash_builder: B) -> Result<Self, E> where F: Fn(usize) -> Result<T, E> {
         let partition_num = 1 << partition_bit;
         let partitions = (0..partition_num)
             .map(|_| init_fn(partition_num).map(Mutex::new))
@@ -114,8 +105,8 @@ where
 
 #[derive(Debug)]
 pub struct PartitionedMutexAsync<T, B>
-where
-    B: BuildHasher,
+    where
+        B: BuildHasher,
 {
     partitions: Vec<tokio::sync::Mutex<T>>,
     partition_mask: usize,
@@ -123,12 +114,12 @@ where
 }
 
 impl<T, B> PartitionedMutexAsync<T, B>
-where
-    B: BuildHasher,
+    where
+        B: BuildHasher,
 {
     pub fn try_new<F, E>(init_fn: F, partition_bit: usize, hash_builder: B) -> Result<Self, E>
-    where
-        F: Fn(usize) -> Result<T, E>,
+        where
+            F: Fn(usize) -> Result<T, E>,
     {
         let partition_num = 1 << partition_bit;
         let partitions = (0..partition_num)

@@ -125,7 +125,7 @@ impl Table for SystemTableAdapter {
         Ok(None)
     }
 
-    async fn partitioned_read(
+    async fn partitionedRead(
         &self,
         request: ReadRequest,
     ) -> table_engine::table::Result<PartitionedStreams> {

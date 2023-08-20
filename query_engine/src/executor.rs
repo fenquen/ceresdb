@@ -93,11 +93,11 @@ impl QueryExecutorImpl {
 impl QueryExecutor for QueryExecutorImpl {
     async fn executeLogicalPlan(&self, ctx: ContextRef, queryPlan: QueryPlan) -> Result<RecordBatchVec> {
         // register catalogs to datafusion execution context.
-        let catalogs = CatalogProviderImpl::new_adapters(queryPlan.tableContainer.clone());
+        let catalogName_catalogProvider = CatalogProviderImpl::new_adapters(queryPlan.tableContainer.clone());
         let dataFusionSessionContext = ctx.buildDataFusionSessionContext(&self.config, ctx.request_id, ctx.deadline);
 
-        for (name, catalog) in catalogs {
-            dataFusionSessionContext.register_catalog(&name, Arc::new(catalog));
+        for (catalogName, catalogProvider) in catalogName_catalogProvider {
+            dataFusionSessionContext.register_catalog(&catalogName, Arc::new(catalogProvider));
         }
 
         let begin_instant = Instant::now();

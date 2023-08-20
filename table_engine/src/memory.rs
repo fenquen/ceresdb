@@ -134,7 +134,7 @@ impl Table for MemoryTable {
         .fail()
     }
 
-    async fn partitioned_read(&self, request: ReadRequest) -> Result<PartitionedStreams> {
+    async fn partitionedRead(&self, request: ReadRequest) -> Result<PartitionedStreams> {
         let stream = self.read(request).await?;
 
         Ok(PartitionedStreams::one_stream(stream))

@@ -246,8 +246,7 @@ impl fmt::Debug for Metrics {
     }
 }
 
-/// ChainIter chains memtables and ssts and reads the [RecordBatch] from them
-/// batch by batch.
+/// ChainIter chains memtables and ssts and reads the [RecordBatch] from them batch by batch.
 ///
 /// Note: The chain order is `memtable -> sst level 0 -> sst_level 1`.
 pub struct ChainIterator {

@@ -870,35 +870,26 @@ impl Schema {
             // When tsid exists, that means default primary key (tsid, timestamp) is used.
             // So, all filters of tag columns(tsid is the hash result of all tags),
             // timestamp key and tsid can be pushed down.
-            let mut keys = self
-                .columns()
-                .iter()
-                .filter_map(|column| {
-                    if column.is_tag {
-                        Some(column.name.as_str())
-                    } else {
-                        None
-                    }
-                })
-                .collect::<Vec<_>>();
+            let mut keys = self.columns().iter().filter_map(|column| {
+                if column.is_tag {
+                    Some(column.name.as_str())
+                } else {
+                    None
+                }
+            }).collect::<Vec<_>>();
+
             keys.extend([&self.tsid_column().unwrap().name, self.timestamp_name()]);
 
             keys
         } else {
             // When tsid does not exist, that means user defined primary key is used.
             // So, only filters of primary key can be pushed down.
-            self.primary_key_indexes()
-                .iter()
-                .map(|key_idx| self.column(*key_idx).name.as_str())
-                .collect()
+            self.primary_key_indexes().iter().map(|key_idx| self.column(*key_idx).name.as_str()).collect()
         }
     }
 
     /// Panic if projection is invalid.
-    pub(crate) fn project_record_schema_with_key(
-        &self,
-        projection: &[usize],
-    ) -> RecordSchemaWithKey {
+    pub(crate) fn project_record_schema_with_key(&self, projection: &[usize]) -> RecordSchemaWithKey {
         let mut primary_key_indexes = Vec::with_capacity(self.num_primary_key_columns());
         let mut columns = Vec::with_capacity(self.num_primary_key_columns());
         for (idx, col) in self.columns().iter().enumerate() {
