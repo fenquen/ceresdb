@@ -21,7 +21,7 @@ use crate::{
             meta_data::{ParquetMetaData, ParquetMetaDataRef},
         },
         reader,
-        writer::MetaData,
+        writer::SstMeta,
     },
     table::sst_util,
 };
@@ -58,7 +58,7 @@ define_result!(Error);
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum SstMetaData {
-    Parquet(ParquetMetaDataRef),
+    Parquet(Arc<ParquetMetaData>),
 }
 
 impl SstMetaData {
@@ -120,7 +120,7 @@ impl TryFrom<sst_pb::SstMetaData> for SstMetaData {
     }
 }
 
-impl From<SstMetaData> for MetaData {
+impl From<SstMetaData> for SstMeta {
     fn from(meta: SstMetaData) -> Self {
         match meta {
             SstMetaData::Parquet(v) => Self::from(v.as_ref().clone()),
@@ -149,7 +149,7 @@ impl SstMetaReader {
             };
             let mut reader = self
                 .factory
-                .create_reader(&path, &self.read_opts, read_hint, &self.store_picker, None)
+                .createReader(&path, &self.read_opts, read_hint, &self.store_picker, None)
                 .await
                 .context(CreateSstReader)?;
             let meta_data = reader.meta_data().await.context(ReadMetaData)?;

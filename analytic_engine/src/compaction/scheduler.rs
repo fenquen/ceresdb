@@ -407,13 +407,10 @@ impl ScheduleWorker {
                     info!("Channel disconnected, compaction schedule worker exit");
                     break;
                 }
-                Err(_) => {
-                    // Timeout.
-                    info!("Periodical compaction schedule start");
-
+                Err(_) => {// timeout
+                    info!("periodical compaction schedule start");
                     self.schedule().await;
-
-                    info!("Periodical compaction schedule end");
+                    info!("periodical compaction schedule end");
                 }
             }
         }
@@ -568,7 +565,7 @@ impl ScheduleWorker {
                 return;
             }
         };
-        let version = table_data.current_version();
+        let version = table_data.currentTableVersion();
 
         // Pick compaction task.
         let compaction_task = version.pick_for_compaction(picker_ctx, &picker);
@@ -635,7 +632,7 @@ impl ScheduleWorker {
         self.space_store.list_all_tables(&mut tables_buf);
         let flusher = Flusher {
             space_store: self.space_store.clone(),
-            runtime: self.runtime.clone(),
+            writeRunTime: self.runtime.clone(),
             write_sst_max_buffer_size: self.write_sst_max_buffer_size,
         };
 
@@ -651,10 +648,10 @@ impl ScheduleWorker {
                 );
 
                 let mut serial_exec = table_data.tableOpSerialExecutor.lock().await;
-                let flush_scheduler = serial_exec.flush_scheduler();
+                let flush_scheduler = serial_exec.getFlushScheduler();
                 // Instance flush the table asynchronously.
                 if let Err(e) = flusher
-                    .scheduleFlush(flush_scheduler, table_data, TableFlushOptions::default())
+                    .flushAsync(flush_scheduler, table_data, TableFlushOptions::default())
                     .await
                 {
                     error!("Failed to flush table, err:{}", e);

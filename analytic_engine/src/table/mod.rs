@@ -282,7 +282,7 @@ impl TableImpl {
 
                 match CancellationSafeFuture::new(
                     Self::write_requests(write_requests),
-                    self.tableEngineInstance.write_runtime().clone(),
+                    self.tableEngineInstance.getWriteRunTime().clone(),
                 )
                     .await
                 {

@@ -54,29 +54,24 @@ use crate::{
 
 #[derive(Debug, Snafu)]
 pub enum Error {
-    #[snafu(display("Failed to create memtable, err:{}", source))]
+    #[snafu(display("failed to create memtable, err:{}", source))]
     CreateMemTable {
         source: crate::memtable::factory::Error,
     },
 
-    #[snafu(display(
-    "Failed to find or create memtable, timestamp overflow, timestamp:{:?}, duration:{:?}.\nBacktrace:\n{}",
-    timestamp,
-    duration,
-    backtrace,
-    ))]
+    #[snafu(display("failed to find or create memtable, timestamp overflow, timestamp:{:?}, duration:{:?}.\nBacktrace:\n{}", timestamp, duration, backtrace))]
     TimestampOverflow {
         timestamp: Timestamp,
         duration: Duration,
         backtrace: Backtrace,
     },
 
-    #[snafu(display("Failed to find memtable for write, err:{}", source))]
+    #[snafu(display("failed to find memtable for write, err:{}", source))]
     FindMemTable {
         source: crate::table::version::Error,
     },
 
-    #[snafu(display("Failed to alloc file id, err:{}", source))]
+    #[snafu(display("failed to alloc file id, err:{}", source))]
     AllocFileId { source: GenericError },
 }
 
@@ -125,8 +120,8 @@ pub struct TableData {
     /// 来源space
     mem_usage_collector: CollectorRef,
 
-    /// Current table version
-    currentVersion: TableVersion,
+    currentTableVersion: TableVersion,
+
     /// Last sequence visible to the reads
     ///
     /// Write to last_sequence should be guarded by a mutex and only done by
@@ -236,7 +231,7 @@ impl TableData {
             opts: ArcSwap::new(Arc::new(table_opts)),
             memTableFactory: memtable_factory,
             mem_usage_collector,
-            currentVersion: current_version,
+            currentTableVersion: current_version,
             last_sequence: AtomicU64::new(0),
             last_memtable_id: AtomicU64::new(0),
             allocator: IdAllocator::new(0, 0, DEFAULT_ALLOC_STEP),
@@ -279,7 +274,7 @@ impl TableData {
             opts: ArcSwap::new(Arc::new(add_meta.opts)),
             memTableFactory: memtable_factory,
             mem_usage_collector,
-            currentVersion: current_version,
+            currentTableVersion: current_version,
             last_sequence: AtomicU64::new(0),
             last_memtable_id: AtomicU64::new(0),
             allocator,
@@ -309,8 +304,8 @@ impl TableData {
     }
 
     #[inline]
-    pub fn current_version(&self) -> &TableVersion {
-        &self.currentVersion
+    pub fn currentTableVersion(&self) -> &TableVersion {
+        &self.currentTableVersion
     }
 
     #[inline]
@@ -362,13 +357,13 @@ impl TableData {
     /// Returns total memtable memory usage in bytes.
     #[inline]
     pub fn memtable_memory_usage(&self) -> usize {
-        self.currentVersion.total_memory_usage()
+        self.currentTableVersion.total_memory_usage()
     }
 
     /// Returns mutable memtable memory usage in bytes.
     #[inline]
     pub fn mutable_memory_usage(&self) -> usize {
-        self.currentVersion.mutable_memory_usage()
+        self.currentTableVersion.mutable_memory_usage()
     }
 
     /// Find memtable for given timestamp to insert, create if not exists
@@ -381,7 +376,7 @@ impl TableData {
                                schema: &Schema) -> Result<MemTableForWrite> {
         let last_sequence = self.last_sequence();
 
-        if let Some(memTableForWrite) = self.currentVersion.memtable_for_write(timestamp, schema.version()).context(FindMemTable)? {
+        if let Some(memTableForWrite) = self.currentTableVersion.memtable_for_write(timestamp, schema.version()).context(FindMemTable)? {
             return Ok(memTableForWrite);
         }
 
@@ -404,12 +399,12 @@ impl TableData {
 
                 let memTableState = MemTableState {
                     memTable,
-                    time_range,
+                    timeRange: time_range,
                     id: self.alloc_memtable_id(),
                 };
 
                 // Insert memtable into mutable memtables of current version.
-                self.currentVersion.insertMutableMemTable(memTableState.clone());
+                self.currentTableVersion.insertMutableMemTable(memTableState.clone());
 
                 Ok(MemTableForWrite::Normal(memTableState))
             }
@@ -418,7 +413,7 @@ impl TableData {
                 debug!("create sampling mem table:{}, schema:{:#?}",sampling_mem.id, schema);
 
                 // Set sampling memtables of current version.
-                self.currentVersion.set_sampling(sampling_mem.clone());
+                self.currentTableVersion.set_sampling(sampling_mem.clone());
 
                 Ok(MemTableForWrite::Sampling(sampling_mem))
             }
@@ -428,73 +423,60 @@ impl TableData {
     /// Returns true if the memory usage of this table reaches flush threshold
     ///
     /// REQUIRE: Do in write worker
-    pub fn should_flush_table(&self, serial_exec: &mut TableOpSerialExecutor) -> bool {
+    pub fn shouldFlush(&self, serial_exec: &mut TableOpSerialExecutor) -> bool {
         // fallback to usize::MAX if Failed to convert arena_block_size into usize (overflow)
-        let max_write_buffer_size = self
-            .table_options()
-            .write_buffer_size
-            .try_into()
-            .unwrap_or(usize::MAX);
-        let mutable_limit = self
-            .mutable_limit
-            .load(Ordering::Relaxed)
-            .try_into()
-            .unwrap_or(usize::MAX);
+        let maxWriteBufferSize = self.table_options().write_buffer_size.try_into().unwrap_or(usize::MAX);
 
-        let mutable_usage = self.currentVersion.mutable_memory_usage();
-        let total_usage = self.currentVersion.total_memory_usage();
-        let in_flush = serial_exec.flush_scheduler().is_in_flush();
+        let mutableLimit = self.mutable_limit.load(Ordering::Relaxed).try_into().unwrap_or(usize::MAX);
+        let mutableUsage = self.currentTableVersion.mutable_memory_usage();
+
+        let totalUsage = self.currentTableVersion.total_memory_usage();
+
+        let inFlush = serial_exec.getFlushScheduler().is_in_flush();
 
         // Inspired by https://github.com/facebook/rocksdb/blob/main/include/rocksdb/write_buffer_manager.h#L94
-        if mutable_usage > mutable_limit && !in_flush {
+        if mutableUsage > mutableLimit && !inFlush {
             info!("tableData should flush by mutable limit, table:{}, table_id:{}, mutable_usage:{}, mutable_limit: {}, total_usage:{}, max_write_buffer_size:{}",
-                self.name, self.id, mutable_usage, mutable_limit, total_usage, max_write_buffer_size);
+                self.name, self.id, mutableUsage, mutableLimit, totalUsage, maxWriteBufferSize);
 
             return true;
         }
 
         // If the memory exceeds the buffer size, we trigger more aggressive
-        // flush. But if already more than half memory is being flushed,
-        // triggering more flush may not help. We will hold it instead.
-        let should_flush =
-            total_usage >= max_write_buffer_size && mutable_usage >= max_write_buffer_size / 2;
+        // flush. But if already more than half memory is being flushed, triggering more flush may not help. We will hold it instead.
+        let shouldFlush = totalUsage >= maxWriteBufferSize && mutableUsage >= maxWriteBufferSize / 2;
 
         debug!("check should flush, table:{}, table_id:{}, mutable_usage:{}, mutable_limit: {}, total_usage:{}, max_write_buffer_size:{}",
-            self.name, self.id, mutable_usage, mutable_limit, total_usage, max_write_buffer_size);
+            self.name, self.id, mutableUsage, mutableLimit, totalUsage, maxWriteBufferSize);
 
-        if should_flush {
+        if shouldFlush {
             info!("tableData should flush by total usage, table:{}, table_id:{}, mutable_usage:{}, mutable_limit: {}, total_usage:{}, max_write_buffer_size:{}",
-                self.name, self.id, mutable_usage, mutable_limit, total_usage, max_write_buffer_size);
+                self.name, self.id, mutableUsage, mutableLimit, totalUsage, maxWriteBufferSize);
         }
 
-        should_flush
+        shouldFlush
     }
 
     /// Use allocator to alloc a file id for a new file.
-    pub async fn alloc_file_id(&self, manifest: &ManifestRef) -> Result<FileId> {
+    pub async fn alloc_file_id(&self, manifest: &ManifestRef) -> Result<u64> {
         // Persist next max file id to manifest.
         let persist_max_file_id = move |next_max_file_id| async move {
             self.persist_max_file_id(manifest, next_max_file_id).await
         };
 
-        self.allocator
-            .alloc_id(persist_max_file_id)
-            .await
-            .context(AllocFileId)
+        self.allocator.alloc_id(persist_max_file_id).await.context(AllocFileId)
     }
 
-    async fn persist_max_file_id(
-        &self,
-        manifest: &ManifestRef,
-        next_max_file_id: FileId,
-    ) -> GenericResult<()> {
+    async fn persist_max_file_id(&self,
+                                 manifest: &ManifestRef,
+                                 next_max_file_id: FileId) -> GenericResult<()> {
         let manifest_update = VersionEditMeta {
             space_id: self.space_id,
             table_id: self.id,
-            flushed_sequence: 0,
-            files_to_add: vec![],
-            files_to_delete: vec![],
-            mems_to_remove: vec![],
+            flushedMaxSeq: 0,
+            addedFiles: vec![],
+            deletedFiles: vec![],
+            memTableIdsToRemove: vec![],
             max_file_id: next_max_file_id,
         };
         let edit_req = {
@@ -509,9 +491,9 @@ impl TableData {
         Ok(())
     }
 
-    /// Set the sst file path into the object storage path.
-    pub fn set_sst_file_path(&self, file_id: FileId) -> Path {
-        sst_util::new_sst_file_path(self.space_id, self.id, file_id)
+    /// spaceId/tableId/sstFileId.sst
+    pub fn buildSstFilePath(&self, sstFileId: FileId) -> Path {
+        sst_util::new_sst_file_path(self.space_id, self.id, sstFileId)
     }
 
     /// Allocate next memtable id
@@ -561,7 +543,6 @@ pub struct TableLocation {
     pub shard_info: TableShardInfo,
 }
 
-/// Table data reference
 pub type TableDataRef = Arc<TableData>;
 
 /// 包含 tableName_tableData tableId_tableData

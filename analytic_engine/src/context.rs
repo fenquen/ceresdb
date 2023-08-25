@@ -22,8 +22,6 @@ pub struct OpenedTableEngineInstanceContext {
 
 impl fmt::Debug for OpenedTableEngineInstanceContext {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("OpenContext")
-            .field("config", &self.analyticEngineConfig)
-            .finish()
+        f.debug_struct("OpenContext").field("config", &self.analyticEngineConfig).finish()
     }
 }

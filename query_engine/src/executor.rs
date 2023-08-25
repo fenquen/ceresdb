@@ -13,13 +13,12 @@ use log::{debug, info};
 use macros::define_result;
 use query_frontend::{plan::QueryPlan, provider::CatalogProviderImpl};
 use snafu::{Backtrace, ResultExt, Snafu};
-use table_engine::stream::SendableRecordBatchStream;
 use time_ext::InstantExt;
 
 use crate::{
     config::Config,
     context::{Context, ContextRef},
-    physical_optimizer::{PhysicalOptimizer, PhysicalOptimizerImpl},
+    physical_optimizer::PhysicalOptimizer,
     physical_plan::PhysicalPlanPtr,
 };
 use crate::physical_plan::PhysicalPlanImpl;

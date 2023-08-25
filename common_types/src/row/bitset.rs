@@ -22,53 +22,51 @@ pub struct BitSet {
     /// The bits are stored as bytes in the least significant bit order.
     buffer: Vec<u8>,
     /// The number of real bits in the `buffer`
-    num_bits: usize,
+    bitNum: usize,
 }
 
 impl BitSet {
     /// Initialize a unset [`BitSet`].
     pub fn new(num_bits: usize) -> Self {
         Self {
-            buffer: vec![0; Self::num_bytes(num_bits)],
-            num_bits,
+            buffer: vec![0; Self::getByteNum(num_bits)],
+            bitNum: num_bits,
         }
     }
 
     /// Initialize a [`BitSet`] with all bits set.
     pub fn all_set(num_bits: usize) -> Self {
         Self {
-            buffer: vec![0xFF; Self::num_bytes(num_bits)],
-            num_bits,
+            buffer: vec![0xFF; Self::getByteNum(num_bits)],
+            bitNum: num_bits,
         }
     }
 
     #[inline]
     pub fn num_bits(&self) -> usize {
-        self.num_bits
+        self.bitNum
     }
 
     #[inline]
-    pub fn num_bytes(num_bits: usize) -> usize {
-        (num_bits + 7) >> 3
+    pub fn getByteNum(bitNum: usize) -> usize {
+        (bitNum + 7) >> 3
     }
 
     /// Initialize directly from a buffer.
     ///
-    /// None will be returned if the buffer's length is not enough to cover the
-    /// bits of `num_bits`.
+    /// None will be returned if the buffer's length is not enough to cover the bits of `num_bits`.
     pub fn try_from_raw(buffer: Vec<u8>, num_bits: usize) -> Option<Self> {
-        if buffer.len() < Self::num_bytes(num_bits) {
+        if buffer.len() < Self::getByteNum(num_bits) {
             None
         } else {
-            Some(Self { buffer, num_bits })
+            Some(Self { buffer, bitNum: num_bits })
         }
     }
 
-    /// Set the bit at the `index`.
-    ///
-    /// Return false if the index is outside the range.
+
+    /// return false if the index is outside the range.
     pub fn set(&mut self, index: usize) -> bool {
-        if index >= self.num_bits {
+        if index >= self.bitNum {
             return false;
         }
         let (byte_index, bit_index) = RoBitSet::compute_byte_bit_index(index);
@@ -76,11 +74,9 @@ impl BitSet {
         true
     }
 
-    /// Set the bit at the `index`.
-    ///
-    /// Return false if the index is outside the range.
+    /// return false if the index is outside the range.
     pub fn unset(&mut self, index: usize) -> bool {
-        if index >= self.num_bits {
+        if index >= self.bitNum {
             return false;
         }
         let (byte_index, bit_index) = RoBitSet::compute_byte_bit_index(index);
@@ -88,20 +84,20 @@ impl BitSet {
         true
     }
 
-    /// Tells whether the bit at the `index` is set.
+    /// tells whether the bit at the `index` is set.
     pub fn is_set(&self, index: usize) -> Option<bool> {
         let ro = RoBitSet {
             buffer: &self.buffer,
-            num_bits: self.num_bits,
+            num_bits: self.bitNum,
         };
         ro.is_set(index)
     }
 
-    /// Tells whether the bit at the `index` is unset.
+    /// tells whether the bit at the `index` is unset.
     pub fn is_unset(&self, index: usize) -> Option<bool> {
         let ro = RoBitSet {
             buffer: &self.buffer,
-            num_bits: self.num_bits,
+            num_bits: self.bitNum,
         };
         ro.is_unset(index)
     }
@@ -109,10 +105,6 @@ impl BitSet {
     #[inline]
     pub fn as_bytes(&self) -> &[u8] {
         &self.buffer
-    }
-
-    pub fn into_bytes(self) -> Vec<u8> {
-        self.buffer
     }
 }
 
@@ -126,7 +118,7 @@ pub struct RoBitSet<'a> {
 
 impl<'a> RoBitSet<'a> {
     pub fn try_new(buffer: &'a [u8], num_bits: usize) -> Option<Self> {
-        if buffer.len() < BitSet::num_bytes(num_bits) {
+        if buffer.len() < BitSet::getByteNum(num_bits) {
             None
         } else {
             Some(Self { buffer, num_bits })

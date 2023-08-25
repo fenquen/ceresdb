@@ -106,7 +106,7 @@ impl<'a> Reader<'a> {
         store_picker: &'a ObjectStorePickerRef,
         metrics_collector: Option<MetricsCollector>,
     ) -> Self {
-        let store = store_picker.pick_by_freq(options.frequency);
+        let store = store_picker.chooseByReadFrequency(options.frequency);
         let df_plan_metrics = ExecutionPlanMetricsSet::new();
         let metrics = Metrics {
             metrics_collector,

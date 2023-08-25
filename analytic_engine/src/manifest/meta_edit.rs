@@ -220,26 +220,23 @@ impl From<manifest_pb::DropTableMeta> for DropTableMeta {
 pub struct VersionEditMeta {
     pub space_id: SpaceId,
     pub table_id: TableId,
-    /// Sequence number of the flushed data. Set to 0 if this edit is not
-    /// created by a flush request.
-    pub flushed_sequence: SequenceNumber,
-    pub files_to_add: Vec<AddFile>,
-    pub files_to_delete: Vec<DeleteFile>,
-    /// Id of memtables to remove from immutable memtable lists.
-    /// No need to persist.
-    pub mems_to_remove: Vec<MemTableId>,
+    /// sequence number of the flushed data. Set to 0 if this edit is not created by a flush request.
+    pub flushedMaxSeq: SequenceNumber,
+    pub addedFiles: Vec<AddFile>,
+    pub deletedFiles: Vec<DeleteFile>,
+    /// Id of memtables to remove from immutable memtable lists. No need to persist.
+    pub memTableIdsToRemove: Vec<MemTableId>,
     pub max_file_id: FileId,
 }
 
 impl VersionEditMeta {
-    /// Convert into [crate::table::version_edit::VersionEdit]. The
-    /// `mems_to_remove` field is left empty.
+    /// Convert into [crate::table::version_edit::VersionEdit]. The `mems_to_remove` field is left empty.
     pub fn into_version_edit(self) -> VersionEdit {
         VersionEdit {
             mems_to_remove: Vec::new(),
-            flushed_sequence: self.flushed_sequence,
-            files_to_add: self.files_to_add,
-            files_to_delete: self.files_to_delete,
+            flushed_sequence: self.flushedMaxSeq,
+            files_to_add: self.addedFiles,
+            files_to_delete: self.deletedFiles,
             max_file_id: self.max_file_id,
         }
     }
@@ -247,16 +244,16 @@ impl VersionEditMeta {
 
 impl From<VersionEditMeta> for manifest_pb::VersionEditMeta {
     fn from(v: VersionEditMeta) -> Self {
-        let files_to_add = v.files_to_add.into_iter().map(|file| file.into()).collect();
+        let files_to_add = v.addedFiles.into_iter().map(|file| file.into()).collect();
         let files_to_delete = v
-            .files_to_delete
+            .deletedFiles
             .into_iter()
             .map(|file| file.into())
             .collect();
         manifest_pb::VersionEditMeta {
             space_id: v.space_id,
             table_id: v.table_id.as_u64(),
-            flushed_sequence: v.flushed_sequence,
+            flushed_sequence: v.flushedMaxSeq,
             files_to_add,
             files_to_delete,
             max_file_id: v.max_file_id,
@@ -281,10 +278,10 @@ impl TryFrom<manifest_pb::VersionEditMeta> for VersionEditMeta {
         Ok(Self {
             space_id: src.space_id,
             table_id: TableId::from(src.table_id),
-            flushed_sequence: src.flushed_sequence,
-            files_to_add,
-            files_to_delete,
-            mems_to_remove: Vec::default(),
+            flushedMaxSeq: src.flushed_sequence,
+            addedFiles: files_to_add,
+            deletedFiles: files_to_delete,
+            memTableIdsToRemove: Vec::default(),
             max_file_id: src.max_file_id,
         })
     }
@@ -449,10 +446,10 @@ impl From<Snapshot> for manifest_pb::Snapshot {
             let version_edit = v.version_meta.map(|version_meta| VersionEditMeta {
                 space_id,
                 table_id,
-                flushed_sequence: version_meta.flushed_sequence,
-                files_to_add: version_meta.ordered_files(),
-                files_to_delete: vec![],
-                mems_to_remove: vec![],
+                flushedMaxSeq: version_meta.flushed_sequence,
+                addedFiles: version_meta.ordered_files(),
+                deletedFiles: vec![],
+                memTableIdsToRemove: vec![],
                 max_file_id: version_meta.max_file_id,
             });
             (

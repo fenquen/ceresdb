@@ -724,9 +724,9 @@ impl<'a> Encoder<CatalogKey<'a>> for EntryKeyEncoder {
             .context(EncodeKeyBody)
     }
 
-    fn estimate_encoded_size(&self, value: &CatalogKey) -> usize {
+    fn estimateEncodedSize(&self, value: &CatalogKey) -> usize {
         let encoder = MemComparable;
-        mem::size_of::<u8>() + encoder.estimate_encoded_size(value.0.as_bytes())
+        mem::size_of::<u8>() + encoder.estimateEncodedSize(value.0.as_bytes())
     }
 }
 
@@ -745,11 +745,11 @@ impl<'a> Encoder<SchemaKey<'a>> for EntryKeyEncoder {
             .context(EncodeKeyBody)
     }
 
-    fn estimate_encoded_size(&self, value: &SchemaKey) -> usize {
+    fn estimateEncodedSize(&self, value: &SchemaKey) -> usize {
         let encoder = MemComparable;
         mem::size_of::<u8>()
-            + encoder.estimate_encoded_size(value.0.as_bytes())
-            + encoder.estimate_encoded_size(value.1.as_bytes())
+            + encoder.estimateEncodedSize(value.0.as_bytes())
+            + encoder.estimateEncodedSize(value.1.as_bytes())
     }
 }
 
@@ -768,12 +768,12 @@ impl<'a> Encoder<TableKey<'a>> for EntryKeyEncoder {
         Ok(())
     }
 
-    fn estimate_encoded_size(&self, value: &TableKey) -> usize {
+    fn estimateEncodedSize(&self, value: &TableKey) -> usize {
         let encoder = MemComparable;
         mem::size_of::<u8>()
-            + encoder.estimate_encoded_size(value.catalog.as_bytes())
-            + encoder.estimate_encoded_size(value.schema.as_bytes())
-            + encoder.estimate_encoded_size(value.table.as_bytes())
+            + encoder.estimateEncodedSize(value.catalog.as_bytes())
+            + encoder.estimateEncodedSize(value.schema.as_bytes())
+            + encoder.estimateEncodedSize(value.table.as_bytes())
     }
 }
 
@@ -810,7 +810,7 @@ impl CreateCatalogRequest {
     fn to_key(&self) -> Result<Bytes> {
         let encoder = EntryKeyEncoder;
         let key = CatalogKey(&self.catalog_name);
-        let mut buf = BytesMut::with_capacity(encoder.estimate_encoded_size(&key));
+        let mut buf = BytesMut::with_capacity(encoder.estimateEncodedSize(&key));
         encoder.encode(&mut buf, &key)?;
         Ok(buf.into())
     }
@@ -872,7 +872,7 @@ impl CreateSchemaRequest {
     fn to_key(&self) -> Result<Bytes> {
         let encoder = EntryKeyEncoder;
         let key = SchemaKey(&self.catalog_name, &self.schema_name);
-        let mut buf = BytesMut::with_capacity(encoder.estimate_encoded_size(&key));
+        let mut buf = BytesMut::with_capacity(encoder.estimateEncodedSize(&key));
         encoder.encode(&mut buf, &key)?;
         Ok(buf.into())
     }
@@ -985,7 +985,7 @@ impl TableWriter {
 
     fn encode_table_key(key: TableKey) -> Result<Bytes> {
         let entryKeyEncoder = EntryKeyEncoder;
-        let mut buf = BytesMut::with_capacity(entryKeyEncoder.estimate_encoded_size(&key));
+        let mut buf = BytesMut::with_capacity(entryKeyEncoder.estimateEncodedSize(&key));
         entryKeyEncoder.encode(&mut buf, &key)?;
         Ok(buf.into())
     }

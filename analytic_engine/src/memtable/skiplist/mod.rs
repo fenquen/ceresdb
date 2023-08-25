@@ -27,7 +27,7 @@ use snafu::{ensure, ResultExt};
 use crate::memtable::{
     key::{ComparableInternalKey, KeySequence},
     skiplist::iter::{ColumnarIterImpl, ReversedColumnarIterator},
-    ColumnarIterPtr, EncodeInternalKey, InvalidPutSequence, InvalidRow, MemTable,
+    ColumnarIter, EncodeInternalKey, InvalidPutSequence, InvalidRow, MemTable,
     Metrics as MemtableMetrics, PutContext, Result, ScanContext, ScanRequest,
 };
 
@@ -42,8 +42,7 @@ pub struct SkipListMemTable<A: Arena<Stats=BasicStats> + Clone + Sync + Send> {
     /// Schema of this memtable, is immutable.
     schema: Schema,
     skiplist: SkipList<BytewiseComparator, A>,
-    /// The last sequence of the rows in this memtable. Update to this field
-    /// require external synchronization.
+    /// The last sequence of the rows in this memtable. Update to this field require external synchronization.
     last_sequence: AtomicU64,
 
     metrics: Metrics,
@@ -77,7 +76,7 @@ impl<A: Arena<Stats=BasicStats> + Clone + Sync + Send + 'static> MemTable for Sk
     // TODO(yingwen): Encode value if value_buf is not set.
     // Now the caller is required to encode the row into the `value_buf` in PutContext first.
     fn put(&self,
-           ctx: &mut PutContext,
+           putContext: &mut PutContext,
            keySequence: KeySequence,
            row: &Row,
            schema: &Schema) -> Result<()> {
@@ -85,42 +84,37 @@ impl<A: Arena<Stats=BasicStats> + Clone + Sync + Send + 'static> MemTable for Sk
 
         let comparableInternalKey = ComparableInternalKey::new(keySequence, schema);
 
-        let keyByteVec = &mut ctx.key_buf;
+        //let keyByteVec = &mut ctx.key_buf;
         // Reset key buffer
-        keyByteVec.clear();
+        putContext.keyBuf.clear();
         // Reserve capacity for key
-        keyByteVec.reserve(comparableInternalKey.estimate_encoded_size(row));
+        putContext.keyBuf.reserve(comparableInternalKey.estimateEncodedSize(row));
         // Encode key primary的列值+剩下的sequence量+剩下的rowId量
-        comparableInternalKey.encode(keyByteVec, row).context(EncodeInternalKey)?;
+        comparableInternalKey.encode(&mut putContext.keyBuf, row).context(EncodeInternalKey)?;
 
-        // Encode row value. The ContiguousRowWriter will clear the buf.
-        let row_value = &mut ctx.value_buf;
-        let mut row_writer = ContiguousRowWriter::new(row_value, schema, &ctx.index_in_writer);
-        row_writer.write_row(row).box_err().context(InvalidRow)?;
+        // encode row value. The ContiguousRowWriter will clear the buf.
+       // let row_value = &mut putContext.valueBuf;
+        let mut rowWriter = ContiguousRowWriter::new(&mut putContext.valueBuf, schema, &putContext.index_in_writer);
+        rowWriter.writeRow(row).box_err().context(InvalidRow)?;
 
-        self.skiplist.put(keyByteVec, row_value);
+        self.skiplist.put(&putContext.keyBuf, &putContext.valueBuf);
 
         // update metrics
         self.metrics.row_raw_size.fetch_add(row.size(), atomic::Ordering::Relaxed);
         self.metrics.row_count.fetch_add(1, atomic::Ordering::Relaxed);
-        self.metrics.row_encoded_size.fetch_add(keyByteVec.len()+row_value.len(), atomic::Ordering::Relaxed);
+        self.metrics.row_encoded_size.fetch_add(putContext.keyBuf.len() + putContext.valueBuf.len(), atomic::Ordering::Relaxed);
 
         Ok(())
     }
 
-    fn scan(&self, ctx: ScanContext, request: ScanRequest) -> Result<ColumnarIterPtr> {
-        debug!(
-            "Scan skiplist memtable, ctx:{:?}, request:{:?}",
-            ctx, request
-        );
+    fn scan(&self, ctx: ScanContext, scanRequest: ScanRequest) -> Result<ColumnarIter> {
+        debug!("scan skiplist memtable, ctx:{:?}, request:{:?}",ctx, scanRequest);
 
-        let num_rows = self.skiplist.len();
-        let (reverse, batch_size) = (request.reverse, ctx.batch_size);
-        let iter = ColumnarIterImpl::new(self, ctx, request)?;
+      //  let num_rows = self.skiplist.len();
+        let (reverse, batch_size) = (scanRequest.reverse, ctx.batch_size);
+        let iter = ColumnarIterImpl::new(self, ctx, scanRequest)?;
         if reverse {
-            Ok(Box::new(ReversedColumnarIterator::new(
-                iter, num_rows, batch_size,
-            )))
+            Ok(Box::new(ReversedColumnarIterator::new(iter, self.skiplist.len(), batch_size)))
         } else {
             Ok(Box::new(iter))
         }

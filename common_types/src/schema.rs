@@ -321,15 +321,14 @@ impl ToString for ArrowSchemaMetaKey {
 /// Schema version
 pub type Version = u32;
 
-/// Mapping column index in table schema to column index in writer schema
+/// 保存了映射 column在表的index 对应 column在write时候的index的 fenquen
 #[derive(Clone, Default)]
 pub struct IndexInWriterSchema(Vec<Option<usize>>);
 
 impl IndexInWriterSchema {
     /// Create a index mapping for same schema with `num_columns` columns.
-    pub fn for_same_schema(num_columns: usize) -> Self {
-        let indexes = (0..num_columns).map(Some).collect();
-        Self(indexes)
+    pub fn for_same_schema(num_columns: usize) -> IndexInWriterSchema {
+        IndexInWriterSchema( (0..num_columns).map(Some).collect())
     }
 
     /// Returns the column index in writer schema of the column with index
@@ -341,8 +340,8 @@ impl IndexInWriterSchema {
     ///
     /// Panic if the index_in_table is out of bound
     #[inline]
-    pub fn column_index_in_writer(&self, index_in_table: usize) -> Option<usize> {
-        self.0[index_in_table]
+    pub fn columnIndexInWriter(&self, columnIndexInTable: usize) -> Option<usize> {
+        self.0[columnIndexInTable]
     }
 
     /// Reserve the capacity for the additional columns.
@@ -358,42 +357,35 @@ impl IndexInWriterSchema {
     }
 }
 
-// TODO(yingwen): No need to compare all elements in ColumnSchemas, Schema,
-// RecordSchema, custom PartialEq for them.
+// TODO(yingwen): No need to compare all elements in ColumnSchemas, Schema, RecordSchema, custom PartialEq for them.
 
-/// Data of column schemas
 #[derive(PartialEq)]
 pub(crate) struct ColumnSchemas {
-    /// Column schemas
-    columns: Vec<ColumnSchema>,
-    /// Column name to index of that column schema in `columns`, the index is guaranteed to be valid
+    columnSchemas: Vec<ColumnSchema>,
     columnName_columnIndex: HashMap<String, usize>,
-    /// Byte offsets of each column in contiguous row.
+    /// byte offsets of each column in contiguous row.
     columnByteOffsetVec: Vec<usize>,
-    /// String buffer offset in contiguous row.
-    string_buffer_offset: usize,
+    /// string buffer offset in contiguous row.
+    stringBufferOffset: usize,
 }
 
 impl ColumnSchemas {
-    fn new(columns: Vec<ColumnSchema>) -> Self {
-        let columnName_columnIndex = columns
-            .iter()
-            .enumerate()
-            .map(|(idx, c)| (c.name.to_string(), idx))
-            .collect();
+    fn new(columnSchemas: Vec<ColumnSchema>) -> Self {
+        let columnName_columnIndex = columnSchemas.iter().enumerate().map(|(idx, c)| (c.name.to_string(), idx)).collect();
 
-        let mut current_offset = 0;
-        let mut columnByteOffsetVec = Vec::with_capacity(columns.len());
-        for column_schema in &columns {
-            columnByteOffsetVec.push(current_offset);
-            current_offset += contiguous::byte_size_of_datum(&column_schema.datumKind);
+        let mut currentOffset = 0;
+        let mut columnByteOffsetVec = Vec::with_capacity(columnSchemas.len());
+
+        for columnSchema in &columnSchemas {
+            columnByteOffsetVec.push(currentOffset);
+            currentOffset += contiguous::byteSizeOfDatum(&columnSchema.datumKind);
         }
 
         Self {
-            columns,
+            columnSchemas,
             columnName_columnIndex,
             columnByteOffsetVec,
-            string_buffer_offset: current_offset,
+            stringBufferOffset: currentOffset,
         }
     }
 }
@@ -404,11 +396,11 @@ impl ColumnSchemas {
     }
 
     pub fn columns(&self) -> &[ColumnSchema] {
-        &self.columns
+        &self.columnSchemas
     }
 
     pub fn column(&self, i: usize) -> &ColumnSchema {
-        &self.columns[i]
+        &self.columnSchemas[i]
     }
 
     pub fn index_of(&self, name: &str) -> Option<usize> {
@@ -418,10 +410,7 @@ impl ColumnSchemas {
 
 impl fmt::Debug for ColumnSchemas {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("ColumnSchemas")
-            // name_to_index is ignored.
-            .field("columns", &self.columns)
-            .finish()
+        f.debug_struct("ColumnSchemas").field("columns", &self.columnSchemas).finish()
     }
 }
 
@@ -443,10 +432,11 @@ impl RecordSchema {
     fn from_column_schemas(column_schemas: ColumnSchemas, arrow_schema: &ArrowSchemaRef) -> Self {
         // Convert to arrow fields.
         let fields = column_schemas
-            .columns
+            .columnSchemas
             .iter()
             .map(|col| col.to_arrow_field())
             .collect::<Vec<_>>();
+
         // Build arrow schema.
         let arrow_schema = Arc::new(ArrowSchema::new_with_metadata(
             fields,
@@ -549,8 +539,7 @@ impl RecordSchemaWithKey {
                 } else {
                     None
                 }
-            })
-            .collect::<Vec<_>>()
+            }).collect::<Vec<_>>()
     }
 
     pub(crate) fn into_record_schema(self) -> RecordSchema {
@@ -687,7 +676,7 @@ impl Schema {
     /// Returns tsid column index and immutable reference of tsid column
     pub fn tsid_column(&self) -> Option<&ColumnSchema> {
         if let Some(idx) = self.index_of_tsid() {
-            Some(&self.column_schemas.columns[idx])
+            Some(&self.column_schemas.columnSchemas[idx])
         } else {
             None
         }
@@ -707,7 +696,7 @@ impl Schema {
     /// name.
     pub fn column_with_name(&self, name: &str) -> Option<&ColumnSchema> {
         let index = self.column_schemas.columnName_columnIndex.get(name)?;
-        Some(&self.column_schemas.columns[*index])
+        Some(&self.column_schemas.columnSchemas[*index])
     }
 
     /// Returns an immutable reference of a specific [ColumnSchema] selected
@@ -795,8 +784,8 @@ impl Schema {
     /// Returns `Ok` if rows with `writer_schema` can write to table with the same schema as `self`.
     pub fn compatible_for_write(&self,
                                 writer_schema: &Schema,
-                                index_in_writer: &mut IndexInWriterSchema) -> std::result::Result<(), CompatError> {
-        index_in_writer.reserve_columns(self.num_columns());
+                                indexInWriter: &mut IndexInWriterSchema) -> std::result::Result<(), CompatError> {
+        indexInWriter.reserve_columns(self.num_columns());
 
         let mut num_col_in_writer = 0;
         for column in self.columns() {
@@ -814,7 +803,7 @@ impl Schema {
                         .context(IncompatWriteColumn)?;
 
                     // Column is compatible, push index mapping
-                    index_in_writer.push_column(Some(writer_index));
+                    indexInWriter.push_column(Some(writer_index));
                 }
                 None => {
                     // Column is not found in writer, then the column should be nullable.
@@ -824,7 +813,7 @@ impl Schema {
                     );
 
                     // Column is nullable, push index mapping
-                    index_in_writer.push_column(None);
+                    indexInWriter.push_column(None);
                 }
             }
         }
@@ -941,7 +930,7 @@ impl Schema {
     /// Returns string buffer offset in contiguous row.
     #[inline]
     pub fn string_buffer_offset(&self) -> usize {
-        self.column_schemas.string_buffer_offset
+        self.column_schemas.stringBufferOffset
     }
 }
 

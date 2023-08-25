@@ -318,7 +318,7 @@ pub async fn stream_from_sst_file(
     let scan_sst_desc = format!("scan_sst_{}", sst_file.id());
     let metrics_collector = metrics_collector.map(|v| v.span(scan_sst_desc));
     let mut sst_reader = sst_factory
-        .create_reader(
+        .createReader(
             &path,
             sst_read_options,
             read_hint,

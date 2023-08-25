@@ -156,7 +156,7 @@ impl Encoder<LogKey> for LogKeyEncoder {
         Ok(())
     }
 
-    fn estimate_encoded_size(&self, _log_key: &LogKey) -> usize {
+    fn estimateEncodedSize(&self, _log_key: &LogKey) -> usize {
         // Refer to key format.
         1 + 8 + 8 + 1
     }
@@ -225,7 +225,7 @@ impl<T: Payload> Encoder<T> for LogValueEncoder {
             .context(EncodeLogValuePayload)
     }
 
-    fn estimate_encoded_size(&self, payload: &T) -> usize {
+    fn estimateEncodedSize(&self, payload: &T) -> usize {
         // Refer to value format.
         1 + payload.encode_size()
     }
@@ -298,7 +298,7 @@ impl Encoder<MetaKey> for MetaKeyEncoder {
         Ok(())
     }
 
-    fn estimate_encoded_size(&self, _log_key: &MetaKey) -> usize {
+    fn estimateEncodedSize(&self, _log_key: &MetaKey) -> usize {
         // Refer to key format.
         1 + 1 + 8 + 1
     }
@@ -373,7 +373,7 @@ impl Encoder<MaxSeqMetaValue> for MaxSeqMetaValueEncoder {
         Ok(())
     }
 
-    fn estimate_encoded_size(&self, _meta_value: &MaxSeqMetaValue) -> usize {
+    fn estimateEncodedSize(&self, _meta_value: &MaxSeqMetaValue) -> usize {
         // Refer to value format.
         1 + 8
     }
@@ -427,7 +427,7 @@ impl MaxSeqMetaEncoding {
 
     pub fn encode_key(&self, buf: &mut BytesMut, meta_key: &MetaKey) -> manager::Result<()> {
         buf.clear();
-        buf.reserve(self.key_enc.estimate_encoded_size(meta_key));
+        buf.reserve(self.key_enc.estimateEncodedSize(meta_key));
         self.key_enc
             .encode(buf, meta_key)
             .box_err()
@@ -442,7 +442,7 @@ impl MaxSeqMetaEncoding {
         meta_value: &MaxSeqMetaValue,
     ) -> manager::Result<()> {
         buf.clear();
-        buf.reserve(self.value_enc.estimate_encoded_size(meta_value));
+        buf.reserve(self.value_enc.estimateEncodedSize(meta_value));
         self.value_enc
             .encode(buf, meta_value)
             .box_err()
@@ -487,7 +487,7 @@ impl LogEncoding {
     /// method to generate min/max key in specific scope(global or in some region).
     pub fn encode_key(&self, buf: &mut BytesMut, log_key: &LogKey) -> Result<()> {
         buf.clear();
-        buf.reserve(self.logKeyEncoder.estimate_encoded_size(log_key));
+        buf.reserve(self.logKeyEncoder.estimateEncodedSize(log_key));
         self.logKeyEncoder.encode(buf, log_key)?;
 
         Ok(())
@@ -495,7 +495,7 @@ impl LogEncoding {
 
     pub fn encode_value(&self, buf: &mut BytesMut, payload: &impl Payload) -> Result<()> {
         buf.clear();
-        buf.reserve(self.logValueEncoder.estimate_encoded_size(payload));
+        buf.reserve(self.logValueEncoder.estimateEncodedSize(payload));
         self.logValueEncoder.encode(buf, payload)
     }
 
@@ -627,7 +627,7 @@ impl Encoder<CommonLogKey> for CommonLogKeyEncoder {
         Ok(())
     }
 
-    fn estimate_encoded_size(&self, _log_key: &CommonLogKey) -> usize {
+    fn estimateEncodedSize(&self, _log_key: &CommonLogKey) -> usize {
         // Refer to key format.
         1 + 8 + 8 + 8 + 1
     }
@@ -689,14 +689,14 @@ impl CommonLogEncoding {
     /// method to generate min/max key in specific scope(global or in some region).
     pub fn encode_key(&self, buf: &mut BytesMut, commonLogKey: &CommonLogKey) -> Result<()> {
         buf.clear();
-        buf.reserve(self.commonLogKeyEncoder.estimate_encoded_size(commonLogKey));
+        buf.reserve(self.commonLogKeyEncoder.estimateEncodedSize(commonLogKey));
         self.commonLogKeyEncoder.encode(buf, commonLogKey)?;
         Ok(())
     }
 
     pub fn encode_value(&self, buf: &mut BytesMut, payload: &impl Payload) -> Result<()> {
         buf.clear();
-        buf.reserve(self.logValEncoder.estimate_encoded_size(payload));
+        buf.reserve(self.logValEncoder.estimateEncodedSize(payload));
         self.logValEncoder.encode(buf, payload)
     }
 

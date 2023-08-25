@@ -18,7 +18,7 @@ impl Encoder<i64> for MemCompactEncoder {
         Ok(())
     }
 
-    fn estimate_encoded_size(&self, _value: &i64) -> usize {
+    fn estimateEncodedSize(&self, _value: &i64) -> usize {
         consts::MAX_VARINT_BYTES
     }
 }
@@ -40,7 +40,7 @@ impl Encoder<u64> for MemCompactEncoder {
         Ok(())
     }
 
-    fn estimate_encoded_size(&self, _value: &u64) -> usize {
+    fn estimateEncodedSize(&self, _value: &u64) -> usize {
         consts::MAX_UVARINT_BYTES
     }
 }

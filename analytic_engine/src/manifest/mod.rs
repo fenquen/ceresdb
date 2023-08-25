@@ -23,7 +23,8 @@ pub struct LoadRequest {
 }
 
 pub type SnapshotRequest = LoadRequest;
-/// Manifest holds meta data of all tables.
+
+/// Manifest holds meta data of all tables
 #[async_trait]
 pub trait Manifest: Send + Sync + fmt::Debug {
     /// Apply edit to table metas, store it to storage.

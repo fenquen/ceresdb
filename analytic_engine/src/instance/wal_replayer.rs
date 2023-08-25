@@ -186,7 +186,7 @@ impl TableBasedReplay {
             instance::createWalLocation(table_location.id, table_location.shard_info);
         let read_req = ReadRequest {
             location: wal_location,
-            start: ReadBoundary::Excluded(table_data.current_version().flushed_sequence()),
+            start: ReadBoundary::Excluded(table_data.currentTableVersion().flushed_sequence()),
             end: ReadBoundary::Max,
         };
 
@@ -422,7 +422,7 @@ async fn replay_table_log_entries(flusher: &Flusher,
                                   serial_exec: &mut TableOpSerialExecutor,
                                   table_data: &TableDataRef,
                                   log_entries: impl Iterator<Item=&LogEntry<ReadPayload>>) -> Result<()> {
-    let flushed_sequence = table_data.current_version().flushed_sequence();
+    let flushed_sequence = table_data.currentTableVersion().flushed_sequence();
     debug!(
         "Replay table log entries begin, table:{}, table_id:{:?}, last_sequence:{}, flushed_sequence:{flushed_sequence}",
         table_data.name, table_data.id, table_data.last_sequence(),
@@ -484,14 +484,14 @@ async fn replay_table_log_entries(flusher: &Flusher,
                     })?;
 
                 // Flush the table if necessary.
-                if table_data.should_flush_table(serial_exec) {
+                if table_data.shouldFlush(serial_exec) {
                     let opts = TableFlushOptions {
                         res_sender: None,
                         max_retry_flush_limit,
                     };
-                    let flush_scheduler = serial_exec.flush_scheduler();
+                    let flush_scheduler = serial_exec.getFlushScheduler();
                     flusher
-                        .scheduleFlush(flush_scheduler, table_data, opts)
+                        .flushAsync(flush_scheduler, table_data, opts)
                         .await
                         .box_err()
                         .context(ReplayWalWithCause {
@@ -515,7 +515,7 @@ async fn replay_table_log_entries(flusher: &Flusher,
 
     debug!(
         "replay table log entries finish, table:{}, table_id:{:?}, last_sequence:{}, flushed_sequence:{}",
-        table_data.name, table_data.id, table_data.last_sequence(), table_data.current_version().flushed_sequence()
+        table_data.name, table_data.id, table_data.last_sequence(), table_data.currentTableVersion().flushed_sequence()
     );
 
     Ok(())

@@ -34,9 +34,9 @@ pub enum Error {
     CreateColumnBlock { source: crate::column::Error },
 
     #[snafu(display(
-        "Failed to create arrow record batch, err:{}.\nBacktrace:\n{}",
-        source,
-        backtrace
+    "Failed to create arrow record batch, err:{}.\nBacktrace:\n{}",
+    source,
+    backtrace
     ))]
     CreateArrow {
         source: ArrowError,
@@ -50,9 +50,9 @@ pub enum Error {
     AppendDatum { source: crate::column::Error },
 
     #[snafu(display(
-        "Column not in schema with key, column_name:{}.\nBacktrace:\n{}",
-        name,
-        backtrace
+    "Column not in schema with key, column_name:{}.\nBacktrace:\n{}",
+    name,
+    backtrace
     ))]
     ColumnNotInSchemaWithKey { name: String, backtrace: Backtrace },
 
@@ -68,10 +68,10 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Projection is out of the index, source_projection:{:?}, arrow_schema:{}.\nBacktrace:\n{}",
-        source_projection,
-        arrow_schema,
-        backtrace
+    "Projection is out of the index, source_projection:{:?}, arrow_schema:{}.\nBacktrace:\n{}",
+    source_projection,
+    arrow_schema,
+    backtrace
     ))]
     OutOfIndexProjection {
         source_projection: Vec<Option<usize>>,
@@ -80,9 +80,9 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to reverse record batch data, err:{:?}.\nBacktrace:\n{}",
-        source,
-        backtrace
+    "Failed to reverse record batch data, err:{:?}.\nBacktrace:\n{}",
+    source,
+    backtrace
     ))]
     ReverseRecordBatchData {
         source: Box<dyn std::error::Error + Send + Sync + 'static>,
@@ -90,9 +90,9 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to select record batch data, err:{:?}.\nBacktrace:\n{}",
-        source,
-        backtrace
+    "Failed to select record batch data, err:{:?}.\nBacktrace:\n{}",
+    source,
+    backtrace
     ))]
     SelectRecordBatchData {
         source: Box<dyn std::error::Error + Send + Sync + 'static>,
@@ -130,10 +130,7 @@ impl RecordBatchData {
 
     fn take_column_block(&mut self, index: usize) -> ColumnBlock {
         let num_rows = self.num_rows();
-        mem::replace(
-            &mut self.column_blocks[index],
-            ColumnBlock::new_null(num_rows),
-        )
+        mem::replace(&mut self.column_blocks[index], ColumnBlock::new_null(num_rows))
     }
 
     /// Returns a zero-copy slice of this array with the indicated offset and length.
@@ -186,8 +183,7 @@ impl TryFrom<ArrowRecordBatch> for RecordBatchData {
     }
 }
 
-// TODO(yingwen): The schema in RecordBatch should be much simple because it may
-// lack some information.
+// TODO(yingwen): The schema in RecordBatch should be much simple because it may lack some information.
 #[derive(Debug, Clone)]
 pub struct RecordBatch {
     schema: RecordSchema,
@@ -533,16 +529,11 @@ impl RecordBatchWithKeyBuilder {
     }
 
     /// Append projected contiguous row into builder.
-    ///
     /// REQUIRE:
-    /// - The schema of `row` is the same as the source schema of the
-    ///   `projector`.
-    /// - The projected schema (with key) is the same as the schema of the
-    ///   builder.
-    pub fn append_projected_contiguous_row<T: ContiguousRow>(
-        &mut self,
-        row: &ProjectedContiguousRow<T>,
-    ) -> Result<()> {
+    /// - The schema of `row` is the same as the source schema of the `projector`.
+    /// - The projected schema (with key) is the same as the schema of the builder.
+    pub fn append_projected_contiguous_row<T: ContiguousRow>(&mut self,
+                                                             row: &ProjectedContiguousRow<T>) -> Result<()> {
         assert_eq!(row.num_datum_views(), self.builders.len());
 
         for (index, builder) in self.builders.iter_mut().enumerate() {
@@ -687,7 +678,7 @@ impl ArrowRecordBatchProjector {
                         num_rows,
                         column_schema.is_dictionary,
                     )
-                    .context(CreateColumnBlock)?;
+                        .context(CreateColumnBlock)?;
                     column_blocks.push(null_block);
                 }
             }

@@ -29,7 +29,7 @@ use crate::{
     row_iter::IterOptions,
     space::{SpaceAndTable, SpaceRef, Spaces},
     sst::{
-        factory::{FactoryRef as SstFactoryRef, ObjectStorePickerRef, ScanOptions},
+        factory::{FactoryRef as SstFactoryRef, ScanOptions},
         file::FilePurger,
     },
     table::data::TableDataRef,
@@ -37,6 +37,7 @@ use crate::{
     RecoverMode,
 };
 use crate::space::Space;
+use crate::sst::factory::ObjectStoreChooser;
 
 const MAX_RECORD_BATCHES_IN_FLIGHT_WHEN_COMPACTION_READ: usize = 64;
 
@@ -50,13 +51,13 @@ impl TableEngineInstance {
     pub(crate) async fn open(ctx: OpenedTableEngineInstanceContext,
                              manifest_storages: ManifestStorages,
                              wal_manager: WalManagerRef,
-                             store_picker: ObjectStorePickerRef,
+                             store_picker: Arc<dyn ObjectStoreChooser>,
                              sst_factory: SstFactoryRef) -> Result<Arc<Self>> {
         let spaces: Arc<RwLock<Spaces>> = Arc::new(RwLock::new(Spaces::default()));
         let default_runtime = ctx.engineRuntimes.default_runtime.clone();
         let file_purger = Arc::new(FilePurger::start(
             &default_runtime,
-            store_picker.default_store().clone(),
+            store_picker.chooseDefault().clone(),
         ));
 
         let table_meta_set_impl = Arc::new(TableMetaSetImpl {
@@ -78,8 +79,8 @@ impl TableEngineInstance {
             spaces,
             manifest: Arc::new(manifest),
             walManager: wal_manager.clone(),
-            store_picker: store_picker.clone(),
-            sst_factory,
+            objectStorePicker: store_picker.clone(),
+            sstFactory: sst_factory,
             meta_cache: ctx.meta_cache.clone(),
         });
 
@@ -138,7 +139,7 @@ impl TableEngineInstance {
                               self.spaceStore.manifest.clone(),
                               self.spaceStore.walManager.clone(),
                               self.replay_batch_size,
-                              self.make_flusher(),
+                              self.makeFlusher(),
                               self.max_retry_flush_limit,
                               self.recover_mode)?;
 

@@ -113,14 +113,14 @@ pub struct MemTableState {
     pub memTable: MemTableRef,
     /// The `time_range` is estimated via the time range of the first row group
     /// write to this memtable and is aligned to segment size
-    pub time_range: TimeRange,
+    pub timeRange: TimeRange,
     /// Id of the memtable, newer memtable has greater id
     pub id: MemTableId,
 }
 
 impl MemTableState {
     #[inline]
-    pub fn last_sequence(&self) -> SequenceNumber {
+    pub fn lastSequence(&self) -> SequenceNumber {
         self.memTable.last_sequence()
     }
 }
@@ -128,7 +128,7 @@ impl MemTableState {
 impl fmt::Debug for MemTableState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("MemTableState")
-            .field("time_range", &self.time_range)
+            .field("time_range", &self.timeRange)
             .field("id", &self.id)
             .field("mem", &self.memTable.approximate_memory_usage())
             .field("metrics", &self.memTable.metrics())
@@ -137,7 +137,6 @@ impl fmt::Debug for MemTableState {
     }
 }
 
-/// mutable memTable
 // TODO(yingwen): Replace by Either.
 #[derive(Clone)]
 pub enum MemTableForWrite {
@@ -155,7 +154,7 @@ impl MemTableForWrite {
     pub fn acceptTimestamp(&self, timestamp: Timestamp) -> bool {
         match self {
             MemTableForWrite::Sampling(_) => true,
-            MemTableForWrite::Normal(v) => v.time_range.contains(timestamp),
+            MemTableForWrite::Normal(v) => v.timeRange.contains(timestamp),
         }
     }
 
@@ -175,8 +174,8 @@ impl MemTableForWrite {
 
                 Ok(())
             }
-            MemTableForWrite::Normal(v) => {
-                v.memTable.put(ctx, keySequence, row, schema).context(PutMemTable)
+            MemTableForWrite::Normal(memTableState) => {
+                memTableState.memTable.put(ctx, keySequence, row, schema).context(PutMemTable)
             }
         }
     }
@@ -207,17 +206,13 @@ impl MemTableForWrite {
 #[derive(Debug, Default)]
 pub struct FlushableMemTables {
     pub sampling_mem: Option<SamplingMemTable>,
-    pub memtables: MemTableVec,
+    pub memtables: Vec<MemTableState>,
 }
 
 impl FlushableMemTables {
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.sampling_mem.is_none() && self.memtables.is_empty()
-    }
-
     pub fn ids(&self) -> Vec<MemTableId> {
         let mut memtable_ids = Vec::with_capacity(self.memtables.len() + 1);
+
         if let Some(v) = &self.sampling_mem {
             memtable_ids.push(v.id);
         }
@@ -233,7 +228,6 @@ impl FlushableMemTables {
     }
 }
 
-/// Vec to store memtables
 pub type MemTableVec = Vec<MemTableState>;
 
 /// MemTableView holds all memtables of the table
@@ -275,9 +269,9 @@ impl MemTableView {
     }
 
     /// Instead of replace the old memtable by a new memtable, we just move the
-    /// old memtable to immutable memtables and left mutable memtables
-    /// empty. New mutable memtable will be constructed via put request.
-    fn switch_memtables(&mut self) -> Option<SequenceNumber> {
+    /// old memtable to immutable memtables and left mutable memtables empty.
+    /// New mutable memtable will be constructed via put request.
+    fn switchMutableMemTable2Immutable(&mut self) -> Option<SequenceNumber> {
         self.mutableMemTableSet.move_to_inmem(&mut self.immutableMemTableSet)
     }
 
@@ -313,23 +307,21 @@ impl MemTableView {
     }
 
     /// Returns memtables need to be flushed. Only sampling memtable and
-    /// immutables will be considered. And only memtables which `last_sequence`
-    /// less or equal to the given [SequenceNumber] will be picked.
+    /// immutables will be considered. And only memtables which `last_sequence` less or equal to the given [SequenceNumber] will be picked.
     ///
-    /// This method assumes that one sequence number will not exist in multiple
-    /// memtables.
-    fn pick_memtables_to_flush(&self, last_sequence: SequenceNumber) -> FlushableMemTables {
+    /// This method assumes that one sequence number will not exist in multiple memtables.
+    fn pick_memtables_to_flush(&self, lastSequence: SequenceNumber) -> FlushableMemTables {
         let mut mems = FlushableMemTables::default();
 
         if let Some(v) = &self.samplingMemTable {
-            if v.last_sequence() <= last_sequence {
+            if v.last_sequence() <= lastSequence {
                 mems.sampling_mem = Some(v.clone());
             }
         }
 
-        for mem in self.immutableMemTableSet.0.values() {
-            if mem.last_sequence() <= last_sequence {
-                mems.memtables.push(mem.clone());
+        for memTableState in self.immutableMemTableSet.0.values() {
+            if memTableState.lastSequence() <= lastSequence {
+                mems.memtables.push(memTableState.clone());
             }
         }
 
@@ -380,7 +372,7 @@ impl MutableMemTableSet {
     fn memtable_for_write(&self, timestamp: Timestamp) -> Option<&MemTableState> {
         // Find the first memtable whose end time (exclusive) > timestamp
         if let Some((_, memtable)) = self.0.range((Bound::Excluded(timestamp), Bound::Unbounded)).next() {
-            if memtable.time_range.contains(timestamp) {
+            if memtable.timeRange.contains(timestamp) {
                 return Some(memtable);
             }
         }
@@ -388,32 +380,28 @@ impl MutableMemTableSet {
         None
     }
 
-    /// Insert memtable, the caller should guarantee the key of memtable is not
-    /// present.
+    /// insert memtable, the caller should guarantee the key of memtable is not present
     fn insert(&mut self, memtable: MemTableState) -> Option<MemTableState> {
         // Use end time of time range as key
-        let end = memtable.time_range.exclusive_end();
+        let end = memtable.timeRange.exclusive_end();
         self.0.insert(end, memtable)
     }
 
     fn memory_usage(&self) -> usize {
-        self.0
-            .values()
-            .map(|m| m.memTable.approximate_memory_usage())
-            .sum()
+        self.0.values().map(|m| m.memTable.approximate_memory_usage()).sum()
     }
 
-    /// Move all mutable memtables to immutable memtables.
-    fn move_to_inmem(&mut self, immem: &mut ImmutableMemTableSet) -> Option<SequenceNumber> {
-        let last_seq = self.0.values().map(|m| {
-                let last_sequence = m.memTable.last_sequence();
-                immem.0.insert(m.id, m.clone());
+    /// move all mutable memtables to immutable memtables.
+    fn move_to_inmem(&mut self, immutableMemTableSet: &mut ImmutableMemTableSet) -> Option<SequenceNumber> {
+        let lastSeq = self.0.values().map(|memTableState| {
+            let lastSeq = memTableState.memTable.last_sequence();
+            immutableMemTableSet.0.insert(memTableState.id, memTableState.clone());
 
-                last_sequence
-            }).max();
+            lastSeq
+        }).max();
 
         self.0.clear();
-        last_seq
+        lastSeq
     }
 
     fn memtables_for_read(&self, timeRange: TimeRange, mems: &mut Vec<MemTableState>) {
@@ -421,7 +409,7 @@ impl MutableMemTableSet {
         let iter = self.0.range((Bound::Excluded(timeRange.inclusive_start), Bound::Unbounded));
         for (_endTs, memTableState) in iter {
             // we need to iterate all candidate memtables as their start time is unspecific
-            if memTableState.time_range.intersect_with(timeRange) {
+            if memTableState.timeRange.intersect_with(timeRange) {
                 mems.push(memTableState.clone());
             }
         }
@@ -444,7 +432,7 @@ impl ImmutableMemTableSet {
 
     fn memtables_for_read(&self, time_range: TimeRange, mems: &mut MemTableVec) {
         for mem in self.0.values() {
-            if mem.time_range.intersect_with(time_range) {
+            if mem.timeRange.intersect_with(time_range) {
                 mems.push(mem.clone());
             }
         }
@@ -551,18 +539,16 @@ impl TableVersion {
         self.tableVersionInner.read().unwrap().memTableView.total_memory_usage()
     }
 
-    /// Return the suggested segment duration if sampling memtable is still
-    /// active.
+    /// return the suggested segment duration if sampling memtable is still active
     pub fn suggest_duration(&self) -> Option<Duration> {
         self.tableVersionInner.write().unwrap().memTableView.suggest_duration()
     }
 
     /// Switch all mutable memtables
     ///
-    /// Returns the maxium `SequenceNumber` in the mutable memtables needs to be
-    /// freezed.
-    pub fn switch_memtables(&self) -> Option<SequenceNumber> {
-        self.tableVersionInner.write().unwrap().memTableView.switch_memtables()
+    /// Returns the maxium `SequenceNumber` in the mutable memtables needs to be freezed.
+    pub fn switchMutableMemTable2Immutable(&self) -> Option<SequenceNumber> {
+        self.tableVersionInner.write().unwrap().memTableView.switchMutableMemTable2Immutable()
     }
 
     /// Stop timestamp sampling and freezed the sampling memtable.
@@ -573,8 +559,8 @@ impl TableVersion {
     }
 
     /// See [MemTableView::pick_memtables_to_flush]
-    pub fn pick_memtables_to_flush(&self, last_sequence: SequenceNumber) -> FlushableMemTables {
-        self.tableVersionInner.read().unwrap().memTableView.pick_memtables_to_flush(last_sequence)
+    pub fn pick_memtables_to_flush(&self, lastSequence: SequenceNumber) -> FlushableMemTables {
+        self.tableVersionInner.read().unwrap().memTableView.pick_memtables_to_flush(lastSequence)
     }
 
     /// Get memtable by timestamp for write.

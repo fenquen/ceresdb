@@ -27,7 +27,7 @@ impl Encoder<[u8]> for MemCompactEncoder {
         Ok(())
     }
 
-    fn estimate_encoded_size(&self, value: &[u8]) -> usize {
+    fn estimateEncodedSize(&self, value: &[u8]) -> usize {
         consts::MAX_VARINT_BYTES + value.len()
     }
 }
@@ -39,8 +39,8 @@ impl Encoder<Bytes> for MemCompactEncoder {
         self.encode(buf, &value[..])
     }
 
-    fn estimate_encoded_size(&self, value: &Bytes) -> usize {
-        self.estimate_encoded_size(&value[..])
+    fn estimateEncodedSize(&self, value: &Bytes) -> usize {
+        self.estimateEncodedSize(&value[..])
     }
 }
 

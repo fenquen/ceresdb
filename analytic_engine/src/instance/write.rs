@@ -228,7 +228,9 @@ impl WriteRowGroupSplitter {
 }
 
 pub struct Writer<'a> {
+    /// 当前对应的表隶属的instance
     instance: Arc<TableEngineInstance>,
+    /// 当前对应的表隶属的space
     space: Arc<Space>,
     tableData: Arc<TableData>,
     serial_exec: &'a mut TableOpSerialExecutor,
@@ -296,6 +298,7 @@ impl<'a> MemTableWriter<'a> {
                 continue;
             }
 
+            // 单个的memTable对应1个时间区段使得会有多个memTable fenquen
             if lastMemTableForWrite.is_none() || !lastMemTableForWrite.as_ref().unwrap().acceptTimestamp(timestamp) {
                 // The time range is not processed by current memtable, find next one.
                 let memTableForWrite =
@@ -309,9 +312,8 @@ impl<'a> MemTableWriter<'a> {
             // we have check the row num is less than `MAX_ROWS_TO_WRITE`, it is safe to cast it to u32 here
             let keySequence = KeySequence::new(sequenceNumber, rowIndex as u32);
 
-            // TODO(yingwen): Batch sample ti mestamp in sampling phase.
-            lastMemTableForWrite.as_ref().unwrap().put(&mut ctx, keySequence, row, schema, timestamp)
-                .context(WriteMemTable { table: &self.tableData.name })?;
+            // TODO(yingwen): Batch sample ti mestamp in sampling phase
+            lastMemTableForWrite.as_ref().unwrap().put(&mut ctx, keySequence, row, schema, timestamp).context(WriteMemTable { table: &self.tableData.name })?;
         }
 
         // Update last sequence of memtable.
@@ -436,38 +438,38 @@ impl<'a> Writer<'a> {
 
         ensure!(!self.tableData.is_dropped(), WriteDroppedTable {table: &self.tableData.name,});
 
-        // Checks schema compatibility.
+        // checks schema compatibility.
         self.tableData.schema().compatible_for_write(encodeContext.rowGroup.schema(),
                                                      &mut encodeContext.indexInWriterSchema).context(IncompatSchema)?;
 
-        // 默认是false spaces上
-        if self.instance.shouldFlushInstance() {
+        // 默认是false 找到instance麾下内存用量最大的space 然后找到该space麾下内存用量最大的table
+        if self.instance.shouldFlush() {
             if let Some(space) = self.instance.spaceStore.find_maximum_memory_usage_space() {
-                if let Some(table) = space.find_maximum_memory_usage_table() {
-                    info!("Trying to flush table {} bytes {} in space {} because engine total memtable memory usage exceeds db_write_buffer_size {}.",
-                          table.name,table.memtable_memory_usage(),space.id,self.instance.db_write_buffer_size,);
+                if let Some(tableData) = space.find_maximum_memory_usage_table() {
+                    info!("trying to flush table {} bytes {} in space {} because engine total memtable memory usage exceeds db_write_buffer_size {}.",
+                          tableData.name,tableData.memtable_memory_usage(),space.id,self.instance.db_write_buffer_size,);
 
                     let _timer = self.tableData.metrics.start_table_write_instance_flush_wait_timer();
-                    self.handle_memtable_flush(&table).await?;
+                    self.flushMemTable(&tableData).await?;
                 }
             }
         }
 
-        // 默认是false space中的table上
-        if self.space.should_flush_space() {
-            if let Some(table) = self.space.find_maximum_memory_usage_table() {
-                info!("Trying to flush table {} bytes {} in space {} because space total memtable memory usage exceeds space_write_buffer_size {}.",
-                      table.name,table.memtable_memory_usage() ,self.space.id,self.space.write_buffer_size,);
+        // 默认是false 找到space麾下内存用量最大的table
+        if self.space.shouldFlush() {
+            if let Some(tableData) = self.space.find_maximum_memory_usage_table() {
+                info!("trying to flush table {} bytes {} in space {} because space total memtable memory usage exceeds space_write_buffer_size {}.",
+                      tableData.name,tableData.memtable_memory_usage() ,self.space.id,self.space.write_buffer_size,);
 
                 let _timer = self.tableData.metrics.start_table_write_space_flush_wait_timer();
-                self.handle_memtable_flush(&table).await?;
+                self.flushMemTable(&tableData).await?;
             }
         }
 
-        if self.tableData.should_flush_table(self.serial_exec) {
-            let table_data = self.tableData.clone();
-            let _timer = table_data.metrics.start_table_write_flush_wait_timer();
-            self.handle_memtable_flush(&table_data).await?;
+        if self.tableData.shouldFlush(self.serial_exec) {
+            let tableData = self.tableData.clone();
+            let _timer = tableData.metrics.start_table_write_flush_wait_timer();
+            self.flushMemTable(&tableData).await?;
         }
 
         Ok(())
@@ -505,35 +507,33 @@ impl<'a> Writer<'a> {
 
     /// Flush memtables of table in background.
     ///
-    /// Note the table to flush may not the same as `self.table_data`. And if we
-    /// try to flush other table in this table's writer, the lock should be
-    /// acquired in advance. And in order to avoid deadlock, we should not wait
-    /// for the lock.
-    async fn handle_memtable_flush(&mut self, table_data: &TableDataRef) -> Result<()> {
+    /// Note the table to flush may not the same as `self.table_data`. And if we try to flush other table in this table's writer, the lock should be
+    /// acquired in advance. And in order to avoid deadlock, we should not wait for the lock.
+    async fn flushMemTable(&mut self, tableData: &Arc<TableData>) -> Result<()> {
         let opts = TableFlushOptions {
             res_sender: None,
             max_retry_flush_limit: self.instance.max_retry_flush_limit(),
         };
 
-        let flusher = self.instance.make_flusher();
+        let flusher = self.instance.makeFlusher();
 
-        if table_data.id == self.tableData.id {
-            let flush_scheduler = self.serial_exec.flush_scheduler();
+        // 目前只会自己flush自己对应的table 不会到下边的逻辑去flush不是自己的
+        if tableData.id == self.tableData.id {
+            let flushScheduler = self.serial_exec.getFlushScheduler();
             // Set `block_on_write_thread` to false and let flush do in background.
-            return flusher.scheduleFlush(flush_scheduler, table_data, opts).await.context(FlushTable { table: &table_data.name });
+            return flusher.flushAsync(flushScheduler, tableData, opts).await.context(FlushTable { table: &tableData.name });
         }
 
-        debug!("try to trigger flush of other table:{} from the write procedure of table:{}",
-            table_data.name, self.tableData.name);
+        debug!("try to trigger flush of other table:{} from the write procedure of table:{}",tableData.name, self.tableData.name);
 
-        match table_data.tableOpSerialExecutor.try_lock() {
+        match tableData.tableOpSerialExecutor.try_lock() {
             Ok(mut serial_exec) => {
-                let flush_scheduler = serial_exec.flush_scheduler();
+                let flush_scheduler = serial_exec.getFlushScheduler();
                 // Set `block_on_write_thread` to false and let flush do in background.
-                flusher.scheduleFlush(flush_scheduler, table_data, opts).await.context(FlushTable { table: &table_data.name })
+                flusher.flushAsync(flush_scheduler, tableData, opts).await.context(FlushTable { table: &tableData.name })
             }
             Err(_) => {
-                warn!("Failed to acquire write lock for flush table:{}",table_data.name);
+                warn!("failed to acquire write lock for flush table:{}",tableData.name);
                 Ok(())
             }
         }

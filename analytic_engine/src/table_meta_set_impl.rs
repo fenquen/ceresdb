@@ -144,10 +144,10 @@ impl TableMetaSetImpl {
             MetaUpdate::VersionEdit(VersionEditMeta {
                                         space_id,
                                         table_id,
-                                        flushed_sequence,
-                                        files_to_add,
-                                        files_to_delete,
-                                        mems_to_remove,
+                                        flushedMaxSeq: flushed_sequence,
+                                        addedFiles: files_to_add,
+                                        deletedFiles: files_to_delete,
+                                        memTableIdsToRemove: mems_to_remove,
                                         max_file_id,
                                     }) => {
                 let version_edit = move |_space: SpaceRef, table_data: TableDataRef| {
@@ -158,7 +158,7 @@ impl TableMetaSetImpl {
                         files_to_delete,
                         max_file_id,
                     };
-                    table_data.current_version().apply_edit(edit);
+                    table_data.currentTableVersion().apply_edit(edit);
 
                     Ok(())
                 };
@@ -251,7 +251,7 @@ impl TableMetaSetImpl {
                 version_meta
             );
 
-            table_data.current_version().apply_meta(version_meta);
+            table_data.currentTableVersion().apply_meta(version_meta);
         }
 
         debug!(
@@ -294,7 +294,7 @@ impl TableMetaSet for TableMetaSetImpl {
                 opts: table_data.table_options().as_ref().clone(),
             };
 
-            let version_snapshot = table_data.current_version().snapshot();
+            let version_snapshot = table_data.currentTableVersion().snapshot();
             let TableVersionSnapshot {
                 flushed_sequence,
                 files,

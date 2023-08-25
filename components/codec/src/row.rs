@@ -47,7 +47,7 @@ impl<'a> Encoder<Row> for WalRowEncoder<'a> {
     fn encode<B: BufMut>(&self, buf: &mut B, value: &Row) -> Result<()> {
         let encoder = MemCompactEncoder;
         for index_in_table in 0..self.table_schema.num_columns() {
-            match self.index_in_writer.column_index_in_writer(index_in_table) {
+            match self.index_in_writer.columnIndexInWriter(index_in_table) {
                 Some(writer_index) => {
                     // Column in writer
                     encoder
@@ -64,18 +64,18 @@ impl<'a> Encoder<Row> for WalRowEncoder<'a> {
         Ok(())
     }
 
-    fn estimate_encoded_size(&self, value: &Row) -> usize {
+    fn estimateEncodedSize(&self, value: &Row) -> usize {
         let encoder = MemCompactEncoder;
         let mut total_len = 0;
         for index_in_table in 0..self.table_schema.num_columns() {
-            match self.index_in_writer.column_index_in_writer(index_in_table) {
+            match self.index_in_writer.columnIndexInWriter(index_in_table) {
                 Some(writer_index) => {
                     // Column in writer
-                    total_len += encoder.estimate_encoded_size(&value[writer_index]);
+                    total_len += encoder.estimateEncodedSize(&value[writer_index]);
                 }
                 None => {
                     // Column not in writer
-                    total_len += encoder.estimate_encoded_size(&Datum::Null);
+                    total_len += encoder.estimateEncodedSize(&Datum::Null);
                 }
             }
         }
@@ -142,7 +142,7 @@ pub fn encode_row_group_for_wal(row_group: &RowGroup,
 
     // Use estimated size of first row to avoid compute all
     let row_estimated_size = match row_group.get_row(0) {
-        Some(first_row) => row_encoder.estimate_encoded_size(first_row),
+        Some(first_row) => row_encoder.estimateEncodedSize(first_row),
         // The row group is empty
         None => return Ok(()),
     };

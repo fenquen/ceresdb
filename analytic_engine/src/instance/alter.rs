@@ -69,10 +69,10 @@ impl<'a> Alterer<'a> {
         // First trigger a flush before alter schema, to ensure ensure all wal entries
         // with old schema are flushed
         let opts = TableFlushOptions::default();
-        let flush_scheduler = self.serial_exec.flush_scheduler();
-        let flusher = self.instance.make_flusher();
+        let flush_scheduler = self.serial_exec.getFlushScheduler();
+        let flusher = self.instance.makeFlusher();
         flusher
-            .do_flush(flush_scheduler, &self.table_data, opts)
+            .flushSync(flush_scheduler, &self.table_data, opts)
             .await
             .context(FlushTable {
                 space_id: self.table_data.space_id,

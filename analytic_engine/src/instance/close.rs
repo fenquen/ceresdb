@@ -38,10 +38,10 @@ impl Closer {
         // Flush table.
         let opts = TableFlushOptions::default();
         let mut serial_exec = table_data.tableOpSerialExecutor.lock().await;
-        let flush_scheduler = serial_exec.flush_scheduler();
+        let flush_scheduler = serial_exec.getFlushScheduler();
 
         self.flusher
-            .do_flush(flush_scheduler, &table_data, opts)
+            .flushSync(flush_scheduler, &table_data, opts)
             .await
             .context(FlushTable {
                 space_id: self.space.id,

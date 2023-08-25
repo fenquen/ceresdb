@@ -136,13 +136,13 @@ impl TableEngineInstance {
             projected_schema: projected_schema.clone(),
             predicate: readRequest.predicate.clone(),
             meta_cache: self.meta_cache.clone(),
-            runtime: self.read_runtime().clone(),
+            runtime: self.getReadRuntime().clone(),
             num_rows_per_row_group: tableOptions.num_rows_per_row_group,
             scan_options: self.scan_options.clone(),
         };
 
         let timeRange = readRequest.predicate.time_range();
-        let tableVersion = tableData.current_version();
+        let tableVersion = tableData.currentTableVersion();
         let readViews = self.partition_ssts_and_memtables(timeRange, tableVersion, tableOptions);
 
         let iter_options = self.make_iter_options(tableOptions.num_rows_per_row_group);
@@ -159,9 +159,9 @@ impl TableEngineInstance {
                 sequence,
                 projected_schema: projected_schema.clone(),
                 predicate: readRequest.predicate.clone(),
-                sst_factory: &self.spaceStore.sst_factory,
+                sst_factory: &self.spaceStore.sstFactory,
                 sst_read_options: sst_read_options.clone(),
-                store_picker: self.spaceStore.store_picker(),
+                store_picker: self.spaceStore.objectStorePicker(),
                 merge_iter_options: iter_options.clone(),
                 need_dedup: tableOptions.needDeDuplicate(),
                 reverse: false,
@@ -200,13 +200,13 @@ impl TableEngineInstance {
             projected_schema: projected_schema.clone(),
             predicate: request.predicate.clone(),
             meta_cache: self.meta_cache.clone(),
-            runtime: self.read_runtime().clone(),
+            runtime: self.getReadRuntime().clone(),
             num_rows_per_row_group: table_options.num_rows_per_row_group,
             scan_options: self.scan_options.clone(),
         };
 
         let time_range = request.predicate.time_range();
-        let version = table_data.current_version();
+        let version = table_data.currentTableVersion();
         let read_views = self.partition_ssts_and_memtables(time_range, version, table_options);
 
         let mut iters = Vec::with_capacity(read_views.len());
@@ -222,8 +222,8 @@ impl TableEngineInstance {
                 projected_schema: projected_schema.clone(),
                 predicate: request.predicate.clone(),
                 sst_read_options: sst_read_options.clone(),
-                sst_factory: &self.spaceStore.sst_factory,
-                store_picker: self.spaceStore.store_picker(),
+                sst_factory: &self.spaceStore.sstFactory,
+                store_picker: self.spaceStore.objectStorePicker(),
             };
 
             let builder = chain::Builder::new(chain_config);
@@ -279,7 +279,7 @@ impl TableEngineInstance {
         }
 
         for memtable in readView.memtables {
-            let aligned_ts = memtable.time_range.inclusive_start().truncate_by(segmentDuration);
+            let aligned_ts = memtable.timeRange.inclusive_start().truncate_by(segmentDuration);
 
             let entry = alignedTs_readView.entry(aligned_ts).or_insert_with(ReadView::default);
             entry.memtables.push(memtable);

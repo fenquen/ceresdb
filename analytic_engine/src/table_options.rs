@@ -216,8 +216,7 @@ impl From<Compression> for ParquetCompression {
 /// A hint for building sst.
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
 pub enum StorageFormatHint {
-    /// Which storage format is chosen to encode one sst depends on the data
-    /// pattern.
+    /// Which storage format is chosen to encode one sst depends on the data pattern
     #[default]
     Auto,
     Specific(StorageFormat),
@@ -226,8 +225,7 @@ pub enum StorageFormatHint {
 /// StorageFormat specify how records are saved in persistent storage
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq, Serialize)]
 pub enum StorageFormat {
-    /// Traditional columnar format, every column is saved in one exact one
-    /// column, for example:
+    /// Traditional columnar format, every column is saved in one exact one column, for example:
     ///
     ///```plaintext
     /// | Timestamp | Device ID | Status Code | Tag 1 | Tag 2 |

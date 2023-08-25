@@ -39,9 +39,9 @@ enum State {
 }
 
 /// Columnar iterator for [SkipListMemTable]
-pub struct ColumnarIterImpl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> {
-    /// The internal skiplist iter
-    iter: IterRef<SkipList<BytewiseComparator, A>, BytewiseComparator, A>,
+pub struct ColumnarIterImpl<A: Arena<Stats=BasicStats> + Clone + Sync + Send> {
+    /// the internal skiplist iter
+    skipListIter: IterRef<SkipList<BytewiseComparator, A>, BytewiseComparator, A>,
 
     // Schema related:
     /// Schema of this memtable, used to decode row
@@ -68,34 +68,40 @@ pub struct ColumnarIterImpl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> 
     need_dedup: bool,
 }
 
-impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
-    /// Create a new [ColumnarIterImpl]
-    pub fn new(
-        memtable: &SkipListMemTable<A>,
-        ctx: ScanContext,
-        request: ScanRequest,
-    ) -> Result<Self> {
-        // Create projection for the memtable schema
-        let projector = request
-            .projected_schema
-            .try_project_with_key(&memtable.schema)
-            .context(ProjectSchema)?;
+impl<A: Arena<Stats=BasicStats> + Clone + Sync + Send> Iterator for ColumnarIterImpl<A> {
+    type Item = Result<RecordBatchWithKey>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.state != State::Initialized {
+            return None;
+        }
+
+        self.fetchNextRecordBatch().transpose()
+    }
+}
+
+impl<A: Arena<Stats=BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
+    pub fn new(memtable: &SkipListMemTable<A>, ctx: ScanContext, request: ScanRequest) -> Result<Self> {
+        // create projection for the memtable schema
+        let projector = request.projected_schema.try_project_with_key(&memtable.schema).context(ProjectSchema)?;
 
         let iter = memtable.skiplist.iter();
-        let mut columnar_iter = Self {
-            iter,
-            memtable_schema: memtable.schema.clone(),
-            projected_schema: request.projected_schema,
-            projector,
-            batch_size: ctx.batch_size,
-            deadline: ctx.deadline,
-            start_user_key: request.start_user_key,
-            end_user_key: request.end_user_key,
-            sequence: request.sequence,
-            state: State::Uninitialized,
-            last_internal_key: None,
-            need_dedup: request.need_dedup,
-        };
+
+        let mut columnar_iter =
+            Self {
+                skipListIter: iter,
+                memtable_schema: memtable.schema.clone(),
+                projected_schema: request.projected_schema,
+                projector,
+                batch_size: ctx.batch_size,
+                deadline: ctx.deadline,
+                start_user_key: request.start_user_key,
+                end_user_key: request.end_user_key,
+                sequence: request.sequence,
+                state: State::Uninitialized,
+                last_internal_key: None,
+                need_dedup: request.need_dedup,
+            };
 
         columnar_iter.init()?;
 
@@ -108,28 +114,26 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
     fn init(&mut self) -> Result<()> {
         match &self.start_user_key {
             Bound::Included(user_key) => {
-                // Construct seek key
+                // construct seek key
                 let mut key_buf = BytesMut::new();
-                let seek_key = key::internal_key_for_seek(user_key, self.sequence, &mut key_buf)
-                    .context(EncodeInternalKey)?;
+                let seekKey = key::buildSeekKey(user_key, self.sequence, &mut key_buf).context(EncodeInternalKey)?;
 
-                // Seek the skiplist
-                self.iter.seek(seek_key);
+                // seek the skiplist
+                self.skipListIter.seek(seekKey);
             }
             Bound::Excluded(user_key) => {
-                // Construct seek key, just seek to the key with next prefix, so there is no
-                // need to skip the key until we meet the first key >
-                // start_user_key
+                // construct seek key, just seek to the key with next prefix, so there is no
+                // need to skip the key until we meet the first key > start_user_key
                 let next_user_key = row::key_prefix_next(user_key);
-                let mut key_buf = BytesMut::new();
-                let seek_key =
-                    key::internal_key_for_seek(&next_user_key, self.sequence, &mut key_buf)
-                        .context(EncodeInternalKey)?;
 
-                // Seek the skiplist
-                self.iter.seek(seek_key);
+                // construct seek key
+                let mut key_buf = BytesMut::new();
+                let seek_key = key::buildSeekKey(&next_user_key, self.sequence, &mut key_buf).context(EncodeInternalKey)?;
+
+                // seek the skiplist
+                self.skipListIter.seek(seek_key);
             }
-            Bound::Unbounded => self.iter.seek_to_first(),
+            Bound::Unbounded => self.skipListIter.seek_to_first(),
         }
 
         self.state = State::Initialized;
@@ -137,27 +141,23 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
         Ok(())
     }
 
-    /// Fetch next record batch
-    fn fetch_next_record_batch(&mut self) -> Result<Option<RecordBatchWithKey>> {
+    fn fetchNextRecordBatch(&mut self) -> Result<Option<RecordBatchWithKey>> {
         debug_assert_eq!(State::Initialized, self.state);
         assert!(self.batch_size > 0);
 
-        let mut builder = RecordBatchWithKeyBuilder::with_capacity(
-            self.projected_schema.to_record_schema_with_key(),
-            self.batch_size,
-        );
+        let mut builder =
+            RecordBatchWithKeyBuilder::with_capacity(self.projected_schema.to_record_schema_with_key(),
+                                                     self.batch_size);
         let mut num_rows = 0;
-        while self.iter.valid() && num_rows < self.batch_size {
-            if let Some(row) = self.fetch_next_row()? {
-                let row_reader = ContiguousRowReader::try_new(&row, &self.memtable_schema)
-                    .context(DecodeContinuousRow)?;
-                let projected_row = ProjectedContiguousRow::new(row_reader, &self.projector);
 
-                trace!("Column iterator fetch next row, row:{:?}", projected_row);
+        while self.skipListIter.valid() && num_rows < self.batch_size {
+            if let Some(row) = self.fetchNextRow()? {
+                let rowReader = ContiguousRowReader::new(&row, &self.memtable_schema).context(DecodeContinuousRow)?;
+                let projectedRow = ProjectedContiguousRow::new(rowReader, &self.projector);
 
-                builder
-                    .append_projected_contiguous_row(&projected_row)
-                    .context(AppendRow)?;
+                trace!("column iterator fetch next row, row:{:?}", projectedRow);
+
+                builder.append_projected_contiguous_row(&projectedRow).context(AppendRow)?;
                 num_rows += 1;
             } else {
                 // There is no more row to fetch
@@ -178,29 +178,25 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
 
             Ok(Some(batch))
         } else {
-            // If iter is invalid after seek (nothing matched), then it may not be marked as
-            // finished yet
+            // if iter is invalid after seek (nothing matched), then it may not be marked as finished yet
             self.finish();
             Ok(None)
         }
     }
 
-    /// Fetch next row matched the given condition, the current entry of iter
-    /// will be considered
+    /// fetch next row matched the given condition, the current entry of iter will be considered
     ///
     /// REQUIRE: The iter is valid
-    fn fetch_next_row(&mut self) -> Result<Option<ArenaSlice<A>>> {
+    fn fetchNextRow(&mut self) -> Result<Option<ArenaSlice<A>>> {
         debug_assert_eq!(State::Initialized, self.state);
 
-        // TODO(yingwen): Some operation like delete needs to be considered during
-        // iterating: we need to ignore this key if found a delete mark
-        while self.iter.valid() {
+        // TODO(yingwen): Some operation like delete needs to be considered during iterating: we need to ignore this key if found a delete mark
+        while self.skipListIter.valid() {
             // Fetch current entry
-            let key = self.iter.key();
-            let (user_key, sequence) =
-                key::user_key_from_internal_key(key).context(DecodeInternalKey)?;
+            let key = self.skipListIter.key();
+            let (user_key, sequence) = key::user_key_from_internal_key(key).context(DecodeInternalKey)?;
 
-            // Check user key is still in range
+            // check user key is still in range
             if self.is_after_end_bound(user_key) {
                 // Out of bound
                 self.finish();
@@ -214,8 +210,7 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
                         // TODO(yingwen): Actually this call wont fail, only valid internal key will
                         // be set as last_internal_key so maybe we can just
                         // unwrap it?
-                        let (last_user_key, _) = key::user_key_from_internal_key(last_internal_key)
-                            .context(DecodeInternalKey)?;
+                        let (last_user_key, _) = key::user_key_from_internal_key(last_internal_key).context(DecodeInternalKey)?;
                         user_key == last_user_key
                     }
                     // This is the first user key
@@ -224,7 +219,7 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
 
                 if same_key {
                     // We meet duplicate key, move forward and continue to find next user key
-                    self.iter.next();
+                    self.skipListIter.next();
                     continue;
                 }
                 // Now this is a new user key
@@ -233,17 +228,17 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
             // Check whether this key is visible
             if !self.is_visible(sequence) {
                 // The sequence of this key is not visible, move forward
-                self.iter.next();
+                self.skipListIter.next();
                 continue;
             }
 
             // This is the row we want
-            let row = self.iter.value_with_arena();
+            let row = self.skipListIter.value_with_arena();
 
             // Store the last key
-            self.last_internal_key = Some(self.iter.key_with_arena());
+            self.last_internal_key = Some(self.skipListIter.key_with_arena());
             // Move iter forward
-            self.iter.next();
+            self.skipListIter.next();
 
             return Ok(Some(row));
         }
@@ -281,18 +276,6 @@ impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
     }
 }
 
-impl<A: Arena<Stats = BasicStats> + Clone + Sync + Send> Iterator for ColumnarIterImpl<A> {
-    type Item = Result<RecordBatchWithKey>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.state != State::Initialized {
-            return None;
-        }
-
-        self.fetch_next_record_batch().transpose()
-    }
-}
-
 /// Reversed columnar iterator.
 // TODO(xikai): Now the implementation is not perfect: read all the entries
 //  into a buffer and reverse read it. The memtable should support scan in
@@ -304,8 +287,8 @@ pub struct ReversedColumnarIterator<I> {
 }
 
 impl<I> ReversedColumnarIterator<I>
-where
-    I: Iterator<Item = Result<RecordBatchWithKey>>,
+    where
+        I: Iterator<Item=Result<RecordBatchWithKey>>,
 {
     pub fn new(iter: I, num_rows: usize, batch_size: usize) -> Self {
         Self {
@@ -328,10 +311,7 @@ where
     }
 }
 
-impl<I> Iterator for ReversedColumnarIterator<I>
-where
-    I: Iterator<Item = Result<RecordBatchWithKey>>,
-{
+impl<I> Iterator for ReversedColumnarIterator<I> where I: Iterator<Item=Result<RecordBatchWithKey>> {
     type Item = Result<RecordBatchWithKey>;
 
     fn next(&mut self) -> Option<Self::Item> {

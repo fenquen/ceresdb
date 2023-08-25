@@ -29,9 +29,7 @@ enum FlushState {
     #[default]
     Ready,
     Flushing,
-    Failed {
-        err_msg: String,
-    },
+    Failed { err_msg: String },
 }
 
 type ScheduleSyncRef = Arc<ScheduleSync>;
@@ -60,7 +58,7 @@ impl ScheduleSync {
 }
 
 pub struct TableFlushScheduler {
-    schedule_sync: ScheduleSyncRef,
+    schedule_sync: Arc<ScheduleSync>,
     state_watcher: Receiver<()>,
 }
 
@@ -106,7 +104,7 @@ impl TableOpSerialExecutor {
         self.table_id
     }
 
-    pub fn flush_scheduler(&mut self) -> &mut TableFlushScheduler {
+    pub fn getFlushScheduler(&mut self) -> &mut TableFlushScheduler {
         &mut self.flush_scheduler
     }
 }
@@ -120,18 +118,14 @@ impl TableFlushScheduler {
     /// Control the flush procedure and ensure multiple flush procedures to be sequential.
     ///
     /// REQUIRE: should only be called by the write thread.
-    pub async fn flush_sequentially<F>(
-        &mut self,
-        flush_job: F,
-        block_on_write_thread: bool,
-        opts: TableFlushOptions,
-        runtime: &Runtime,
-        table_data: Arc<TableData>,
-    ) -> Result<()>
-        where
-            F: Future<Output=Result<()>> + Send + 'static,
-    {
+    pub async fn flush_sequentially<F>(&mut self,
+                                       flush_job: F,
+                                       block_on_write_thread: bool,
+                                       opts: TableFlushOptions,
+                                       runtime: &Runtime,
+                                       table_data: Arc<TableData>) -> Result<()> where F: Future<Output=Result<()>> + Send + 'static {
         let metrics = &table_data.metrics;
+
         // If flush operation is running, then we need to wait for it to complete first.
         // Actually, the loop waiting ensures the multiple flush procedures to be
         // sequential, that is to say, at most one flush is being executed at
@@ -140,8 +134,7 @@ impl TableFlushScheduler {
 
         loop {
             {
-                // Check if the flush procedure is running and the lock will be dropped when
-                // leaving the block.
+                // Check if the flush procedure is running and the lock will be dropped when leaving the block.
                 let mut flush_state = self.schedule_sync.state.lock().unwrap();
                 match &*flush_state {
                     FlushState::Ready => {
@@ -155,20 +148,13 @@ impl TableFlushScheduler {
                         }
                     }
                     FlushState::Failed { err_msg } => {
-                        if self
-                            .schedule_sync
-                            .should_retry_flush(opts.max_retry_flush_limit)
-                        {
+                        if self.schedule_sync.should_retry_flush(opts.max_retry_flush_limit) {
                             warn!("Re-flush memory tables after background flush failed:{err_msg}");
                             // Mark the worker is flushing.
                             *flush_state = FlushState::Flushing;
                             break;
                         } else {
-                            return BackgroundFlushFailed {
-                                msg: err_msg,
-                                retry_count: opts.max_retry_flush_limit,
-                            }
-                                .fail();
+                            return BackgroundFlushFailed { msg: err_msg, retry_count: opts.max_retry_flush_limit }.fail();
                         }
                     }
                 }
@@ -179,10 +165,7 @@ impl TableFlushScheduler {
             }
 
             if self.state_watcher.changed().await.is_err() {
-                return Other {
-                    msg: "State notifier is dropped unexpectedly",
-                }
-                    .fail();
+                return Other { msg: "State notifier is dropped unexpectedly" }.fail();
             }
         }
 
@@ -192,9 +175,7 @@ impl TableFlushScheduler {
             metrics.on_write_stall(time);
         }
 
-        // TODO(yingwen): Store pending flush requests and retry flush on
-        // recoverable error,  or try to recover from background
-        // error.
+        // TODO(yingwen): Store pending flush requests and retry flush on recoverable error,  or try to recover from background error.
 
         let schedule_sync = self.schedule_sync.clone();
         let task = async move {

@@ -118,7 +118,7 @@ impl Space {
 
     /// Returns true when space total memtable memory usage reaches space_write_buffer_size limit.
     #[inline]
-    pub fn should_flush_space(&self) -> bool {
+    pub fn shouldFlush(&self) -> bool {
         self.write_buffer_size > 0 && self.memtable_memory_usage() >= self.write_buffer_size
     }
 

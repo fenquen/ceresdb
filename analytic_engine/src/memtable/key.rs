@@ -36,9 +36,9 @@ pub enum Error {
     DecodeIndex { source: bytes_ext::Error },
 
     #[snafu(display(
-        "Insufficient internal key length, len:{}.\nBacktrace:\n{}",
-        len,
-        backtrace
+    "Insufficient internal key length, len:{}.\nBacktrace:\n{}",
+    len,
+    backtrace
     ))]
     InternalKeyLen { len: usize, backtrace: Backtrace },
 }
@@ -110,21 +110,21 @@ impl<'a> ComparableInternalKey<'a> {
 impl<'a> Encoder<Row> for ComparableInternalKey<'a> {
     type Error = Error;
 
-    fn encode<B: BufMut>(&self, buf: &mut B, value: &Row) -> Result<()> {
+    fn encode<B: BufMut>(&self, buf: &mut B, row: &Row) -> Result<()> {
         let encoder = MemComparable;
         for idx in self.schema.primary_key_indexes() {
-            encoder.encode(buf, &value[*idx]).context(EncodeKeyDatum)?;
+            encoder.encode(buf, &row[*idx]).context(EncodeKeyDatum)?;
         }
         SequenceCodec.encode(buf, &self.keySequence)?;
 
         Ok(())
     }
 
-    fn estimate_encoded_size(&self, value: &Row) -> usize {
+    fn estimateEncodedSize(&self, value: &Row) -> usize {
         let encoder = MemComparable;
         let mut total_len = 0;
         for idx in self.schema.primary_key_indexes() {
-            total_len += encoder.estimate_encoded_size(&value[*idx]);
+            total_len += encoder.estimateEncodedSize(&value[*idx]);
         }
         total_len += KEY_SEQUENCE_BYTES_LEN;
 
@@ -146,7 +146,7 @@ impl Encoder<KeySequence> for SequenceCodec {
         Ok(())
     }
 
-    fn estimate_encoded_size(&self, _value: &KeySequence) -> usize {
+    fn estimateEncodedSize(&self, _value: &KeySequence) -> usize {
         KEY_SEQUENCE_BYTES_LEN
     }
 }
@@ -166,51 +166,39 @@ impl Decoder<KeySequence> for SequenceCodec {
     }
 }
 
-#[inline]
-fn encode_sequence_number<B: SafeBufMut>(buf: &mut B, sequence: SequenceNumber) -> Result<()> {
-    // The sequence need to encode in descend order
-    let reversed_sequence = SequenceNumber::MAX - sequence;
-    // Encode sequence
-    buf.try_put_u64(reversed_sequence).context(EncodeSequence)?;
-    Ok(())
-}
-
 // TODO(yingwen): Maybe make decoded internal key a type?
 
-/// Encode internal key from user key for seek
-///
-/// - user_key: the user key to encode
-/// - sequence: the sequence number to encode into internal key
-/// - scratch: buffer to store the encoded internal key, the scratch will be
-///   clear
-///
-/// Returns the slice to the encoded internal key
-pub fn internal_key_for_seek<'a>(
-    user_key: &[u8],
-    sequence: SequenceNumber,
-    scratch: &'a mut BytesMut,
-) -> Result<&'a [u8]> {
+/// userKey sequence
+pub fn buildSeekKey<'a>(user_key: &[u8],
+                        sequence: SequenceNumber,
+                        scratch: &'a mut BytesMut) -> Result<&'a [u8]> {
     scratch.clear();
-
     scratch.reserve(user_key.len() + mem::size_of::<SequenceNumber>());
     scratch.extend_from_slice(user_key);
+
     encode_sequence_number(scratch, sequence)?;
 
     Ok(&scratch[..])
 }
 
-/// Decode user key and sequence number from the internal key
+#[inline]
+fn encode_sequence_number<B: SafeBufMut>(buf: &mut B, sequence: SequenceNumber) -> Result<()> {
+    // the sequence need to encode in descend order
+    let reversed_sequence = SequenceNumber::MAX - sequence;
+
+    // encode sequence
+    buf.try_put_u64(reversed_sequence).context(EncodeSequence)?;
+    Ok(())
+}
+
+/// decode user key and sequence number from the internal key
 pub fn user_key_from_internal_key(internal_key: &[u8]) -> Result<(&[u8], KeySequence)> {
-    // Empty user key is meaningless
-    ensure!(
-        internal_key.len() > KEY_SEQUENCE_BYTES_LEN,
-        InternalKeyLen {
-            len: internal_key.len(),
-        }
-    );
+    // empty user key is meaningless
+    ensure!(internal_key.len() > KEY_SEQUENCE_BYTES_LEN, InternalKeyLen {len: internal_key.len()});
 
     let (left, mut right) = internal_key.split_at(internal_key.len() - KEY_SEQUENCE_BYTES_LEN);
-    // Decode sequence number from right part
+
+    // decode sequence number from right part
     let sequence = SequenceCodec.decode(&mut right)?;
 
     Ok((left, sequence))

@@ -7,7 +7,7 @@ use std::{fmt::Debug, sync::Arc};
 use async_trait::async_trait;
 use common_types::projected_schema::ProjectedSchema;
 use macros::define_result;
-use object_store::{ObjectStoreRef, Path};
+use object_store::{ObjectStore, ObjectStoreRef, Path};
 use runtime::Runtime;
 use snafu::{ResultExt, Snafu};
 use table_engine::predicate::PredicateRef;
@@ -28,56 +28,50 @@ use crate::{
 
 #[derive(Debug, Snafu)]
 pub enum Error {
-    #[snafu(display("Failed to parse sst header, err:{}", source,))]
+    #[snafu(display("Failed to parse sst header, err:{}", source, ))]
     ParseHeader { source: header::Error },
 }
 
 define_result!(Error);
 
-/// Pick suitable object store for different scenes.
-pub trait ObjectStorePicker: Send + Sync + Debug {
-    /// Just provide default object store for the scenes where user don't care
-    /// about it.
-    fn default_store(&self) -> &ObjectStoreRef;
+/// choose suitable object store for different scenes.
+pub trait ObjectStoreChooser: Send + Sync + Debug {
+    /// just provide default object store for the scenes where user don't care about it.
+    fn chooseDefault(&self) -> &Arc<dyn ObjectStore>;
 
-    /// Pick an object store according to the read frequency.
-    fn pick_by_freq(&self, freq: ReadFrequency) -> &ObjectStoreRef;
+    /// choose an object store according to the read frequency.
+    fn chooseByReadFrequency(&self, readFrequency: ReadFrequency) -> &Arc<dyn ObjectStore>;
 }
 
-pub type ObjectStorePickerRef = Arc<dyn ObjectStorePicker>;
+pub type ObjectStorePickerRef = Arc<dyn ObjectStoreChooser>;
 
-/// For any [`ObjectStoreRef`], it can be used as an [`ObjectStorePicker`].
-impl ObjectStorePicker for ObjectStoreRef {
-    fn default_store(&self) -> &ObjectStoreRef {
+/// For any [`ObjectStoreRef`], it can be used as an [`ObjectStoreChooser`].
+impl ObjectStoreChooser for Arc<dyn ObjectStore> {
+    fn chooseDefault(&self) -> &ObjectStoreRef {
         self
     }
 
-    fn pick_by_freq(&self, _freq: ReadFrequency) -> &ObjectStoreRef {
+    fn chooseByReadFrequency(&self, _freq: ReadFrequency) -> &ObjectStoreRef {
         self
     }
 }
 
-/// Sst factory reference
-pub type FactoryRef = Arc<dyn Factory>;
+pub type FactoryRef = Arc<dyn SstFactory>;
 
 #[async_trait]
-pub trait Factory: Send + Sync + Debug {
-    async fn create_reader<'a>(
-        &self,
-        path: &'a Path,
-        options: &SstReadOptions,
-        hint: SstReadHint,
-        store_picker: &'a ObjectStorePickerRef,
-        metrics_collector: Option<MetricsCollector>,
-    ) -> Result<Box<dyn SstReader + Send + 'a>>;
+pub trait SstFactory: Send + Sync + Debug {
+    async fn createReader<'a>(&self,
+                              path: &'a Path,
+                              options: &SstReadOptions,
+                              hint: SstReadHint,
+                              objectStoreChooser: &'a Arc<dyn ObjectStoreChooser>,
+                              metrics_collector: Option<MetricsCollector>) -> Result<Box<dyn SstReader + Send + 'a>>;
 
-    async fn create_writer<'a>(
-        &self,
-        options: &SstWriteOptions,
-        path: &'a Path,
-        store_picker: &'a ObjectStorePickerRef,
-        level: Level,
-    ) -> Result<Box<dyn SstWriter + Send + 'a>>;
+    async fn createWriter<'a>(&self,
+                              sstWriteOptions: &SstWriteOptions,
+                              path: &'a Path,
+                              objectStoreChooser: &'a Arc<dyn ObjectStoreChooser>,
+                              level: Level) -> Result<Box<dyn SstWriter + Send + 'a>>;
 }
 
 /// The frequency of query execution may decide some behavior in the sst reader, e.g. cache policy.
@@ -137,22 +131,20 @@ pub struct SstWriteOptions {
 }
 
 #[derive(Debug, Default)]
-pub struct FactoryImpl;
+pub struct SstFactoryImpl;
 
 #[async_trait]
-impl Factory for FactoryImpl {
-    async fn create_reader<'a>(
-        &self,
-        path: &'a Path,
-        options: &SstReadOptions,
-        hint: SstReadHint,
-        store_picker: &'a ObjectStorePickerRef,
-        metrics_collector: Option<MetricsCollector>,
-    ) -> Result<Box<dyn SstReader + Send + 'a>> {
+impl SstFactory for SstFactoryImpl {
+    async fn createReader<'a>(&self,
+                              path: &'a Path,
+                              options: &SstReadOptions,
+                              hint: SstReadHint,
+                              objectStoreChooser: &'a ObjectStorePickerRef,
+                              metrics_collector: Option<MetricsCollector>) -> Result<Box<dyn SstReader + Send + 'a>> {
         let storage_format = match hint.file_format {
             Some(v) => v,
             None => {
-                let header_parser = HeaderParser::new(path, store_picker.default_store());
+                let header_parser = HeaderParser::new(path, objectStoreChooser.chooseDefault());
                 header_parser.parse().await.context(ParseHeader)?
             }
         };
@@ -163,7 +155,7 @@ impl Factory for FactoryImpl {
                     path,
                     options,
                     hint.file_size,
-                    store_picker,
+                    objectStoreChooser,
                     metrics_collector,
                 );
                 let reader = ThreadedReader::new(
@@ -177,25 +169,23 @@ impl Factory for FactoryImpl {
         }
     }
 
-    async fn create_writer<'a>(
-        &self,
-        options: &SstWriteOptions,
-        path: &'a Path,
-        store_picker: &'a ObjectStorePickerRef,
-        level: Level,
-    ) -> Result<Box<dyn SstWriter + Send + 'a>> {
-        let hybrid_encoding = match options.storage_format_hint {
-            StorageFormatHint::Specific(format) => matches!(format, StorageFormat::Hybrid),
+    async fn createWriter<'a>(&self,
+                              sstWriteOptions: &SstWriteOptions,
+                              sstFilePath: &'a Path,
+                              objectStoreChooser: &'a Arc<dyn ObjectStoreChooser>,
+                              level: Level) -> Result<Box<dyn SstWriter + Send + 'a>> {
+        let useHybridEncoding = match sstWriteOptions.storage_format_hint {
             // `Auto` is mapped to columnar parquet format now, may change in future.
             StorageFormatHint::Auto => false,
+            StorageFormatHint::Specific(format) => matches!(format, StorageFormat::Hybrid),
         };
 
         Ok(Box::new(ParquetSstWriter::new(
-            path,
+            sstFilePath,
             level,
-            hybrid_encoding,
-            store_picker,
-            options,
+            useHybridEncoding,
+            objectStoreChooser,
+            sstWriteOptions,
         )))
     }
 }

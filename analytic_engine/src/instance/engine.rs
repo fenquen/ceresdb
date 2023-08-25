@@ -333,7 +333,7 @@ impl TableEngineInstance {
         let dropper = Dropper {
             space,
             space_store: self.spaceStore.clone(),
-            flusher: self.make_flusher(),
+            flusher: self.makeFlusher(),
         };
 
         dropper.drop(request).await
@@ -353,7 +353,7 @@ impl TableEngineInstance {
         let closer = Closer {
             space,
             manifest: self.spaceStore.manifest.clone(),
-            flusher: self.make_flusher(),
+            flusher: self.makeFlusher(),
         };
 
         closer.close(request).await

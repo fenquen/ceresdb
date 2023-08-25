@@ -2,6 +2,7 @@
 
 //! `Arena` Trait and implementations.
 
+#![allow(non_snake_case)]
 mod arena_trait;
 mod mono_inc;
 

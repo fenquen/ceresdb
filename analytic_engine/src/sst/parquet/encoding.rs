@@ -39,9 +39,9 @@ const OFFSET_SIZE: usize = std::mem::size_of::<i32>();
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display(
-        "Failed to encode sst meta data, err:{}.\nBacktrace:\n{}",
-        source,
-        backtrace
+    "Failed to encode sst meta data, err:{}.\nBacktrace:\n{}",
+    source,
+    backtrace
     ))]
     EncodeIntoPb {
         source: prost::EncodeError,
@@ -49,10 +49,10 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to decode sst meta data, base64 of meta value:{}, err:{}.\nBacktrace:\n{}",
-        meta_value,
-        source,
-        backtrace,
+    "Failed to decode sst meta data, base64 of meta value:{}, err:{}.\nBacktrace:\n{}",
+    meta_value,
+    source,
+    backtrace,
     ))]
     DecodeFromPb {
         meta_value: String,
@@ -61,10 +61,10 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Invalid meta key, expect:{}, given:{}.\nBacktrace:\n{}",
-        expect,
-        given,
-        backtrace
+    "Invalid meta key, expect:{}, given:{}.\nBacktrace:\n{}",
+    expect,
+    given,
+    backtrace
     ))]
     InvalidMetaKey {
         expect: String,
@@ -76,9 +76,9 @@ pub enum Error {
     Base64MetaValueNotFound { backtrace: Backtrace },
 
     #[snafu(display(
-        "Invalid base64 meta value length, base64 of meta value:{}.\nBacktrace:\n{}",
-        meta_value,
-        backtrace,
+    "Invalid base64 meta value length, base64 of meta value:{}.\nBacktrace:\n{}",
+    meta_value,
+    backtrace,
     ))]
     InvalidBase64MetaValueLen {
         meta_value: String,
@@ -86,9 +86,9 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to decode base64 meta value, base64 of meta value:{}, err:{}",
-        meta_value,
-        source
+    "Failed to decode base64 meta value, base64 of meta value:{}, err:{}",
+    meta_value,
+    source
     ))]
     DecodeBase64MetaValue {
         meta_value: String,
@@ -96,9 +96,9 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Invalid meta value length, base64 of meta value:{}.\nBacktrace:\n{}",
-        meta_value,
-        backtrace
+    "Invalid meta value length, base64 of meta value:{}.\nBacktrace:\n{}",
+    meta_value,
+    backtrace
     ))]
     InvalidMetaValueLen {
         meta_value: String,
@@ -106,9 +106,9 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Invalid meta value header, base64 of meta value:{}.\nBacktrace:\n{}",
-        meta_value,
-        backtrace
+    "Invalid meta value header, base64 of meta value:{}.\nBacktrace:\n{}",
+    meta_value,
+    backtrace
     ))]
     InvalidMetaValueHeader {
         meta_value: String,
@@ -121,9 +121,9 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to encode record batch into sst, err:{}.\nBacktrace:\n{}",
-        source,
-        backtrace
+    "Failed to encode record batch into sst, err:{}.\nBacktrace:\n{}",
+    source,
+    backtrace
     ))]
     EncodeRecordBatch {
         source: GenericError,
@@ -131,9 +131,9 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to decode hybrid record batch, err:{}.\nBacktrace:\n{}",
-        source,
-        backtrace
+    "Failed to decode hybrid record batch, err:{}.\nBacktrace:\n{}",
+    source,
+    backtrace
     ))]
     DecodeRecordBatch {
         source: GenericError,
@@ -150,9 +150,9 @@ pub enum Error {
     TsidRequired { backtrace: Backtrace },
 
     #[snafu(display(
-        "Key column must be string type. type:{}\nBacktrace:\n{}",
-        type_name,
-        backtrace
+    "Key column must be string type. type:{}\nBacktrace:\n{}",
+    type_name,
+    backtrace
     ))]
     StringKeyColumnRequired {
         type_name: String,
@@ -230,18 +230,16 @@ trait RecordEncoder {
 
 struct ColumnarRecordEncoder<W> {
     // wrap in Option so ownership can be taken out behind `&mut self`
-    arrow_writer: Option<AsyncArrowWriter<W>>,
-    arrow_schema: ArrowSchemaRef,
+    asyncArrowWriter: Option<AsyncArrowWriter<W>>,
+    arrowSchema: ArrowSchemaRef,
 }
 
 impl<W: AsyncWrite + Send + Unpin> ColumnarRecordEncoder<W> {
-    fn try_new(
-        sink: W,
-        schema: &Schema,
-        num_rows_per_row_group: usize,
-        max_buffer_size: usize,
-        compression: Compression,
-    ) -> Result<Self> {
+    fn try_new(sink: W,
+               schema: &Schema,
+               num_rows_per_row_group: usize,
+               max_buffer_size: usize,
+               compression: Compression) -> Result<Self> {
         let arrow_schema = schema.to_arrow_schema_ref();
 
         let write_props = WriterProperties::builder()
@@ -249,18 +247,15 @@ impl<W: AsyncWrite + Send + Unpin> ColumnarRecordEncoder<W> {
             .set_compression(compression)
             .build();
 
-        let arrow_writer = AsyncArrowWriter::try_new(
-            sink,
-            arrow_schema.clone(),
-            max_buffer_size,
-            Some(write_props),
-        )
-        .box_err()
-        .context(EncodeRecordBatch)?;
+        let arrow_writer =
+            AsyncArrowWriter::try_new(sink,
+                                      arrow_schema.clone(),
+                                      max_buffer_size,
+                                      Some(write_props)).box_err().context(EncodeRecordBatch)?;
 
         Ok(Self {
-            arrow_writer: Some(arrow_writer),
-            arrow_schema,
+            asyncArrowWriter: Some(arrow_writer),
+            arrowSchema: arrow_schema,
         })
     }
 }
@@ -268,13 +263,13 @@ impl<W: AsyncWrite + Send + Unpin> ColumnarRecordEncoder<W> {
 #[async_trait]
 impl<W: AsyncWrite + Send + Unpin> RecordEncoder for ColumnarRecordEncoder<W> {
     async fn encode(&mut self, arrow_record_batch_vec: Vec<ArrowRecordBatch>) -> Result<usize> {
-        assert!(self.arrow_writer.is_some());
+        assert!(self.asyncArrowWriter.is_some());
 
-        let record_batch = compute::concat_batches(&self.arrow_schema, &arrow_record_batch_vec)
+        let record_batch = compute::concat_batches(&self.arrowSchema, &arrow_record_batch_vec)
             .box_err()
             .context(EncodeRecordBatch)?;
 
-        self.arrow_writer
+        self.asyncArrowWriter
             .as_mut()
             .unwrap()
             .write(&record_batch)
@@ -287,7 +282,7 @@ impl<W: AsyncWrite + Send + Unpin> RecordEncoder for ColumnarRecordEncoder<W> {
 
     fn set_meta_data(&mut self, meta_data: ParquetMetaData) -> Result<()> {
         let key_value = encode_sst_meta_data(meta_data)?;
-        self.arrow_writer
+        self.asyncArrowWriter
             .as_mut()
             .unwrap()
             .append_key_value_metadata(key_value);
@@ -296,9 +291,9 @@ impl<W: AsyncWrite + Send + Unpin> RecordEncoder for ColumnarRecordEncoder<W> {
     }
 
     async fn close(&mut self) -> Result<()> {
-        assert!(self.arrow_writer.is_some());
+        assert!(self.asyncArrowWriter.is_some());
 
-        let arrow_writer = self.arrow_writer.take().unwrap();
+        let arrow_writer = self.asyncArrowWriter.take().unwrap();
         arrow_writer
             .close()
             .await
@@ -378,8 +373,8 @@ impl<W: AsyncWrite + Unpin + Send> HybridRecordEncoder<W> {
             max_buffer_size,
             Some(write_props),
         )
-        .box_err()
-        .context(EncodeRecordBatch)?;
+            .box_err()
+            .context(EncodeRecordBatch)?;
         Ok(Self {
             arrow_writer: Some(arrow_writer),
             arrow_schema,
@@ -403,8 +398,8 @@ impl<W: AsyncWrite + Unpin + Send> RecordEncoder for HybridRecordEncoder<W> {
             self.arrow_schema.clone(),
             arrow_record_batch_vec,
         )
-        .box_err()
-        .context(EncodeRecordBatch)?;
+            .box_err()
+            .context(EncodeRecordBatch)?;
 
         self.arrow_writer
             .as_mut()
@@ -447,15 +442,13 @@ pub struct ParquetEncoder {
 }
 
 impl ParquetEncoder {
-    pub fn try_new<W: AsyncWrite + Unpin + Send + 'static>(
-        sink: W,
-        schema: &Schema,
-        hybrid_encoding: bool,
-        num_rows_per_row_group: usize,
-        max_buffer_size: usize,
-        compression: Compression,
-    ) -> Result<Self> {
-        let record_encoder: Box<dyn RecordEncoder + Send> = if hybrid_encoding {
+    pub fn new<W: AsyncWrite + Unpin + Send + 'static>(sink: W,
+                                                       schema: &Schema,
+                                                       useHybridEncoding: bool,
+                                                       num_rows_per_row_group: usize,
+                                                       max_buffer_size: usize,
+                                                       compression: Compression) -> Result<Self> {
+        let record_encoder: Box<dyn RecordEncoder + Send> = if useHybridEncoding {
             Box::new(HybridRecordEncoder::try_new(
                 sink,
                 schema,
@@ -476,12 +469,8 @@ impl ParquetEncoder {
         Ok(ParquetEncoder { record_encoder })
     }
 
-    /// Encode the record batch with [ArrowWriter] and the encoded contents is
-    /// written to the buffer.
-    pub async fn encode_record_batches(
-        &mut self,
-        arrow_record_batches: Vec<ArrowRecordBatch>,
-    ) -> Result<usize> {
+    /// Encode the record batch with [ArrowWriter] and the encoded contents is written to the buffer.
+    pub async fn encode_record_batches(&mut self, arrow_record_batches: Vec<ArrowRecordBatch>) -> Result<usize> {
         if arrow_record_batches.is_empty() {
             return Ok(0);
         }

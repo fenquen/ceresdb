@@ -35,7 +35,7 @@ use crate::{
     row_iter::IterOptions,
     space::{SpaceRef, SpacesRef},
     sst::{
-        factory::{FactoryRef as SstFactoryRef, ObjectStorePickerRef, ScanOptions},
+        factory::ScanOptions,
         file::FilePurgerRef,
         meta_data::cache::MetaCacheRef,
     },
@@ -43,6 +43,7 @@ use crate::{
     RecoverMode, TableOptions,
 };
 use crate::manifest::Manifest;
+use crate::sst::factory::{ObjectStoreChooser, SstFactory};
 
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, Snafu)]
@@ -80,9 +81,9 @@ pub struct SpaceStore {
     /// Wal of all tables
     walManager: WalManagerRef,
     /// Object store picker for persisting data.
-    store_picker: ObjectStorePickerRef,
+    objectStorePicker: Arc<dyn ObjectStoreChooser>,
     /// Sst factory.
-    sst_factory: SstFactoryRef,
+    sstFactory: Arc<dyn SstFactory>,
 
     meta_cache: Option<MetaCacheRef>,
 }
@@ -103,8 +104,8 @@ impl SpaceStore {
 }
 
 impl SpaceStore {
-    fn store_picker(&self) -> &ObjectStorePickerRef {
-        &self.store_picker
+    fn objectStorePicker(&self) -> &Arc<dyn ObjectStoreChooser> {
+        &self.objectStorePicker
     }
 
     /// List all tables of all spaces
@@ -196,11 +197,11 @@ impl TableEngineInstance {
             max_retry_flush_limit: 0,
         };
 
-        let flusher = self.make_flusher();
+        let flusher = self.makeFlusher();
         let mut serial_exec = table_data.tableOpSerialExecutor.lock().await;
-        let flush_scheduler = serial_exec.flush_scheduler();
+        let flush_scheduler = serial_exec.getFlushScheduler();
         flusher
-            .scheduleFlush(flush_scheduler, table_data, flush_opts)
+            .flushAsync(flush_scheduler, table_data, flush_opts)
             .await
             .box_err()
             .context(ManualOp {
@@ -244,28 +245,27 @@ impl TableEngineInstance {
 
 // TODO(yingwen): Instance builder
 impl TableEngineInstance {
-    /// Returns true when engine instance's total memtable memory usage reaches db_write_buffer_size limit.
     #[inline]
-    fn shouldFlushInstance(&self) -> bool {
+    fn shouldFlush(&self) -> bool {
         self.db_write_buffer_size > 0 && self.mem_usage_collector.total_memory_allocated() >= self.db_write_buffer_size
     }
 
     #[inline]
-    fn read_runtime(&self) -> &Arc<Runtime> {
+    fn getReadRuntime(&self) -> &Arc<Runtime> {
         &self.runtimes.read_runtime
     }
 
     #[inline]
-    pub fn write_runtime(&self) -> &Arc<Runtime> {
+    pub fn getWriteRunTime(&self) -> &Arc<Runtime> {
         &self.runtimes.write_runtime
     }
 
     #[inline]
-    fn make_flusher(&self) -> Flusher {
+    fn makeFlusher(&self) -> Flusher {
         Flusher {
             space_store: self.spaceStore.clone(),
-            // Do flush in write runtime
-            runtime: self.runtimes.write_runtime.clone(),
+            // flush in write runtime
+            writeRunTime: self.runtimes.write_runtime.clone(),
             write_sst_max_buffer_size: self.write_sst_max_buffer_size,
         }
     }

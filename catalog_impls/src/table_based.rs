@@ -659,13 +659,7 @@ impl Schema for SchemaTableBased {
     }
 
     fn table_by_name(&self, name: NameRef) -> schema::Result<Option<TableRef>> {
-        let table = self
-            .tables
-            .read()
-            .unwrap()
-            .tables_by_name
-            .get(name)
-            .cloned();
+        let table = self.tables.read().unwrap().tables_by_name.get(name).cloned();
         Ok(table)
     }
 

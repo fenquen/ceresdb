@@ -2,9 +2,9 @@
 
 //! Data encoding
 
-// TODO(yingwen): Buf use generic type to avoid cost of vtable call per
-// encode/decode
+// TODO(yingwen): Buf use generic type to avoid cost of vtable call per encode/decode
 
+#![allow(non_snake_case)]
 pub mod compact;
 mod consts;
 pub mod memcomparable;
@@ -22,7 +22,7 @@ pub trait Encoder<T: ?Sized> {
     fn encode<B: BufMut>(&self, buf: &mut B, value: &T) -> Result<(), Self::Error>;
 
     /// Estimate the value size after encoded
-    fn estimate_encoded_size(&self, value: &T) -> usize;
+    fn estimateEncodedSize(&self, value: &T) -> usize;
 }
 
 /// Data decode to target

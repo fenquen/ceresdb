@@ -106,7 +106,7 @@ pub struct MetaEncoding {
 impl MetaEncoding {
     pub fn encode_key(&self, buf: &mut BytesMut, meta_key: &MetaKey) -> manager::Result<()> {
         buf.clear();
-        buf.reserve(self.key_enc.estimate_encoded_size(meta_key));
+        buf.reserve(self.key_enc.estimateEncodedSize(meta_key));
         self.key_enc
             .encode(buf, meta_key)
             .box_err()
@@ -123,7 +123,7 @@ impl MetaEncoding {
         let meta_value = region_meta_snapshot.into();
 
         buf.clear();
-        buf.reserve(self.value_enc.estimate_encoded_size(&meta_value));
+        buf.reserve(self.value_enc.estimateEncodedSize(&meta_value));
         self.value_enc
             .encode(buf, &meta_value)
             .box_err()
@@ -209,7 +209,7 @@ impl Encoder<MetaKey> for MetaKeyEncoder {
         Ok(())
     }
 
-    fn estimate_encoded_size(&self, _log_key: &MetaKey) -> usize {
+    fn estimateEncodedSize(&self, _log_key: &MetaKey) -> usize {
         // Refer to key format.
         1 + 1 + 8
     }
@@ -274,7 +274,7 @@ impl Encoder<MetaValue> for MetaValueEncoder {
         meta_value.0.encode(buf).box_err().context(EncodeMetaValue)
     }
 
-    fn estimate_encoded_size(&self, meta_value: &MetaValue) -> usize {
+    fn estimateEncodedSize(&self, meta_value: &MetaValue) -> usize {
         // Refer to key format.
         1 + meta_value.0.encoded_len()
     }

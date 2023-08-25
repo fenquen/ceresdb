@@ -8,6 +8,7 @@
 //! 3. Use [ArenaSlice] to replace Bytes
 //! 4. impl Send/Sync for the iterator
 
+#![allow(non_snake_case)]
 mod key;
 mod list;
 mod slice;

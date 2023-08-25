@@ -8,7 +8,7 @@ use analytic_engine::{
     prefetchable_stream::PrefetchableStreamExt,
     sst::{
         factory::{
-            Factory, FactoryImpl, ObjectStorePickerRef, ReadFrequency, ScanOptions, SstReadHint,
+            SstFactory, SstFactoryImpl, ObjectStorePickerRef, ReadFrequency, ScanOptions, SstReadHint,
             SstReadOptions, SstWriteOptions,
         },
         file::Level,
@@ -77,7 +77,7 @@ async fn run(args: Args, runtime: Arc<Runtime>) -> Result<()> {
     let store = Arc::new(storage) as _;
     let input_path = Path::from(args.input);
     let sst_meta = sst_util::meta_from_sst(&store, &input_path).await;
-    let factory = FactoryImpl;
+    let factory = SstFactoryImpl;
     let scan_options = ScanOptions::default();
     let reader_opts = SstReadOptions {
         frequency: ReadFrequency::Once,
@@ -90,7 +90,7 @@ async fn run(args: Args, runtime: Arc<Runtime>) -> Result<()> {
     };
     let store_picker: ObjectStorePickerRef = Arc::new(store);
     let mut reader = factory
-        .create_reader(
+        .createReader(
             &input_path,
             &reader_opts,
             SstReadHint::default(),
@@ -111,7 +111,7 @@ async fn run(args: Args, runtime: Arc<Runtime>) -> Result<()> {
     };
     let output = Path::from(args.output);
     let mut writer = factory
-        .create_writer(&builder_opts, &output, &store_picker, Level::MAX)
+        .createWriter(&builder_opts, &output, &store_picker, Level::MAX)
         .await
         .expect("no sst writer found");
     let sst_stream = reader.read().await.unwrap().map(BoxError::box_err);

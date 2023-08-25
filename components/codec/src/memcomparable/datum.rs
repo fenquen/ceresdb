@@ -22,8 +22,8 @@ use crate::{
 impl Encoder<Datum> for MemComparable {
     type Error = Error;
 
-    fn encode<B: BufMut>(&self, buf: &mut B, value: &Datum) -> Result<()> {
-        match value {
+    fn encode<B: BufMut>(&self, buf: &mut B, datum: &Datum) -> Result<()> {
+        match datum {
             Datum::Null => buf.try_put_u8(consts::NULL_FLAG).context(EncodeKey),
             Datum::Timestamp(ts) => {
                 buf.try_put_u8(consts::INT_FLAG).context(EncodeKey)?;
@@ -93,24 +93,24 @@ impl Encoder<Datum> for MemComparable {
         }
     }
 
-    fn estimate_encoded_size(&self, value: &Datum) -> usize {
+    fn estimateEncodedSize(&self, value: &Datum) -> usize {
         match value {
             // Null takes 1 byte
             Datum::Null => 1,
-            Datum::Timestamp(ts) => self.estimate_encoded_size(&ts.as_i64()),
-            Datum::Varbinary(v) => self.estimate_encoded_size(v),
-            Datum::String(v) => self.estimate_encoded_size(v.as_bytes()),
-            Datum::UInt64(v) => self.estimate_encoded_size(v),
-            Datum::UInt32(v) => self.estimate_encoded_size(&(u64::from(*v))),
-            Datum::UInt16(v) => self.estimate_encoded_size(&(u64::from(*v))),
-            Datum::UInt8(v) => self.estimate_encoded_size(&(u64::from(*v))),
-            Datum::Int64(v) => self.estimate_encoded_size(v),
-            Datum::Int32(v) => self.estimate_encoded_size(&(i64::from(*v))),
-            Datum::Date(v) => self.estimate_encoded_size(&(i64::from(*v))),
-            Datum::Time(v) => self.estimate_encoded_size(v),
-            Datum::Int16(v) => self.estimate_encoded_size(&(i64::from(*v))),
-            Datum::Int8(v) => self.estimate_encoded_size(&(i64::from(*v))),
-            Datum::Boolean(v) => self.estimate_encoded_size(&(u64::from(*v))),
+            Datum::Timestamp(ts) => self.estimateEncodedSize(&ts.as_i64()),
+            Datum::Varbinary(v) => self.estimateEncodedSize(v),
+            Datum::String(v) => self.estimateEncodedSize(v.as_bytes()),
+            Datum::UInt64(v) => self.estimateEncodedSize(v),
+            Datum::UInt32(v) => self.estimateEncodedSize(&(u64::from(*v))),
+            Datum::UInt16(v) => self.estimateEncodedSize(&(u64::from(*v))),
+            Datum::UInt8(v) => self.estimateEncodedSize(&(u64::from(*v))),
+            Datum::Int64(v) => self.estimateEncodedSize(v),
+            Datum::Int32(v) => self.estimateEncodedSize(&(i64::from(*v))),
+            Datum::Date(v) => self.estimateEncodedSize(&(i64::from(*v))),
+            Datum::Time(v) => self.estimateEncodedSize(v),
+            Datum::Int16(v) => self.estimateEncodedSize(&(i64::from(*v))),
+            Datum::Int8(v) => self.estimateEncodedSize(&(i64::from(*v))),
+            Datum::Boolean(v) => self.estimateEncodedSize(&(u64::from(*v))),
             // Unsupported kind, but we return 1
             Datum::Double(_) | Datum::Float(_) => 1,
         }

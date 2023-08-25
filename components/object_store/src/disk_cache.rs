@@ -413,10 +413,7 @@ impl ObjectStore for ObjectStoreWithDiskCache {
         self.underlyingObjectStore.put(location, bytes).await
     }
 
-    async fn put_multipart(
-        &self,
-        location: &Path,
-    ) -> Result<(MultipartId, Box<dyn AsyncWrite + Unpin + Send>)> {
+    async fn put_multipart(&self, location: &Path) -> Result<(MultipartId, Box<dyn AsyncWrite + Unpin + Send>)> {
         self.underlyingObjectStore.put_multipart(location).await
     }
 

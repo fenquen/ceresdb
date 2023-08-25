@@ -31,51 +31,33 @@ use crate::{
 
 #[derive(Debug, Snafu)]
 pub enum Error {
-    #[snafu(display(
-        "Invalid array type, datum_kind:{:?}, data_type:{:?}.\nBacktrace:\n{}",
-        datum_kind,
-        data_type,
-        backtrace
-    ))]
+    #[snafu(display("invalid array type, datum_kind:{:?}, data_type:{:?}.\nBacktrace:\n{}", datum_kind, data_type, backtrace))]
     InvalidArrayType {
         datum_kind: DatumKind,
         data_type: DataType,
         backtrace: Backtrace,
     },
 
-    #[snafu(display("Failed to append value, err:{}.\nBacktrace:\n{}", source, backtrace))]
+    #[snafu(display("failed to append value, err:{}.\nBacktrace:\n{}", source, backtrace))]
     Append {
         source: ArrowError,
         backtrace: Backtrace,
     },
 
-    #[snafu(display(
-        "Data type conflict, expect:{:?}, given:{:?}.\nBacktrace:\n{}",
-        expect,
-        given,
-        backtrace
-    ))]
+    #[snafu(display("data type conflict, expect:{:?}, given:{:?}.\nBacktrace:\n{}", expect, given, backtrace))]
     ConflictType {
         expect: DatumKind,
         given: DatumKind,
         backtrace: Backtrace,
     },
 
-    #[snafu(display(
-        "Failed to convert arrow data type, data_type:{}.\nBacktrace:\n{}",
-        data_type,
-        backtrace
-    ))]
+    #[snafu(display("failed to convert arrow data type, data_type:{}.\nBacktrace:\n{}", data_type, backtrace))]
     UnsupportedArray {
         data_type: DataType,
         backtrace: Backtrace,
     },
 
-    #[snafu(display(
-        "Failed to cast nanosecond to millisecond, data_type:{}. err:{}",
-        data_type,
-        source,
-    ))]
+    #[snafu(display("failed to cast nanosecond to millisecond, data_type:{}. err:{}", data_type, source))]
     CastTimestamp {
         data_type: DataType,
         source: datafusion::error::DataFusionError,
@@ -619,7 +601,7 @@ batch_impl_numeric_value!(
 );
 
 impl VarbinaryColumn {
-    pub fn iter(&self) -> impl Iterator<Item = Option<&[u8]>> + '_ {
+    pub fn iter(&self) -> impl Iterator<Item=Option<&[u8]>> + '_ {
         self.0.iter()
     }
 
@@ -633,7 +615,7 @@ impl VarbinaryColumn {
 }
 
 impl StringColumn {
-    pub fn iter(&self) -> impl Iterator<Item = Option<&str>> + '_ {
+    pub fn iter(&self) -> impl Iterator<Item=Option<&str>> + '_ {
         self.0.iter()
     }
 
@@ -856,10 +838,9 @@ pub fn cast_nanosecond_to_mills(array: &ArrayRef) -> Result<Arc<dyn Array>> {
         &DataType::Timestamp(TimeUnit::Millisecond, None),
         // It will use the default option internally when found None.
         None,
-    )
-    .with_context(|| CastTimestamp {
-        data_type: DataType::Timestamp(TimeUnit::Millisecond, None),
-    })?;
+    ).with_context(|| CastTimestamp {
+            data_type: DataType::Timestamp(TimeUnit::Millisecond, None),
+        })?;
 
     match mills_column {
         ColumnarValue::Array(array) => Ok(array),
@@ -885,8 +866,7 @@ macro_rules! append_datum {
             _ => ConflictType {
                 expect: DatumKind::$Kind,
                 given: $datum.kind(),
-            }
-            .fail(),
+            }.fail(),
         }
     };
 }
@@ -1018,8 +998,7 @@ macro_rules! define_column_block_builder {
                     }
                 }
 
-                /// Append the [DatumView] into the builder, the datum view should have same the data
-                /// type of builder
+                /// Append the [DatumView] into the builder, the datum view should have same the data type of builder
                 pub fn append_view<'a>(&mut self, datum: DatumView<'a>) -> Result<()> {
                     let given = datum.kind();
                     match self {
@@ -1149,8 +1128,7 @@ macro_rules! define_column_block_builder {
     }
 }
 
-// Define column block builders, Null and Timestamp are defined explicitly in
-// macro.
+// Define column block builders, Null and Timestamp are defined explicitly in macro.
 define_column_block_builder!(
     (Double, DoubleBuilder),
     (Float, FloatBuilder),

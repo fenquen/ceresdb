@@ -24,7 +24,7 @@ use crate::{
     engine::AnalyticTableEngine,
     instance::{open::ManifestStorages, TableEngineInstance, InstanceRef},
     sst::{
-        factory::{FactoryImpl, ObjectStorePicker, ObjectStorePickerRef, ReadFrequency},
+        factory::{SstFactoryImpl, ObjectStoreChooser, ReadFrequency},
         meta_data::cache::{MetaCache, MetaCacheRef},
     },
     AnalyticEngineConfig, WalStorageConfig,
@@ -51,7 +51,7 @@ pub enum Error {
     OpenManifestWal { source: manager::error::Error },
 
     #[snafu(display("Failed to open manifest, err:{}", source))]
-    OpenManifest { source: crate::manifest::details::Error,},
+    OpenManifest { source: crate::manifest::details::Error },
 
     #[snafu(display("Failed to execute in runtime, err:{}", source))]
     RuntimeExec { source: runtime::Error },
@@ -103,7 +103,7 @@ impl<'a> AnalyticTableEngineBuilder<'a> {
 
         let manifest_storages = ManifestStorages {
             wal_manager: self.opened_wals.manifestWalManager.clone(),
-            objectStore: openedStorages.default_store().clone(),
+            objectStore: openedStorages.chooseDefault().clone(),
         };
 
         let tableEngineInstance = open_instance(
@@ -238,11 +238,9 @@ pub struct MemWalsOpener {
 
 #[async_trait]
 impl WalsOpener for MemWalsOpener {
-    async fn open_wals(
-        &self,
-        config: &WalStorageConfig,
-        engine_runtimes: Arc<EngineRuntimes>,
-    ) -> Result<OpenedWals> {
+    async fn open_wals(&self,
+                       config: &WalStorageConfig,
+                       engine_runtimes: Arc<EngineRuntimes>) -> Result<OpenedWals> {
         let obkv_wal_config = match config {
             _ => {
                 return InvalidWalConfig {
@@ -261,28 +259,20 @@ pub struct KafkaWalsOpener;
 
 #[async_trait]
 impl WalsOpener for KafkaWalsOpener {
-    async fn open_wals(
-        &self,
-        config: &WalStorageConfig,
-        engine_runtimes: Arc<EngineRuntimes>,
-    ) -> Result<OpenedWals> {
+    async fn open_wals(&self,
+                       config: &WalStorageConfig,
+                       engine_runtimes: Arc<EngineRuntimes>) -> Result<OpenedWals> {
         let kafka_wal_config = match config {
             WalStorageConfig::Kafka(config) => config.clone(),
             _ => {
-                return InvalidWalConfig {
-                    msg: format!(
-                        "invalid wal storage config while opening kafka wal, config:{config:?}"
-                    ),
-                }
-                    .fail();
+                return InvalidWalConfig { msg: format!("invalid wal storage config while opening kafka wal, config:{config:?}")}.fail();
             }
         };
 
         let default_runtime = &engine_runtimes.default_runtime;
 
-        let kafka = KafkaImpl::new(kafka_wal_config.kafka.clone())
-            .await
-            .context(OpenKafka)?;
+        let kafka = KafkaImpl::new(kafka_wal_config.kafka.clone()).await.context(OpenKafka)?;
+
         let data_wal = MessageQueueImpl::new(
             WAL_DIR_NAME.to_string(),
             kafka.clone(),
@@ -308,7 +298,7 @@ async fn open_instance(analyticConfig: AnalyticEngineConfig,
                        engine_runtimes: Arc<EngineRuntimes>,
                        wal_manager: WalManagerRef,
                        manifest_storages: ManifestStorages,
-                       store_picker: ObjectStorePickerRef) -> Result<InstanceRef> {
+                       store_picker: Arc<dyn ObjectStoreChooser>) -> Result<InstanceRef> {
     let meta_cache: Option<MetaCacheRef> = analyticConfig.sst_meta_cache_cap.map(|cap| Arc::new(MetaCache::new(cap)));
 
     let open_ctx = OpenedTableEngineInstanceContext {
@@ -322,7 +312,7 @@ async fn open_instance(analyticConfig: AnalyticEngineConfig,
                                   manifest_storages,
                                   wal_manager,
                                   store_picker,
-                                  Arc::new(FactoryImpl::default())).await.context(OpenInstance)?;
+                                  Arc::new(SstFactoryImpl::default())).await.context(OpenInstance)?;
 
     Ok(tableEngineInstance)
 }
@@ -330,19 +320,19 @@ async fn open_instance(analyticConfig: AnalyticEngineConfig,
 #[derive(Debug)]
 struct OpenedStorages {
     /// memCacheStore -> objectStoreWithMetrics -> objectStoreWithDiskCache  localFileSystem
-    default_store: Arc<dyn ObjectStore>,
-    store_with_readonly_cache: Arc<dyn ObjectStore>,
+    defaultStore: Arc<dyn ObjectStore>,
+    storeWithReadCache: Arc<dyn ObjectStore>,
 }
 
-impl ObjectStorePicker for OpenedStorages {
-    fn default_store(&self) -> &ObjectStoreRef {
-        &self.default_store
+impl ObjectStoreChooser for OpenedStorages {
+    fn chooseDefault(&self) -> &ObjectStoreRef {
+        &self.defaultStore
     }
 
-    fn pick_by_freq(&self, freq: ReadFrequency) -> &ObjectStoreRef {
+    fn chooseByReadFrequency(&self, freq: ReadFrequency) -> &ObjectStoreRef {
         match freq {
-            ReadFrequency::Once => &self.store_with_readonly_cache,
-            ReadFrequency::Frequent => &self.default_store,
+            ReadFrequency::Once => &self.storeWithReadCache,
+            ReadFrequency::Frequent => &self.defaultStore,
         }
     }
 }
@@ -421,14 +411,14 @@ fn open_storage(storageOptions: StorageOptions,
             let default_store = Arc::new(ObjectStoreWithMemCache::new(mem_cache.clone(), objectStore.clone())) as _;
             let store_with_readonly_cache = Arc::new(ObjectStoreWithMemCache::new_with_readonly_cache(mem_cache, objectStore)) as _;
             Ok(OpenedStorages {
-                default_store,
-                store_with_readonly_cache,
+                defaultStore: default_store,
+                storeWithReadCache: store_with_readonly_cache,
             })
         } else {
             let a = objectStore.clone();
             Ok(OpenedStorages {
-                default_store: objectStore,
-                store_with_readonly_cache: a,
+                defaultStore: objectStore,
+                storeWithReadCache: a,
             })
         }
     })

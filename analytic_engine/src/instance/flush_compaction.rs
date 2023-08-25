@@ -19,7 +19,7 @@ use futures::{
 use generic_error::{BoxError, GenericError};
 use log::{debug, error, info};
 use macros::define_result;
-use runtime::{Runtime, RuntimeRef};
+use runtime::Runtime;
 use snafu::{Backtrace, ResultExt, Snafu};
 use table_engine::predicate::Predicate;
 use time_ext::{self, ReadableDuration};
@@ -32,7 +32,7 @@ use crate::{
     manifest::meta_edit::{
         AlterOptionsMeta, MetaEdit, MetaEditRequest, MetaUpdate, VersionEditMeta,
     },
-    memtable::{ColumnarIterPtr, MemTableRef, ScanContext, ScanRequest},
+    memtable::{ColumnarIter, MemTableRef, ScanContext, ScanRequest},
     row_iter::{
         self,
         dedup::DedupIterator,
@@ -43,7 +43,7 @@ use crate::{
         factory::{self, ReadFrequency, ScanOptions, SstReadOptions, SstWriteOptions},
         file::{FileMeta, Level},
         meta_data::SstMetaReader,
-        writer::{MetaData, RecordBatchStream},
+        writer::{SstMeta, RecordBatchStream},
     },
     table::{
         data::{self, TableData, TableDataRef},
@@ -149,187 +149,147 @@ define_result!(Error);
 /// Options to flush single table.
 #[derive(Default)]
 pub struct TableFlushOptions {
-    /// Flush result sender.
-    ///
-    /// Default is None.
+    /// flush result sender.
     pub res_sender: Option<oneshot::Sender<Result<()>>>,
-    /// Max retry limit After flush failed
-    ///
-    /// Default is 0
+    /// max retry limit After flush failed
     pub max_retry_flush_limit: usize,
 }
 
 impl fmt::Debug for TableFlushOptions {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("TableFlushOptions")
-            .field("res_sender", &self.res_sender.is_some())
-            .finish()
+        f.debug_struct("TableFlushOptions").field("res_sender", &self.res_sender.is_some()).finish()
     }
 }
 
 /// Request to flush single table.
 pub struct TableFlushRequest {
     /// Table to flush.
-    pub table_data: TableDataRef,
+    pub tableData: Arc<TableData>,
     /// Max sequence number to flush (inclusive).
-    pub max_sequence: SequenceNumber,
+    pub maxSequence: SequenceNumber,
 }
 
 #[derive(Clone)]
 pub struct Flusher {
-    pub space_store: SpaceStoreRef,
-
-    pub runtime: RuntimeRef,
+    pub space_store: Arc<SpaceStore>,
+    pub writeRunTime: Arc<Runtime>,
     pub write_sst_max_buffer_size: usize,
 }
 
-struct FlushTask {
-    space_store: SpaceStoreRef,
-    table_data: TableDataRef,
-    runtime: RuntimeRef,
-    write_sst_max_buffer_size: usize,
-}
-
 impl Flusher {
-    pub async fn scheduleFlush(&self,
-                               flush_scheduler: &mut TableFlushScheduler,
-                               table_data: &TableDataRef,
-                               opts: TableFlushOptions) -> Result<()> {
-        debug!("instance flush table, table_data:{:?}, flush_opts:{:?}",table_data, opts);
-
-        self.schedule_table_flush(flush_scheduler, table_data.clone(), opts, false).await
+    pub async fn flushAsync(&self,
+                            flushScheduler: &mut TableFlushScheduler,
+                            tableData: &TableDataRef,
+                            opts: TableFlushOptions) -> Result<()> {
+        debug!("flushAsync() instance flush table, table_data:{:?}, flush_opts:{:?}",tableData, opts);
+        self.flush(flushScheduler, tableData.clone(), opts, false).await
     }
 
-    /// Do flush and wait for it to finish.
-    pub async fn do_flush(
-        &self,
-        flush_scheduler: &mut TableFlushScheduler,
-        table_data: &TableDataRef,
-        opts: TableFlushOptions,
-    ) -> Result<()> {
-        info!(
-            "Instance flush table, table_data:{:?}, flush_opts:{:?}",
-            table_data, opts
-        );
-
-        self.schedule_table_flush(flush_scheduler, table_data.clone(), opts, true)
-            .await
+    pub async fn flushSync(&self,
+                           flush_scheduler: &mut TableFlushScheduler,
+                           table_data: &TableDataRef,
+                           opts: TableFlushOptions) -> Result<()> {
+        info!("flushSync() instance flush table, table_data:{:?}, flush_opts:{:?}",table_data, opts);
+        self.flush(flush_scheduler, table_data.clone(), opts, true).await
     }
 
     /// Schedule table flush request to background workers
-    async fn schedule_table_flush(
-        &self,
-        flush_scheduler: &mut TableFlushScheduler,
-        table_data: TableDataRef,
-        opts: TableFlushOptions,
-        block_on: bool,
-    ) -> Result<()> {
-        let flush_task = FlushTask {
-            table_data: table_data.clone(),
-            space_store: self.space_store.clone(),
-            runtime: self.runtime.clone(),
+    async fn flush(&self,
+                   flush_scheduler: &mut TableFlushScheduler,
+                   table_data: Arc<TableData>,
+                   opts: TableFlushOptions,
+                   block_on: bool) -> Result<()> {
+        let flushTask = FlushTask {
+            tableData: table_data.clone(),
+            spaceStore: self.space_store.clone(),
+            writeRunTime: self.writeRunTime.clone(),
             write_sst_max_buffer_size: self.write_sst_max_buffer_size,
         };
-        let flush_job = async move { flush_task.run().await };
+        let flush_job = async move { flushTask.run().await };
 
-        flush_scheduler
-            .flush_sequentially(flush_job, block_on, opts, &self.runtime, table_data.clone())
-            .await
+        flush_scheduler.flush_sequentially(flush_job,
+                                           block_on,
+                                           opts,
+                                           &self.writeRunTime,
+                                           table_data.clone()).await
     }
 }
 
+struct FlushTask {
+    spaceStore: SpaceStoreRef,
+    tableData: Arc<TableData>,
+    writeRunTime: Arc<Runtime>,
+    write_sst_max_buffer_size: usize,
+}
+
 impl FlushTask {
-    /// Each table can only have one running flush task at the same time, which
-    /// should be ensured by the caller.
+    /// each table can only have one running flush task at the same time, which should be ensured by the caller.
     async fn run(&self) -> Result<()> {
         let instant = Instant::now();
-        let flush_req = self.preprocess_flush(&self.table_data).await?;
 
-        let current_version = self.table_data.current_version();
-        let mems_to_flush = current_version.pick_memtables_to_flush(flush_req.max_sequence);
+        let lastSequence = self.getLastSequence(&self.tableData).await?;
 
-        if mems_to_flush.is_empty() {
+        let flushableMemTables = self.tableData.currentTableVersion().pick_memtables_to_flush(lastSequence);
+        if flushableMemTables.sampling_mem.is_none() && flushableMemTables.memtables.is_empty() {
             return Ok(());
         }
 
-        let request_id = RequestId::next_id();
+        let requestId = RequestId::next_id();
 
-        // Start flush duration timer.
-        let local_metrics = self.table_data.metrics.local_flush_metrics();
+        let local_metrics = self.tableData.metrics.local_flush_metrics();
         let _timer = local_metrics.start_flush_timer();
-        self.dump_memtables(request_id, &mems_to_flush)
-            .await
-            .box_err()
-            .context(FlushJobWithCause {
-                msg: Some(format!(
-                    "table:{}, table_id:{}, request_id:{request_id}",
-                    self.table_data.name, self.table_data.id
-                )),
-            })?;
 
-        self.table_data
-            .set_last_flush_time(time_ext::current_time_millis());
+        self.dumpMemTables(requestId, &flushableMemTables).await.box_err().context(FlushJobWithCause {
+            msg: Some(format!("table:{}, table_id:{}, request_id:{}", self.tableData.name, self.tableData.id, requestId)),
+        })?;
 
-        info!(
-            "Instance flush memtables done, table:{}, table_id:{}, request_id:{}, cost:{}ms",
-            self.table_data.name,
-            self.table_data.id,
-            request_id,
-            instant.elapsed().as_millis()
-        );
+        self.tableData.set_last_flush_time(time_ext::current_time_millis());
+
+        info!("instance flush memtables done, table:{}, table_id:{}, request_id:{}, cost:{}ms",
+            self.tableData.name,self.tableData.id,requestId,instant.elapsed().as_millis());
 
         Ok(())
     }
 
-    async fn preprocess_flush(&self, table_data: &TableDataRef) -> Result<TableFlushRequest> {
-        let current_version = table_data.current_version();
-        let mut last_sequence = table_data.last_sequence();
-        // Switch (freeze) all mutable memtables. And update segment duration if
-        // suggestion is returned.
-        if let Some(suggest_segment_duration) = current_version.suggest_duration() {
-            info!(
-                "Update segment duration, table:{}, table_id:{}, segment_duration:{:?}",
-                table_data.name, table_data.id, suggest_segment_duration
-            );
+    async fn getLastSequence(&self, tableData: &Arc<TableData>) -> Result<SequenceNumber> {
+        let currentTableVersion = tableData.currentTableVersion();
+        let mut lastSequence = tableData.last_sequence();
+
+        // switch (freeze) all mutable memtables. And update segment duration if suggestion is returned.
+        if let Some(suggest_segment_duration) = currentTableVersion.suggest_duration() {
+            info!("update segment duration, table:{}, table_id:{}, segment_duration:{:?}",tableData.name, tableData.id, suggest_segment_duration);
             assert!(!suggest_segment_duration.is_zero());
 
-            let mut new_table_opts = (*table_data.table_options()).clone();
+            let mut new_table_opts = (*tableData.table_options()).clone();
             new_table_opts.segment_duration = Some(ReadableDuration(suggest_segment_duration));
 
             let edit_req = {
                 let meta_update = MetaUpdate::AlterOptions(AlterOptionsMeta {
-                    space_id: table_data.space_id,
-                    table_id: table_data.id,
+                    space_id: tableData.space_id,
+                    table_id: tableData.id,
                     options: new_table_opts.clone(),
                 });
                 MetaEditRequest {
-                    tableShardInfo: table_data.shard_info,
+                    tableShardInfo: tableData.shard_info,
                     metaEdit: MetaEdit::Update(meta_update),
                 }
             };
-            self.space_store
-                .manifest
-                .apply_edit(edit_req)
-                .await
-                .context(StoreVersionEdit)?;
 
-            // Now the segment duration is applied, we can stop sampling and freeze the
-            // sampling memtable.
-            if let Some(seq) = current_version.freeze_sampling_memtable() {
-                last_sequence = seq.max(last_sequence);
+            self.spaceStore.manifest.apply_edit(edit_req).await.context(StoreVersionEdit)?;
+
+            // now the segment duration is applied, we can stop sampling and freeze the sampling memtable.
+            if let Some(seq) = currentTableVersion.freeze_sampling_memtable() {
+                lastSequence = seq.max(lastSequence);
             }
-        } else if let Some(seq) = current_version.switch_memtables() {
-            last_sequence = seq.max(last_sequence);
+        } else if let Some(seq) = currentTableVersion.switchMutableMemTable2Immutable() {
+            lastSequence = seq.max(lastSequence);
         }
 
-        info!("Try to trigger memtable flush of table, table:{}, table_id:{}, max_memtable_id:{}, last_sequence:{last_sequence}",
-            table_data.name, table_data.id, table_data.last_memtable_id());
+        info!("try to trigger memtable flush of table, table:{}, table_id:{}, max_memtable_id:{}, last_sequence:{}",
+            tableData.name, tableData.id, tableData.last_memtable_id(),lastSequence);
 
-        // Try to flush all memtables of current table
-        Ok(TableFlushRequest {
-            table_data: table_data.clone(),
-            max_sequence: last_sequence,
-        })
+        // try to flush all memtables of current table
+        Ok(lastSequence)
     }
 
     /// This will write picked memtables [FlushableMemTables] to level 0 sst
@@ -338,96 +298,76 @@ impl FlushTask {
     ///
     /// Memtables will be removed after all of them are dumped. The max sequence
     /// number in dumped memtables will be sent to the [WalManager].
-    async fn dump_memtables(
-        &self,
-        request_id: RequestId,
-        mems_to_flush: &FlushableMemTables,
-    ) -> Result<()> {
-        let local_metrics = self.table_data.metrics.local_flush_metrics();
-        let mut files_to_level0 = Vec::with_capacity(mems_to_flush.memtables.len());
-        let mut flushed_sequence = 0;
+    async fn dumpMemTables(&self,
+                           requestId: RequestId,
+                           flushableMemTables: &FlushableMemTables) -> Result<()> {
+        let local_metrics = self.tableData.metrics.local_flush_metrics();
+
+        let mut files_to_level0 = Vec::with_capacity(flushableMemTables.memtables.len());
+        let mut flushedMaxSeq = 0;
         let mut sst_num = 0;
 
         // process sampling memtable and frozen memtable
-        if let Some(sampling_mem) = &mems_to_flush.sampling_mem {
-            if let Some(seq) = self
-                .dump_sampling_memtable(request_id, sampling_mem, &mut files_to_level0)
-                .await?
-            {
-                flushed_sequence = seq;
+        if let Some(sampling_mem) = &flushableMemTables.sampling_mem {
+            if let Some(seq) = self.dump_sampling_memtable(requestId, sampling_mem, &mut files_to_level0).await? {
+                flushedMaxSeq = seq;
                 sst_num += files_to_level0.len();
                 for add_file in &files_to_level0 {
                     local_metrics.observe_sst_size(add_file.file.size);
                 }
             }
         }
-        for mem in &mems_to_flush.memtables {
-            let file = self.dump_normal_memtable(request_id, mem).await?;
-            if let Some(file) = file {
-                let sst_size = file.size;
-                files_to_level0.push(AddFile {
-                    level: Level::MIN,
-                    file,
-                });
+
+        for memTableState in &flushableMemTables.memtables {
+            if let Some(fileMeta) = self.dumpNormalMemTable(requestId, memTableState).await? {
+                let sst_size = fileMeta.size;
+                files_to_level0.push(AddFile { level: Level::MIN, file: fileMeta });
 
                 // Set flushed sequence to max of the last_sequence of memtables.
-                flushed_sequence = cmp::max(flushed_sequence, mem.last_sequence());
+                flushedMaxSeq = cmp::max(flushedMaxSeq, memTableState.lastSequence());
 
                 sst_num += 1;
+
                 // Collect sst size metrics.
                 local_metrics.observe_sst_size(sst_size);
             }
         }
 
-        // Collect sst num metrics.
+        // collect sst num metrics.
         local_metrics.observe_sst_num(sst_num);
 
-        info!(
-            "Instance flush memtables to output, table:{}, table_id:{}, request_id:{}, mems_to_flush:{:?}, files_to_level0:{:?}, flushed_sequence:{}",
-            self.table_data.name,
-            self.table_data.id,
-            request_id,
-            mems_to_flush,
-            files_to_level0,
-            flushed_sequence
-        );
+        info!("instance flush memtables to output, table:{}, table_id:{}, request_id:{}, mems_to_flush:{:?}, files_to_level0:{:?}, flushed_sequence:{}",
+            self.tableData.name,self.tableData.id,requestId,flushableMemTables,files_to_level0,flushedMaxSeq);
 
-        // Persist the flush result to manifest.
-        let edit_req = {
+        // persist the flush result to manifest.
+        let metaEditRequest = {
             let edit_meta = VersionEditMeta {
-                space_id: self.table_data.space_id,
-                table_id: self.table_data.id,
-                flushed_sequence,
-                files_to_add: files_to_level0.clone(),
-                files_to_delete: vec![],
-                mems_to_remove: mems_to_flush.ids(),
+                space_id: self.tableData.space_id,
+                table_id: self.tableData.id,
+                flushedMaxSeq,
+                addedFiles: files_to_level0.clone(),
+                deletedFiles: vec![],
+                memTableIdsToRemove: flushableMemTables.ids(),
                 max_file_id: 0,
             };
+
             let meta_update = MetaUpdate::VersionEdit(edit_meta);
+
             MetaEditRequest {
-                tableShardInfo: self.table_data.shard_info,
+                tableShardInfo: self.tableData.shard_info,
                 metaEdit: MetaEdit::Update(meta_update),
             }
         };
-        // Update manifest and remove immutable memtables
-        self.space_store
-            .manifest
-            .apply_edit(edit_req)
-            .await
-            .context(StoreVersionEdit)?;
+
+        // update manifest and remove immutable memtables
+        self.spaceStore.manifest.apply_edit(metaEditRequest).await.context(StoreVersionEdit)?;
 
         // Mark sequence <= flushed_sequence to be deleted.
-        let table_location = self.table_data.table_location();
-        let wal_location =
-            instance::createWalLocation(table_location.id, table_location.shard_info);
-        self.space_store
-            .walManager
-            .mark_delete_entries_up_to(wal_location, flushed_sequence)
-            .await
-            .context(PurgeWal {
-                wal_location,
-                sequence: flushed_sequence,
-            })?;
+        let table_location = self.tableData.table_location();
+        let wal_location = instance::createWalLocation(table_location.id, table_location.shard_info);
+
+        self.spaceStore.walManager.mark_delete_entries_up_to(wal_location, flushedMaxSeq).await
+            .context(PurgeWal { wal_location, sequence: flushedMaxSeq })?;
 
         Ok(())
     }
@@ -454,16 +394,16 @@ impl FlushTask {
         let time_ranges = sampling_mem.sampler.ranges();
 
         info!("Flush sampling memtable, table_id:{:?}, table_name:{:?}, request_id:{}, sampling memtable time_ranges:{:?}",
-            self.table_data.id, self.table_data.name, request_id, time_ranges);
+            self.tableData.id, self.tableData.name, request_id, time_ranges);
 
         let mut batch_record_senders = Vec::with_capacity(time_ranges.len());
         let mut sst_handlers = Vec::with_capacity(time_ranges.len());
         let mut file_ids = Vec::with_capacity(time_ranges.len());
 
         let sst_write_options = SstWriteOptions {
-            storage_format_hint: self.table_data.table_options().storage_format_hint,
-            num_rows_per_row_group: self.table_data.table_options().num_rows_per_row_group,
-            compression: self.table_data.table_options().compression,
+            storage_format_hint: self.tableData.table_options().storage_format_hint,
+            num_rows_per_row_group: self.tableData.table_options().num_rows_per_row_group,
+            compression: self.tableData.table_options().compression,
             max_buffer_size: self.write_sst_max_buffer_size,
         };
 
@@ -471,34 +411,34 @@ impl FlushTask {
             let (batch_record_sender, batch_record_receiver) =
                 channel::<Result<RecordBatchWithKey>>(DEFAULT_CHANNEL_SIZE);
             let file_id = self
-                .table_data
-                .alloc_file_id(&self.space_store.manifest)
+                .tableData
+                .alloc_file_id(&self.spaceStore.manifest)
                 .await
                 .context(AllocFileId)?;
 
-            let sst_file_path = self.table_data.set_sst_file_path(file_id);
+            let sst_file_path = self.tableData.buildSstFilePath(file_id);
 
             // TODO: `min_key` & `max_key` should be figured out when writing sst.
-            let sst_meta = MetaData {
+            let sst_meta = SstMeta {
                 min_key: min_key.clone(),
                 max_key: max_key.clone(),
                 time_range: *time_range,
-                max_sequence,
-                schema: self.table_data.schema(),
+                maxSeq: max_sequence,
+                schema: self.tableData.schema(),
             };
 
-            let store = self.space_store.clone();
-            let storage_format_hint = self.table_data.table_options().storage_format_hint;
+            let store = self.spaceStore.clone();
+            let storage_format_hint = self.tableData.table_options().storage_format_hint;
             let sst_write_options = sst_write_options.clone();
 
             // spawn build sst
-            let handler = self.runtime.spawn(async move {
+            let handler = self.writeRunTime.spawn(async move {
                 let mut writer = store
-                    .sst_factory
-                    .create_writer(
+                    .sstFactory
+                    .createWriter(
                         &sst_write_options,
                         &sst_file_path,
-                        store.store_picker(),
+                        store.objectStorePicker(),
                         Level::MIN,
                     )
                     .await
@@ -529,9 +469,9 @@ impl FlushTask {
             file_ids.push(file_id);
         }
 
-        let iter = build_mem_table_iter(sampling_mem.mem.clone(), &self.table_data)?;
+        let iter = buildMemTableIter(sampling_mem.mem.clone(), &self.tableData)?;
 
-        let timestamp_idx = self.table_data.schema().timestamp_index();
+        let timestamp_idx = self.tableData.schema().timestamp_index();
 
         for data in iter {
             for (idx, record_batch) in split_record_batch_with_time_ranges(
@@ -562,7 +502,7 @@ impl FlushTask {
                     size: sst_info.file_size as u64,
                     row_num: sst_info.row_num as u64,
                     time_range: sst_meta.time_range,
-                    max_seq: sst_meta.max_sequence,
+                    max_seq: sst_meta.maxSeq,
                     storage_format: sst_info.storage_format,
                 },
             })
@@ -572,107 +512,79 @@ impl FlushTask {
     }
 
     /// Flush rows in normal (non-sampling) memtable to at most one sst file.
-    async fn dump_normal_memtable(
-        &self,
-        request_id: RequestId,
-        memtable_state: &MemTableState,
-    ) -> Result<Option<FileMeta>> {
-        let (min_key, max_key) = match (memtable_state.memTable.min_key(), memtable_state.memTable.max_key())
-        {
+    async fn dumpNormalMemTable(&self, requestId: RequestId, memTableState: &MemTableState) -> Result<Option<FileMeta>> {
+        let (min_key, max_key) = match (memTableState.memTable.min_key(), memTableState.memTable.max_key()) {
             (Some(min_key), Some(max_key)) => (min_key, max_key),
-            _ => {
-                // the memtable is empty and nothing needs flushing.
-                return Ok(None);
-            }
+            _ => return Ok(None), // the memtable is empty and nothing needs flushing.
         };
-        let max_sequence = memtable_state.last_sequence();
-        let sst_meta = MetaData {
+
+        let sstMeta = SstMeta {
             min_key,
             max_key,
-            time_range: memtable_state.time_range,
-            max_sequence,
-            schema: self.table_data.schema(),
+            time_range: memTableState.timeRange,
+            maxSeq: memTableState.lastSequence(),
+            schema: self.tableData.schema(),
         };
 
         // Alloc file id for next sst file
-        let file_id = self
-            .table_data
-            .alloc_file_id(&self.space_store.manifest)
-            .await
-            .context(AllocFileId)?;
+        let sstFileId = self.tableData.alloc_file_id(&self.spaceStore.manifest).await.context(AllocFileId)?;
 
-        let sst_file_path = self.table_data.set_sst_file_path(file_id);
+        // fenquen sst文件的path a spaceId/tableId/sstFileId.sst
+        let sstFilePath = self.tableData.buildSstFilePath(sstFileId);
 
-        let storage_format_hint = self.table_data.table_options().storage_format_hint;
-        let sst_write_options = SstWriteOptions {
+        let storage_format_hint = self.tableData.table_options().storage_format_hint;
+
+        let sstWriteOptions = SstWriteOptions {
             storage_format_hint,
-            num_rows_per_row_group: self.table_data.table_options().num_rows_per_row_group,
-            compression: self.table_data.table_options().compression,
+            num_rows_per_row_group: self.tableData.table_options().num_rows_per_row_group,
+            compression: self.tableData.table_options().compression,
             max_buffer_size: self.write_sst_max_buffer_size,
         };
-        let mut writer = self
-            .space_store
-            .sst_factory
-            .create_writer(
-                &sst_write_options,
-                &sst_file_path,
-                self.space_store.store_picker(),
-                Level::MIN,
-            )
-            .await
-            .context(CreateSstWriter {
-                storage_format_hint,
-            })?;
 
-        let iter = build_mem_table_iter(memtable_state.memTable.clone(), &self.table_data)?;
+        let mut sstWriter =
+            self.spaceStore.sstFactory.createWriter(&sstWriteOptions,
+                                                    &sstFilePath,
+                                                    self.spaceStore.objectStorePicker(),
+                                                    Level::MIN).await.context(CreateSstWriter { storage_format_hint })?;
 
-        let record_batch_stream: RecordBatchStream =
-            Box::new(stream::iter(iter).map_err(|e| Box::new(e) as _));
+        // memTable iter化和stream化
+        let columnarIter = buildMemTableIter(memTableState.memTable.clone(), &self.tableData)?;
+        let recordBatchStream: RecordBatchStream = Box::new(stream::iter(columnarIter).map_err(|e| Box::new(e) as _));
 
-        let sst_info = writer
-            .write(request_id, &sst_meta, record_batch_stream)
-            .await
-            .box_err()
-            .with_context(|| WriteSst {
-                path: sst_file_path.to_string(),
-            })?;
+        let sstInfo =
+            sstWriter.write(requestId, &sstMeta, recordBatchStream).await.box_err().with_context(|| WriteSst { path: sstFilePath.to_string() })?;
 
         // update sst metadata by built info.
 
         Ok(Some(FileMeta {
-            id: file_id,
-            row_num: sst_info.row_num as u64,
-            size: sst_info.file_size as u64,
-            time_range: memtable_state.time_range,
-            max_seq: memtable_state.last_sequence(),
-            storage_format: sst_info.storage_format,
+            id: sstFileId,
+            row_num: sstInfo.row_num as u64,
+            size: sstInfo.file_size as u64,
+            time_range: memTableState.timeRange,
+            max_seq: memTableState.lastSequence(),
+            storage_format: sstInfo.storage_format,
         }))
     }
 }
 
 impl SpaceStore {
-    pub(crate) async fn compact_table(
-        &self,
-        request_id: RequestId,
-        table_data: &TableData,
-        task: &CompactionTask,
-        scan_options: ScanOptions,
-        sst_write_options: &SstWriteOptions,
-        runtime: Arc<Runtime>,
-    ) -> Result<()> {
-        debug!(
-            "Begin compact table, table_name:{}, id:{}, task:{:?}",
-            table_data.name, table_data.id, task
-        );
+    pub(crate) async fn compact_table(&self,
+                                      request_id: RequestId,
+                                      table_data: &TableData,
+                                      task: &CompactionTask,
+                                      scan_options: ScanOptions,
+                                      sst_write_options: &SstWriteOptions,
+                                      runtime: Arc<Runtime>) -> Result<()> {
+        debug!("begin compact table, table_name:{}, id:{}, task:{:?}",table_data.name, table_data.id, task);
         let inputs = task.inputs();
         let mut edit_meta = VersionEditMeta {
             space_id: table_data.space_id,
             table_id: table_data.id,
-            flushed_sequence: 0,
+            flushedMaxSeq: 0,
             // Use the number of compaction inputs as the estimated number of files to add.
-            files_to_add: Vec::with_capacity(inputs.len()),
-            files_to_delete: vec![],
-            mems_to_remove: vec![],
+            addedFiles: Vec::with_capacity(inputs.len()),
+            deletedFiles: vec![],
+            memTableIdsToRemove: vec![],
             max_file_id: 0,
         };
 
@@ -792,9 +704,9 @@ impl SpaceStore {
                 sequence,
                 projected_schema,
                 predicate: Arc::new(Predicate::empty()),
-                sst_factory: &self.sst_factory,
+                sst_factory: &self.sstFactory,
                 sst_read_options: sst_read_options.clone(),
-                store_picker: self.store_picker(),
+                store_picker: self.objectStorePicker(),
                 merge_iter_options: iter_options.clone(),
                 need_dedup: table_options.needDeDuplicate(),
                 reverse: false,
@@ -822,15 +734,15 @@ impl SpaceStore {
             let meta_reader = SstMetaReader {
                 space_id: table_data.space_id,
                 table_id: table_data.id,
-                factory: self.sst_factory.clone(),
+                factory: self.sstFactory.clone(),
                 read_opts: sst_read_options,
-                store_picker: self.store_picker.clone(),
+                store_picker: self.objectStorePicker.clone(),
             };
             let sst_metas = meta_reader
                 .fetch_metas(&input.files)
                 .await
                 .context(ReadSstMeta)?;
-            MetaData::merge(sst_metas.into_iter().map(MetaData::from), schema)
+            SstMeta::merge(sst_metas.into_iter().map(SstMeta::from), schema)
         };
 
         // Alloc file id for the merged sst.
@@ -839,14 +751,14 @@ impl SpaceStore {
             .await
             .context(AllocFileId)?;
 
-        let sst_file_path = table_data.set_sst_file_path(file_id);
+        let sst_file_path = table_data.buildSstFilePath(file_id);
 
         let mut sst_writer = self
-            .sst_factory
-            .create_writer(
+            .sstFactory
+            .createWriter(
                 sst_write_options,
                 &sst_file_path,
-                self.store_picker(),
+                self.objectStorePicker(),
                 input.output_level,
             )
             .await
@@ -883,26 +795,26 @@ impl SpaceStore {
         );
 
         // Update the flushed sequence number.
-        edit_meta.flushed_sequence = cmp::max(sst_meta.max_sequence, edit_meta.flushed_sequence);
+        edit_meta.flushedMaxSeq = cmp::max(sst_meta.maxSeq, edit_meta.flushedMaxSeq);
 
         // Store updates to edit_meta.
-        edit_meta.files_to_delete.reserve(input.files.len());
+        edit_meta.deletedFiles.reserve(input.files.len());
         // The compacted file can be deleted later.
         for file in &input.files {
-            edit_meta.files_to_delete.push(DeleteFile {
+            edit_meta.deletedFiles.push(DeleteFile {
                 level: input.level,
                 file_id: file.id(),
             });
         }
 
         // Add the newly created file to meta.
-        edit_meta.files_to_add.push(AddFile {
+        edit_meta.addedFiles.push(AddFile {
             level: input.output_level,
             file: FileMeta {
                 id: file_id,
                 size: sst_file_size,
                 row_num: sst_row_num,
-                max_seq: sst_meta.max_sequence,
+                max_seq: sst_meta.maxSeq,
                 time_range: sst_meta.time_range,
                 storage_format: sst_info.storage_format,
             },
@@ -922,9 +834,9 @@ impl SpaceStore {
         }
 
         let files = &expired.files;
-        edit_meta.files_to_delete.reserve(files.len());
+        edit_meta.deletedFiles.reserve(files.len());
         for file in files {
-            edit_meta.files_to_delete.push(DeleteFile {
+            edit_meta.deletedFiles.push(DeleteFile {
                 level: expired.level,
                 file_id: file.id(),
             });
@@ -970,16 +882,16 @@ fn split_record_batch_with_time_ranges(record_batch: RecordBatchWithKey,
     Ok(ret)
 }
 
-fn build_mem_table_iter(memtable: MemTableRef, table_data: &TableDataRef) -> Result<ColumnarIterPtr> {
-    let scan_req = ScanRequest {
+fn buildMemTableIter(memTable: MemTableRef, tableData: &TableDataRef) -> Result<ColumnarIter> {
+    let scanRequest = ScanRequest {
         start_user_key: Bound::Unbounded,
         end_user_key: Bound::Unbounded,
         sequence: common_types::MAX_SEQUENCE_NUMBER,
-        projected_schema: ProjectedSchema::no_projection(table_data.schema()),
-        need_dedup: table_data.dedup(),
+        projected_schema: ProjectedSchema::no_projection(tableData.schema()),
+        need_dedup: tableData.dedup(),
         reverse: false,
         metrics_collector: None,
     };
 
-    memtable.scan(ScanContext::default(), scan_req).box_err().context(InvalidMemIter)
+    memTable.scan(ScanContext::default(), scanRequest).box_err().context(InvalidMemIter)
 }

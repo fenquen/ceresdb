@@ -18,7 +18,7 @@ impl Encoder<f64> for MemCompactEncoder {
         Ok(())
     }
 
-    fn estimate_encoded_size(&self, _value: &f64) -> usize {
+    fn estimateEncodedSize(&self, _value: &f64) -> usize {
         mem::size_of::<f64>()
     }
 }
@@ -40,7 +40,7 @@ impl Encoder<f32> for MemCompactEncoder {
         Ok(())
     }
 
-    fn estimate_encoded_size(&self, _value: &f32) -> usize {
+    fn estimateEncodedSize(&self, _value: &f32) -> usize {
         mem::size_of::<f32>()
     }
 }

@@ -28,54 +28,49 @@ const DEFAULT_SCAN_BATCH_SIZE: usize = 500;
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub (crate)))]
 pub enum Error {
-    #[snafu(display("Failed to encode internal key, err:{}", source))]
-    EncodeInternalKey { source: crate::memtable::key::Error },
+    #[snafu(display("failed to encode internal key, err:{}", source))]
+    EncodeInternalKey { source: key::Error },
 
-    #[snafu(display("Failed to decode internal key, err:{}", source))]
-    DecodeInternalKey { source: crate::memtable::key::Error },
+    #[snafu(display("failed to decode internal key, err:{}", source))]
+    DecodeInternalKey { source: key::Error },
 
-    #[snafu(display("Failed to decode row, err:{}", source))]
+    #[snafu(display("failed to decode row, err:{}", source))]
     DecodeRow { source: codec::row::Error },
 
-    #[snafu(display("Failed to append row to batch builder, err:{}", source))]
+    #[snafu(display("failed to append row to batch builder, err:{}", source))]
     AppendRow {
         source: common_types::record_batch::Error,
     },
 
-    #[snafu(display("Failed to build record batch, err:{}", source, ))]
+    #[snafu(display("failed to build record batch, err:{}", source, ))]
     BuildRecordBatch {
         source: common_types::record_batch::Error,
     },
 
-    #[snafu(display("Failed to decode continuous row, err:{}", source))]
+    #[snafu(display("failed to decode continuous row, err:{}", source))]
     DecodeContinuousRow {
         source: common_types::row::contiguous::Error,
     },
 
-    #[snafu(display("Failed to project memtable schema, err:{}", source))]
+    #[snafu(display("failed to project memtable schema, err:{}", source))]
     ProjectSchema {
         source: common_types::projected_schema::Error,
     },
 
-    #[snafu(display(
-    "Invalid sequence number to put, given:{}, last:{}.\nBacktrace:\n{}",
-    given,
-    last,
-    backtrace
-    ))]
+    #[snafu(display("invalid sequence number to put, given:{}, last:{}.\nBacktrace:\n{}", given, last, backtrace))]
     InvalidPutSequence {
         given: SequenceNumber,
         last: SequenceNumber,
         backtrace: Backtrace,
     },
 
-    #[snafu(display("Invalid row, err:{}", source))]
+    #[snafu(display("invalid row, err:{}", source))]
     InvalidRow { source: GenericError },
 
-    #[snafu(display("Fail to iter in reverse order, err:{}", source))]
+    #[snafu(display("fail to iter in reverse order, err:{}", source))]
     IterReverse { source: GenericError },
 
-    #[snafu(display("Timeout when iter memtable.\nBacktrace:\n{}", backtrace))]
+    #[snafu(display("timeout when iter memtable.\nBacktrace:\n{}", backtrace))]
     IterTimeout { backtrace: Backtrace },
 }
 
@@ -84,9 +79,9 @@ define_result!(Error);
 /// Options for put and context for tracing
 pub struct PutContext {
     /// Buffer for encoding key, can reuse during put
-    pub key_buf: Vec<u8>,
+    pub keyBuf: Vec<u8>,
     /// Buffer for encoding value, can reuse during put
-    pub value_buf: Vec<u8>,
+    pub valueBuf: Vec<u8>,
     /// Used to encode row.
     pub index_in_writer: IndexInWriterSchema,
 }
@@ -94,8 +89,8 @@ pub struct PutContext {
 impl PutContext {
     pub fn new(index_in_writer: IndexInWriterSchema) -> Self {
         Self {
-            key_buf: ByteVec::new(),
-            value_buf: ByteVec::new(),
+            keyBuf: ByteVec::new(),
+            valueBuf: ByteVec::new(),
             index_in_writer,
         }
     }
@@ -148,8 +143,7 @@ pub struct ScanRequest {
 pub trait MemTable {
     /// Schema of this memtable
     ///
-    /// The schema of a memtable is not allowed to change now. Modifying the
-    /// schema of a table requires a memtable switch and external synchronization
+    /// The schema of a memtable is not allowed to change now. Modifying the schema of a table requires a memtable switch and external synchronization
     fn schema(&self) -> &Schema;
 
     /// Peek the min key of this memtable.
@@ -169,25 +163,22 @@ pub trait MemTable {
     /// - The schema of RowGroup must equal to the schema of memtable. How to
     /// handle duplicate entries is implementation specific.
     fn put(&self,
-           ctx: &mut PutContext,
+           putContext: &mut PutContext,
            keySequence: KeySequence,
            row: &Row,
            schema: &Schema) -> Result<()>;
 
     /// Scan the memtable.
     ///
-    /// Returns the data in columnar format. The returned rows is guaranteed
-    /// to be ordered by the primary key.
-    fn scan(&self, ctx: ScanContext, request: ScanRequest) -> Result<ColumnarIterPtr>;
+    /// Returns the data in columnar format. The returned rows is guaranteed to be ordered by the primary key.
+    fn scan(&self, ctx: ScanContext, scanRequest: ScanRequest) -> Result<ColumnarIter>;
 
     /// Returns an estimate of the number of bytes of data in used
     fn approximate_memory_usage(&self) -> usize;
 
-    /// Set last sequence of the memtable, returns error if the given `sequence`
-    /// is less than existing last sequence.
+    /// Set last sequence of the memtable, returns error if the given `sequence` is less than existing last sequence.
     ///
-    /// REQUIRE:
-    /// - External synchronization is required.
+    /// REQUIRE:- External synchronization is required.
     fn set_last_sequence(&self, sequenceNumber: SequenceNumber) -> Result<()>;
 
     /// Returns the last sequence of the memtable.
@@ -211,4 +202,4 @@ pub struct Metrics {
 
 pub type MemTableRef = Arc<dyn MemTable + Send + Sync>;
 
-pub type ColumnarIterPtr = Box<dyn Iterator<Item=Result<RecordBatchWithKey>> + Send + Sync>;
+pub type ColumnarIter = Box<dyn Iterator<Item=Result<RecordBatchWithKey>> + Send + Sync>;

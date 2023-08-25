@@ -16,7 +16,7 @@ use macros::define_result;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use xorfilter::xor8::{Xor8, Xor8Builder};
 
-use crate::sst::writer::MetaData;
+use crate::sst::writer::SstMeta;
 
 /// Error of sst file.
 #[derive(Debug, Snafu)]
@@ -225,16 +225,13 @@ impl RowGroupFilter {
     }
 
     fn size(&self) -> usize {
-        self.column_filters
-            .iter()
-            .map(|cf| cf.as_ref().map(|cf| cf.size()).unwrap_or(0))
-            .sum()
+        self.column_filters.iter().map(|cf| cf.as_ref().map(|cf| cf.size()).unwrap_or(0)).sum()
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct ParquetFilter {
-    /// Every filter is a row group filter consists of column filters.
+    /// every filter is a row group filter consists of column filters.
     row_group_filters: Vec<RowGroupFilter>,
 }
 
@@ -341,13 +338,13 @@ pub struct ParquetMetaData {
 
 pub type ParquetMetaDataRef = Arc<ParquetMetaData>;
 
-impl From<MetaData> for ParquetMetaData {
-    fn from(meta: MetaData) -> Self {
+impl From<SstMeta> for ParquetMetaData {
+    fn from(meta: SstMeta) -> Self {
         Self {
             min_key: meta.min_key,
             max_key: meta.max_key,
             time_range: meta.time_range,
-            max_sequence: meta.max_sequence,
+            max_sequence: meta.maxSeq,
             schema: meta.schema,
             parquet_filter: None,
             collapsible_cols_idx: Vec::new(),
@@ -355,13 +352,13 @@ impl From<MetaData> for ParquetMetaData {
     }
 }
 
-impl From<ParquetMetaData> for MetaData {
+impl From<ParquetMetaData> for SstMeta {
     fn from(meta: ParquetMetaData) -> Self {
         Self {
             min_key: meta.min_key,
             max_key: meta.max_key,
             time_range: meta.time_range,
-            max_sequence: meta.max_sequence,
+            maxSeq: meta.max_sequence,
             schema: meta.schema,
         }
     }

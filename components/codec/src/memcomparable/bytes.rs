@@ -59,7 +59,7 @@ impl Encoder<[u8]> for MemComparable {
     // Assume that the byte slice size is about `(len(data) / encGroupSize + 1) *
     // (encGroupSize + 1)` bytes, that is `(len(data) / 8 + 1) * 9` in our
     // implement.
-    fn estimate_encoded_size(&self, value: &[u8]) -> usize {
+    fn estimateEncodedSize(&self, value: &[u8]) -> usize {
         (value.len() / ENC_GROUP_SIZE + 1) * (ENC_GROUP_SIZE + 1)
     }
 }
@@ -71,8 +71,8 @@ impl Encoder<Bytes> for MemComparable {
         self.encode(buf, &value[..])
     }
 
-    fn estimate_encoded_size(&self, value: &Bytes) -> usize {
-        self.estimate_encoded_size(&value[..])
+    fn estimateEncodedSize(&self, value: &Bytes) -> usize {
+        self.estimateEncodedSize(&value[..])
     }
 }
 

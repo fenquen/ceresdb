@@ -33,41 +33,37 @@ type ValueSize = u32;
 #[derive(Debug)]
 #[repr(C)]
 pub struct Node {
-    /// Height of node, different from badger, The valid range of tower is [0,
-    /// height]
+    /// height of node, different from badger, The valid range of tower is [0,height]
     height: usize,
     /// The node tower
     ///
-    /// Only [0, height] parts is utilized to store node pointer, the key and
-    /// value block are start from tower[height + 1]
+    /// only [0, height] parts is utilized to store node pointer, the key and value block are start from tower[height + 1]
     tower: [AtomicPtr<Node>; MAX_HEIGHT],
 }
 
 impl Node {
-    /// Allocate a new node from the arena, and copy the content of key/value
-    /// into the node
+    /// Allocate a new node from the arena, and copy the content of key/value into the node
     /// # Safety
     /// - from_size_align_unchecked: align is got from [mem::align_of].
     /// # Notice
     /// This will only allocate the *exact* amount of memory needed within the
     /// given height.
-    fn alloc<A>(arena: &A, key: &[u8], value: &[u8], height: usize) -> *mut Node
-    where
-        A: Arena<Stats = BasicStats>,
-    {
+    fn alloc<A>(arena: &A, key: &[u8], value: &[u8], height: usize) -> *mut Node where A: Arena<Stats=BasicStats> {
         // Calculate node size to alloc
         let size = mem::size_of::<Node>();
+
         // Not all values in Node::tower will be utilized.
         let not_used = (MAX_HEIGHT - height - 1) * mem::size_of::<AtomicPtr<Node>>();
+
         // Space to store key/value: (key size) + key + (value size) + value
-        let kv_used =
-            mem::size_of::<KeySize>() + key.len() + mem::size_of::<ValueSize>() + value.len();
+        let kv_used = mem::size_of::<KeySize>() + key.len() + mem::size_of::<ValueSize>() + value.len();
+
         // UB in fact: the `not_used` size is able to be access in a "safe" way.
         // It is guaranteed by the user to not use those memory.
         let alloc_size = size - not_used + kv_used;
-        let layout =
-            unsafe { Layout::from_size_align_unchecked(alloc_size, mem::align_of::<Node>()) };
+        let layout = unsafe { Layout::from_size_align_unchecked(alloc_size, mem::align_of::<Node>()) };
         let node_ptr = arena.alloc(layout).as_ptr() as *mut Node;
+
         unsafe {
             let node = &mut *node_ptr;
             node.height = height;
@@ -115,11 +111,10 @@ impl Node {
         let key_size: KeySize = key.len().try_into().unwrap();
         let key_size_bytes = key_size.to_ne_bytes();
 
-        ptr::copy_nonoverlapping(
-            key_size_bytes.as_ptr(),
-            key_block,
-            mem::size_of::<KeySize>(),
-        );
+        ptr::copy_nonoverlapping(key_size_bytes.as_ptr(),
+                                 key_block,
+                                 mem::size_of::<KeySize>());
+
         let key_block = key_block.add(mem::size_of::<KeySize>());
         ptr::copy_nonoverlapping(key.as_ptr(), key_block, key.len());
 
@@ -127,11 +122,8 @@ impl Node {
         let value_size: ValueSize = value.len().try_into().unwrap();
         let value_size_bytes = value_size.to_ne_bytes();
 
-        ptr::copy_nonoverlapping(
-            value_size_bytes.as_ptr(),
-            value_block,
-            mem::size_of::<ValueSize>(),
-        );
+        ptr::copy_nonoverlapping(value_size_bytes.as_ptr(), value_block, mem::size_of::<ValueSize>());
+
         let value_block = value_block.add(mem::size_of::<ValueSize>());
         ptr::copy_nonoverlapping(value.as_ptr(), value_block, value.len());
     }
@@ -141,10 +133,13 @@ impl Node {
     /// REQUIRE: This Node is created via `Node::alloc()`
     unsafe fn load_key_size(&self) -> (*const u8, KeySize) {
         let tower = self.tower.as_ptr();
+
         // Move to key block
         let key_block = tower.add(self.height + 1) as *const u8;
+
         // Load key size from key block
         let key_size = u16::from_ne_bytes(*(key_block as *const [u8; mem::size_of::<KeySize>()]));
+
         // Move key block to the start of key
         let key_block = key_block.add(mem::size_of::<KeySize>());
 
@@ -157,11 +152,9 @@ impl Node {
     /// value pointer and value size
     ///
     /// REQUIRE: This Node is created via `Node::alloc()`
-    unsafe fn load_value_size(
-        &self,
-        key_block: *const u8,
-        key_size: KeySize,
-    ) -> (*const u8, ValueSize) {
+    unsafe fn load_value_size(&self,
+                              key_block: *const u8,
+                              key_size: KeySize) -> (*const u8, ValueSize) {
         // Move to value block
         let value_block = key_block.add(key_size as usize);
         // Load value size from value block
@@ -176,44 +169,37 @@ impl Node {
     /// Get key with arena
     ///
     /// REQUIRE: This Node is created via `Node::alloc()`
-    unsafe fn key_with_arena<A>(&self, arena: A) -> ArenaSlice<A>
-    where
-        A: Arena<Stats = BasicStats>,
-    {
+    unsafe fn key_with_arena<A>(&self, arena: A) -> ArenaSlice<A> where A: Arena<Stats=BasicStats> {
         let (key_block, key_size) = self.load_key_size();
 
-        ArenaSlice::from_raw_parts(arena, key_block, key_size as usize)
+        ArenaSlice::buildFromSlice(arena, key_block, key_size as usize)
     }
 
     /// Get value with arena
     ///
     /// REQUIRE: This Node is created via `Node::alloc()`
-    unsafe fn value_with_arena<A>(&self, arena: A) -> ArenaSlice<A>
-    where
-        A: Arena<Stats = BasicStats>,
-    {
+    unsafe fn value_with_arena<A>(&self, arena: A) -> ArenaSlice<A> where A: Arena<Stats=BasicStats> {
         let (key_block, key_size) = self.load_key_size();
         let (value_block, value_size) = self.load_value_size(key_block, key_size);
 
-        ArenaSlice::from_raw_parts(arena, value_block, value_size as usize)
+        ArenaSlice::buildFromSlice(arena, value_block, value_size as usize)
     }
 }
 
-struct SkipListCore<A: Arena<Stats = BasicStats>> {
+struct SkipListCore<A: Arena<Stats=BasicStats>> {
     height: AtomicUsize,
     head: NonNull<Node>,
     arena: A,
 }
 
-/// FIXME(yingwen): Modify the skiplist to support arena that supports growth,
-/// otherwise it is hard to avoid memory usage not out of the arena capacity
+/// FIXME(yingwen): Modify the skiplist to support arena that supports growth, otherwise it is hard to avoid memory usage not out of the arena capacity
 #[derive(Clone)]
-pub struct SkipList<C, A: Arena<Stats = BasicStats> + Clone> {
-    core: Arc<SkipListCore<A>>,
-    c: C,
+pub struct SkipList<KeyComparatorType, ArenaType: Arena<Stats=BasicStats> + Clone> {
+    core: Arc<SkipListCore<ArenaType>>,
+    keyComparator: KeyComparatorType,
 }
 
-impl<C, A: Arena<Stats = BasicStats> + Clone> SkipList<C, A> {
+impl<C, A: Arena<Stats=BasicStats> + Clone> SkipList<C, A> {
     pub fn with_arena(c: C, arena: A) -> SkipList<C, A> {
         let head = Node::alloc(&arena, &[], &[], MAX_HEIGHT - 1);
         let head = unsafe { NonNull::new_unchecked(head) };
@@ -223,7 +209,7 @@ impl<C, A: Arena<Stats = BasicStats> + Clone> SkipList<C, A> {
                 head,
                 arena,
             }),
-            c,
+            keyComparator: c,
         }
     }
 
@@ -242,7 +228,7 @@ impl<C, A: Arena<Stats = BasicStats> + Clone> SkipList<C, A> {
     }
 }
 
-impl<C: KeyComparator, A: Arena<Stats = BasicStats> + Clone> SkipList<C, A> {
+impl<C: KeyComparator, A: Arena<Stats=BasicStats> + Clone> SkipList<C, A> {
     /// Finds the node near to key.
     ///
     /// If less=true, it finds rightmost node such that node.key < key (if
@@ -250,11 +236,12 @@ impl<C: KeyComparator, A: Arena<Stats = BasicStats> + Clone> SkipList<C, A> {
     /// If less=false, it finds leftmost node such that node.key > key (if
     /// allowEqual=false) or node.key >= key (if allow_equal=true).
     /// Returns the node found.
-    unsafe fn find_near(&self, key: &[u8], less: bool, allow_equal: bool) -> *const Node {
+    unsafe fn find_near(&self, key: &[u8], allowLess: bool, allow_equal: bool) -> *const Node {
         let mut cursor: *const Node = self.core.head.as_ptr();
         let mut level = self.height();
+
         loop {
-            // Assume cursor.key < key
+            // assume cursor.key < key
             let next_ptr = (*cursor).next_ptr(level);
             if next_ptr.is_null() {
                 // cursor.key < key < END OF LIST
@@ -263,16 +250,18 @@ impl<C: KeyComparator, A: Arena<Stats = BasicStats> + Clone> SkipList<C, A> {
                     level -= 1;
                     continue;
                 }
+
                 // 1. Level=0. Cannot descend further. Let's return something that makes sense
                 // 2. Try to return cursor. Make sure it is not a head node
-                if !less || cursor == self.core.head.as_ptr() {
+                if !allowLess || cursor == self.core.head.as_ptr() {
                     return ptr::null();
                 }
+
                 return cursor;
             }
 
             let next = &*next_ptr;
-            let res = self.c.compare_key(key, next.key());
+            let res = self.keyComparator.compare_key(key, next.key());
             if res == std::cmp::Ordering::Greater {
                 // cursor.key < next.key < key. We can continue to move right
                 cursor = next_ptr;
@@ -283,7 +272,7 @@ impl<C: KeyComparator, A: Arena<Stats = BasicStats> + Clone> SkipList<C, A> {
                 if allow_equal {
                     return next;
                 }
-                if !less {
+                if !allowLess {
                     // We want >, so go to base level to grab the next bigger node
                     return next.next_ptr(0);
                 }
@@ -304,7 +293,7 @@ impl<C: KeyComparator, A: Arena<Stats = BasicStats> + Clone> SkipList<C, A> {
                 continue;
             }
             // At base level. Need to return something
-            if !less {
+            if !allowLess {
                 return next;
             }
             // Try to return cursor. Make sure it is not a head node
@@ -321,12 +310,10 @@ impl<C: KeyComparator, A: Arena<Stats = BasicStats> + Clone> SkipList<C, A> {
     /// The input `before` tells us where to start looking
     /// If we found a node with the same key, then we return out_before =
     /// out_after. Otherwise, out_before.key < key < out_after.key
-    unsafe fn find_splice_for_level(
-        &self,
-        key: &[u8],
-        mut before: *mut Node,
-        level: usize,
-    ) -> (*mut Node, *mut Node) {
+    unsafe fn find_splice_for_level(&self,
+                                    key: &[u8],
+                                    mut before: *mut Node,
+                                    level: usize) -> (*mut Node, *mut Node) {
         loop {
             // Assume before.key < key
             let next_ptr = (*before).next_ptr(level);
@@ -334,7 +321,7 @@ impl<C: KeyComparator, A: Arena<Stats = BasicStats> + Clone> SkipList<C, A> {
                 return (before, ptr::null_mut());
             }
             let next_node = &*next_ptr;
-            match self.c.compare_key(key, next_node.key()) {
+            match self.keyComparator.compare_key(key, next_node.key()) {
                 // Equality case
                 std::cmp::Ordering::Equal => return (next_ptr, next_ptr),
                 // before.key < key < next.key. We are done for this level
@@ -498,7 +485,7 @@ impl<C: KeyComparator, A: Arena<Stats = BasicStats> + Clone> SkipList<C, A> {
         if node.is_null() {
             return None;
         }
-        if self.c.same_key(unsafe { (*node).key() }, key) {
+        if self.keyComparator.same_key(unsafe { (*node).key() }, key) {
             return Some(unsafe { ((*node).key(), (*node).value()) });
         }
         None
@@ -507,17 +494,16 @@ impl<C: KeyComparator, A: Arena<Stats = BasicStats> + Clone> SkipList<C, A> {
     /// Returns a skiplist iterator
     pub fn iter_ref(&self) -> IterRef<&SkipList<C, A>, C, A> {
         IterRef {
-            list: self,
+            skipList: self,
             cursor: ptr::null(),
             _key_cmp: std::marker::PhantomData,
             _arena: std::marker::PhantomData,
         }
     }
 
-    /// Returns a skiplist iterator
     pub fn iter(&self) -> IterRef<SkipList<C, A>, C, A> {
         IterRef {
-            list: self.clone(),
+            skipList: self.clone(),
             cursor: ptr::null(),
             _key_cmp: std::marker::PhantomData,
             _arena: std::marker::PhantomData,
@@ -530,29 +516,25 @@ impl<C: KeyComparator, A: Arena<Stats = BasicStats> + Clone> SkipList<C, A> {
     }
 }
 
-impl<C, A: Arena<Stats = BasicStats> + Clone> AsRef<SkipList<C, A>> for SkipList<C, A> {
+impl<C, A: Arena<Stats=BasicStats> + Clone> AsRef<SkipList<C, A>> for SkipList<C, A> {
     fn as_ref(&self) -> &SkipList<C, A> {
         self
     }
 }
 
-unsafe impl<C: Send, A: Arena<Stats = BasicStats> + Clone + Send> Send for SkipList<C, A> {}
-unsafe impl<C: Sync, A: Arena<Stats = BasicStats> + Clone + Sync> Sync for SkipList<C, A> {}
+unsafe impl<C: Send, A: Arena<Stats=BasicStats> + Clone + Send> Send for SkipList<C, A> {}
 
-pub struct IterRef<T, C, A>
-where
-    T: AsRef<SkipList<C, A>>,
-    A: Arena<Stats = BasicStats> + Clone,
-{
-    list: T,
+unsafe impl<C: Sync, A: Arena<Stats=BasicStats> + Clone + Sync> Sync for SkipList<C, A> {}
+
+pub struct IterRef<T, C, A> where T: AsRef<SkipList<C, A>>,
+                                  A: Arena<Stats=BasicStats> + Clone {
+    skipList: T,
     cursor: *const Node,
     _key_cmp: std::marker::PhantomData<C>,
     _arena: std::marker::PhantomData<A>,
 }
 
-impl<T: AsRef<SkipList<C, A>>, C: KeyComparator, A: Arena<Stats = BasicStats> + Clone>
-    IterRef<T, C, A>
-{
+impl<T: AsRef<SkipList<C, A>>, C: KeyComparator, A: Arena<Stats=BasicStats> + Clone> IterRef<T, C, A> {
     pub fn valid(&self) -> bool {
         !self.cursor.is_null()
     }
@@ -569,56 +551,41 @@ impl<T: AsRef<SkipList<C, A>>, C: KeyComparator, A: Arena<Stats = BasicStats> + 
 
     pub fn next(&mut self) {
         assert!(self.valid());
-        unsafe {
-            self.cursor = (*self.cursor).next_ptr(0);
-        }
+        unsafe { self.cursor = (*self.cursor).next_ptr(0); }
     }
 
     pub fn prev(&mut self) {
         assert!(self.valid());
-        unsafe {
-            self.cursor = self.list.as_ref().find_near(self.key(), true, false);
-        }
+        unsafe { self.cursor = self.skipList.as_ref().find_near(self.key(), true, false); }
     }
 
     pub fn seek(&mut self, target: &[u8]) {
-        unsafe {
-            self.cursor = self.list.as_ref().find_near(target, false, true);
-        }
+        unsafe { self.cursor = self.skipList.as_ref().find_near(target, false, true); }
     }
 
     pub fn seek_for_prev(&mut self, target: &[u8]) {
-        unsafe {
-            self.cursor = self.list.as_ref().find_near(target, true, true);
-        }
+        unsafe { self.cursor = self.skipList.as_ref().find_near(target, true, true); }
     }
 
     pub fn seek_to_first(&mut self) {
-        unsafe {
-            self.cursor = (*self.list.as_ref().core.head.as_ptr()).next_ptr(0);
-        }
+        unsafe { self.cursor = (*self.skipList.as_ref().core.head.as_ptr()).next_ptr(0); }
     }
 
     pub fn seek_to_last(&mut self) {
-        self.cursor = self.list.as_ref().find_last();
+        self.cursor = self.skipList.as_ref().find_last();
     }
 
     pub fn key_with_arena(&self) -> ArenaSlice<A> {
         assert!(self.valid());
-        unsafe { (*self.cursor).key_with_arena(self.list.as_ref().core.arena.clone()) }
+        unsafe { (*self.cursor).key_with_arena(self.skipList.as_ref().core.arena.clone()) }
     }
 
     pub fn value_with_arena(&self) -> ArenaSlice<A> {
         assert!(self.valid());
-        unsafe { (*self.cursor).value_with_arena(self.list.as_ref().core.arena.clone()) }
+        unsafe { (*self.cursor).value_with_arena(self.skipList.as_ref().core.arena.clone()) }
     }
 }
 
-unsafe impl<T: AsRef<SkipList<C, A>>, C: Send, A: Arena<Stats = BasicStats> + Clone + Send> Send
-    for IterRef<T, C, A>
-{
-}
-unsafe impl<T: AsRef<SkipList<C, A>>, C: Sync, A: Arena<Stats = BasicStats> + Clone + Sync> Sync
-    for IterRef<T, C, A>
-{
-}
+unsafe impl<T: AsRef<SkipList<C, A>>, C: Send, A: Arena<Stats=BasicStats> + Clone + Send> Send for IterRef<T, C, A> {}
+
+unsafe impl<T: AsRef<SkipList<C, A>>, C: Sync, A: Arena<Stats=BasicStats> + Clone + Sync> Sync for IterRef<T, C, A> {}

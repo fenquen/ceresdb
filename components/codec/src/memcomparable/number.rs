@@ -15,12 +15,11 @@ impl Encoder<i64> for MemComparable {
     type Error = Error;
 
     fn encode<B: SafeBufMut>(&self, buf: &mut B, value: &i64) -> Result<()> {
-        buf.try_put_u64(encode_int_to_cmp_uint(*value))
-            .context(EncodeValue)?;
+        buf.try_put_u64(encode_int_to_cmp_uint(*value)).context(EncodeValue)?;
         Ok(())
     }
 
-    fn estimate_encoded_size(&self, _value: &i64) -> usize {
+    fn estimateEncodedSize(&self, _value: &i64) -> usize {
         // flag + u64
         9
     }
@@ -53,7 +52,7 @@ impl Encoder<u64> for MemComparable {
         Ok(())
     }
 
-    fn estimate_encoded_size(&self, _value: &u64) -> usize {
+    fn estimateEncodedSize(&self, _value: &u64) -> usize {
         // flag + u64
         9
     }
