@@ -81,35 +81,19 @@ pub enum Error {
     #[snafu(display("failed to parse update mode, raw str:{}.\nBacktrace:\n{}", s, backtrace))]
     ParseUpdateMode { s: String, backtrace: Backtrace },
 
-    #[snafu(display(
-    "Failed to parse compression, name:{}.\nBacktrace:\n{}",
-    name,
-    backtrace
-    ))]
+    #[snafu(display("failed to parse compression, name:{}.\nBacktrace:\n{}", name, backtrace))]
     ParseCompressionName { name: String, backtrace: Backtrace },
 
-    #[snafu(display(
-    "Unknown storage format. value:{:?}.\nBacktrace:\n{}",
-    value,
-    backtrace
-    ))]
+    #[snafu(display("unknown storage format. value:{:?}.\nBacktrace:\n{}", value, backtrace))]
     UnknownStorageFormat { value: String, backtrace: Backtrace },
 
-    #[snafu(display(
-    "Unknown storage format. value:{:?}.\nBacktrace:\n{}",
-    value,
-    backtrace
-    ))]
+    #[snafu(display("unknown storage format. value:{:?}.\nBacktrace:\n{}", value, backtrace))]
     UnknownStorageFormatType { value: i32, backtrace: Backtrace },
 
-    #[snafu(display(
-    "Unknown storage format hint. value:{:?}.\nBacktrace:\n{}",
-    value,
-    backtrace
-    ))]
+    #[snafu(display("unknown storage format hint. value:{:?}.\nBacktrace:\n{}", value, backtrace))]
     UnknownStorageFormatHint { value: String, backtrace: Backtrace },
 
-    #[snafu(display("Storage format hint is missing.\nBacktrace:\n{}", backtrace))]
+    #[snafu(display("storage format hint is missing.\nBacktrace:\n{}", backtrace))]
     MissingStorageFormatHint { backtrace: Backtrace },
 }
 
