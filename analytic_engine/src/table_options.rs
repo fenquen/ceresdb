@@ -78,12 +78,9 @@ pub enum Error {
         source: std::str::ParseBoolError,
         backtrace: Backtrace,
     },
-    #[snafu(display(
-    "Failed to parse update mode, raw str:{}.\nBacktrace:\n{}",
-    s,
-    backtrace
-    ))]
+    #[snafu(display("failed to parse update mode, raw str:{}.\nBacktrace:\n{}", s, backtrace))]
     ParseUpdateMode { s: String, backtrace: Backtrace },
+
     #[snafu(display(
     "Failed to parse compression, name:{}.\nBacktrace:\n{}",
     name,
