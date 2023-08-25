@@ -415,10 +415,7 @@ impl TableOptions {
     // for show create table
     pub fn to_raw_map(&self) -> HashMap<String, String> {
         let mut m = [
-            (SEGMENT_DURATION.to_string(),
-                self.segment_duration
-                    .map(|v| v.to_string())
-                    .unwrap_or_else(String::new),),
+            (SEGMENT_DURATION.to_string(), self.segment_duration.map(|v| v.to_string()).unwrap_or_else(String::new), ),
             (UPDATE_MODE.to_string(), self.update_mode.to_string()),
             (ENABLE_TTL.to_string(), self.enable_ttl.to_string()),
             (TTL.to_string(), format!("{}", self.ttl)),

@@ -492,8 +492,8 @@ impl<C: KeyComparator, A: Arena<Stats=BasicStats> + Clone> SkipList<C, A> {
     }
 
     /// Returns a skiplist iterator
-    pub fn iter_ref(&self) -> IterRef<&SkipList<C, A>, C, A> {
-        IterRef {
+    pub fn iter_ref(&self) -> SkipListIter<&SkipList<C, A>, C, A> {
+        SkipListIter {
             skipList: self,
             cursor: ptr::null(),
             _key_cmp: std::marker::PhantomData,
@@ -501,8 +501,8 @@ impl<C: KeyComparator, A: Arena<Stats=BasicStats> + Clone> SkipList<C, A> {
         }
     }
 
-    pub fn iter(&self) -> IterRef<SkipList<C, A>, C, A> {
-        IterRef {
+    pub fn iter(&self) -> SkipListIter<SkipList<C, A>, C, A> {
+        SkipListIter {
             skipList: self.clone(),
             cursor: ptr::null(),
             _key_cmp: std::marker::PhantomData,
@@ -526,15 +526,15 @@ unsafe impl<C: Send, A: Arena<Stats=BasicStats> + Clone + Send> Send for SkipLis
 
 unsafe impl<C: Sync, A: Arena<Stats=BasicStats> + Clone + Sync> Sync for SkipList<C, A> {}
 
-pub struct IterRef<T, C, A> where T: AsRef<SkipList<C, A>>,
-                                  A: Arena<Stats=BasicStats> + Clone {
+pub struct SkipListIter<T, C, A> where T: AsRef<SkipList<C, A>>,
+                                       A: Arena<Stats=BasicStats> + Clone {
     skipList: T,
     cursor: *const Node,
     _key_cmp: std::marker::PhantomData<C>,
     _arena: std::marker::PhantomData<A>,
 }
 
-impl<T: AsRef<SkipList<C, A>>, C: KeyComparator, A: Arena<Stats=BasicStats> + Clone> IterRef<T, C, A> {
+impl<T: AsRef<SkipList<C, A>>, C: KeyComparator, A: Arena<Stats=BasicStats> + Clone> SkipListIter<T, C, A> {
     pub fn valid(&self) -> bool {
         !self.cursor.is_null()
     }
@@ -586,6 +586,6 @@ impl<T: AsRef<SkipList<C, A>>, C: KeyComparator, A: Arena<Stats=BasicStats> + Cl
     }
 }
 
-unsafe impl<T: AsRef<SkipList<C, A>>, C: Send, A: Arena<Stats=BasicStats> + Clone + Send> Send for IterRef<T, C, A> {}
+unsafe impl<T: AsRef<SkipList<C, A>>, C: Send, A: Arena<Stats=BasicStats> + Clone + Send> Send for SkipListIter<T, C, A> {}
 
-unsafe impl<T: AsRef<SkipList<C, A>>, C: Sync, A: Arena<Stats=BasicStats> + Clone + Sync> Sync for IterRef<T, C, A> {}
+unsafe impl<T: AsRef<SkipList<C, A>>, C: Sync, A: Arena<Stats=BasicStats> + Clone + Sync> Sync for SkipListIter<T, C, A> {}
