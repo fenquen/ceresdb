@@ -55,7 +55,7 @@ impl<A: Arena<Stats=BasicStats> + Clone + Sync + Send + 'static> MemTable for Sk
 
     fn min_key(&self) -> Option<Bytes> {
         let mut iter = self.skiplist.iter();
-        iter.seek_to_first();
+        iter.seekToFirst();
         if !iter.valid() {
             None
         } else {
@@ -169,7 +169,7 @@ pub struct BytewiseComparator;
 
 impl KeyComparator for BytewiseComparator {
     #[inline]
-    fn compare_key(&self, lhs: &[u8], rhs: &[u8]) -> Ordering {
+    fn compare(&self, lhs: &[u8], rhs: &[u8]) -> Ordering {
         lhs.cmp(rhs)
     }
 

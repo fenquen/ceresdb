@@ -11,7 +11,6 @@ use datafusion::{
 };
 use datafusion::logical_expr::LogicalPlan;
 use macros::define_result;
-use query_frontend::plan::QueryPlan;
 use snafu::{Backtrace, ResultExt, Snafu};
 
 use crate::{

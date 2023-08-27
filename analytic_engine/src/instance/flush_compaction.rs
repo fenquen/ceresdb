@@ -886,7 +886,7 @@ fn buildMemTableIter(memTable: MemTableRef, tableData: &TableDataRef) -> Result<
     let scanRequest = ScanRequest {
         start_user_key: Bound::Unbounded,
         end_user_key: Bound::Unbounded,
-        sequence: common_types::MAX_SEQUENCE_NUMBER,
+        maxVisibleSeq: common_types::MAX_SEQUENCE_NUMBER,
         projected_schema: ProjectedSchema::no_projection(tableData.schema()),
         need_dedup: tableData.dedup(),
         reverse: false,

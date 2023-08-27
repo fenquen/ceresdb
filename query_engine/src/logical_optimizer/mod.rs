@@ -3,9 +3,8 @@
 //! Logical optimizer
 pub mod type_conversion;
 
-use datafusion::{error::DataFusionError, prelude::SessionContext};
+use datafusion::error::DataFusionError;
 use macros::define_result;
-use query_frontend::plan::QueryPlan;
 use snafu::{Backtrace, ResultExt, Snafu};
 
 #[derive(Debug, Snafu)]

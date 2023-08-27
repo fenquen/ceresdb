@@ -51,13 +51,13 @@ pub struct ColumnarIterImpl<A: Arena<Stats=BasicStats> + Clone + Sync + Send> {
     projector: RowProjector,
 
     // Options related:
-    batch_size: usize,
+    batchSize: usize,
     deadline: Option<Instant>,
 
     start_user_key: Bound<Bytes>,
     end_user_key: Bound<Bytes>,
     /// Max visible sequence
-    sequence: SequenceNumber,
+    maxVisibleSeq: SequenceNumber,
     /// State of iterator
     state: State,
     /// Last internal key this iterator returned
@@ -85,27 +85,27 @@ impl<A: Arena<Stats=BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
         // create projection for the memtable schema
         let projector = request.projected_schema.try_project_with_key(&memtable.schema).context(ProjectSchema)?;
 
-        let iter = memtable.skiplist.iter();
+        let skipListIter = memtable.skiplist.iter();
 
-        let mut columnar_iter =
+        let mut columnarIter =
             Self {
-                skipListIter: iter,
+                skipListIter,
                 memtable_schema: memtable.schema.clone(),
                 projected_schema: request.projected_schema,
                 projector,
-                batch_size: ctx.batch_size,
+                batchSize: ctx.batch_size,
                 deadline: ctx.deadline,
                 start_user_key: request.start_user_key,
                 end_user_key: request.end_user_key,
-                sequence: request.sequence,
+                maxVisibleSeq: request.maxVisibleSeq,
                 state: State::Uninitialized,
                 last_internal_key: None,
                 need_dedup: request.need_dedup,
             };
 
-        columnar_iter.init()?;
+        columnarIter.init()?;
 
-        Ok(columnar_iter)
+        Ok(columnarIter)
     }
 
     /// Init the iterator, will seek to the proper position for first next()
@@ -116,9 +116,8 @@ impl<A: Arena<Stats=BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
             Bound::Included(user_key) => {
                 // construct seek key
                 let mut key_buf = BytesMut::new();
-                let seekKey = key::buildSeekKey(user_key, self.sequence, &mut key_buf).context(EncodeInternalKey)?;
+                let seekKey = key::buildSeekKey(user_key, self.maxVisibleSeq, &mut key_buf).context(EncodeInternalKey)?;
 
-                // seek the skiplist
                 self.skipListIter.seek(seekKey);
             }
             Bound::Excluded(user_key) => {
@@ -128,12 +127,11 @@ impl<A: Arena<Stats=BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
 
                 // construct seek key
                 let mut key_buf = BytesMut::new();
-                let seek_key = key::buildSeekKey(&next_user_key, self.sequence, &mut key_buf).context(EncodeInternalKey)?;
+                let seek_key = key::buildSeekKey(&next_user_key, self.maxVisibleSeq, &mut key_buf).context(EncodeInternalKey)?;
 
-                // seek the skiplist
                 self.skipListIter.seek(seek_key);
             }
-            Bound::Unbounded => self.skipListIter.seek_to_first(),
+            Bound::Unbounded => self.skipListIter.seekToFirst(),
         }
 
         self.state = State::Initialized;
@@ -143,14 +141,14 @@ impl<A: Arena<Stats=BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
 
     fn fetchNextRecordBatch(&mut self) -> Result<Option<RecordBatchWithKey>> {
         debug_assert_eq!(State::Initialized, self.state);
-        assert!(self.batch_size > 0);
+        assert!(self.batchSize > 0);
 
         let mut builder =
             RecordBatchWithKeyBuilder::with_capacity(self.projected_schema.to_record_schema_with_key(),
-                                                     self.batch_size);
+                                                     self.batchSize);
         let mut num_rows = 0;
 
-        while self.skipListIter.valid() && num_rows < self.batch_size {
+        while self.skipListIter.valid() && num_rows < self.batchSize {
             if let Some(row) = self.fetchNextRow()? {
                 let rowReader = ContiguousRowReader::new(&row, &self.memtable_schema).context(DecodeContinuousRow)?;
                 let projectedRow = ProjectedContiguousRow::new(rowReader, &self.projector);
@@ -159,8 +157,7 @@ impl<A: Arena<Stats=BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
 
                 builder.append_projected_contiguous_row(&projectedRow).context(AppendRow)?;
                 num_rows += 1;
-            } else {
-                // There is no more row to fetch
+            } else { // there is no more row to fetch
                 self.finish();
                 break;
             }
@@ -185,76 +182,72 @@ impl<A: Arena<Stats=BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
     }
 
     /// fetch next row matched the given condition, the current entry of iter will be considered
-    ///
-    /// REQUIRE: The iter is valid
     fn fetchNextRow(&mut self) -> Result<Option<ArenaSlice<A>>> {
         debug_assert_eq!(State::Initialized, self.state);
 
         // TODO(yingwen): Some operation like delete needs to be considered during iterating: we need to ignore this key if found a delete mark
         while self.skipListIter.valid() {
-            // Fetch current entry
             let key = self.skipListIter.key();
-            let (user_key, sequence) = key::user_key_from_internal_key(key).context(DecodeInternalKey)?;
+            let (userKey, keySequence) = key::user_key_from_internal_key(key).context(DecodeInternalKey)?;
 
             // check user key is still in range
-            if self.is_after_end_bound(user_key) {
+            if self.is_after_end_bound(userKey) {
                 // Out of bound
                 self.finish();
                 return Ok(None);
             }
 
             if self.need_dedup {
-                // Whether this user key is already returned
+                // whether this user key is already returned
                 let same_key = match &self.last_internal_key {
                     Some(last_internal_key) => {
                         // TODO(yingwen): Actually this call wont fail, only valid internal key will
-                        // be set as last_internal_key so maybe we can just
-                        // unwrap it?
+                        // be set as last_internal_key so maybe we can just unwrap it?
                         let (last_user_key, _) = key::user_key_from_internal_key(last_internal_key).context(DecodeInternalKey)?;
-                        user_key == last_user_key
+                        userKey == last_user_key
                     }
                     // This is the first user key
                     None => false,
                 };
 
+                // meet a duplicate key, move forward and continue to find next user key
                 if same_key {
-                    // We meet duplicate key, move forward and continue to find next user key
                     self.skipListIter.next();
                     continue;
                 }
-                // Now this is a new user key
             }
 
             // Check whether this key is visible
-            if !self.is_visible(sequence) {
+            if !self.isVisible(keySequence) {
                 // The sequence of this key is not visible, move forward
                 self.skipListIter.next();
                 continue;
             }
 
-            // This is the row we want
             let row = self.skipListIter.value_with_arena();
 
-            // Store the last key
+            // store the last key
             self.last_internal_key = Some(self.skipListIter.key_with_arena());
-            // Move iter forward
+
+            // forward
             self.skipListIter.next();
 
             return Ok(Some(row));
         }
 
-        // No more row in range, we can stop the iterator
+        // no more row in range, we can stop the iterator
         self.finish();
+
         Ok(None)
     }
 
     /// Return true if the sequence is visible
     #[inline]
-    fn is_visible(&self, sequence: KeySequence) -> bool {
-        sequence.sequence() <= self.sequence
+    fn isVisible(&self, sequence: KeySequence) -> bool {
+        sequence.sequence() <= self.maxVisibleSeq
     }
 
-    /// Return true if the key is after the `end_user_key` bound
+    /// return true if the key is after the `end_user_key` bound
     fn is_after_end_bound(&self, key: &[u8]) -> bool {
         match &self.end_user_key {
             Bound::Included(end) => match key.cmp(end) {

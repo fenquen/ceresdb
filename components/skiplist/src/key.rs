@@ -5,7 +5,7 @@ use std::cmp::Ordering;
 use bytes::Bytes;
 
 pub trait KeyComparator: Clone {
-    fn compare_key(&self, lhs: &[u8], rhs: &[u8]) -> Ordering;
+    fn compare(&self, lhs: &[u8], rhs: &[u8]) -> Ordering;
     fn same_key(&self, lhs: &[u8], rhs: &[u8]) -> bool;
 }
 
@@ -22,7 +22,7 @@ impl FixedLengthSuffixComparator {
 
 impl KeyComparator for FixedLengthSuffixComparator {
     #[inline]
-    fn compare_key(&self, lhs: &[u8], rhs: &[u8]) -> Ordering {
+    fn compare(&self, lhs: &[u8], rhs: &[u8]) -> Ordering {
         if lhs.len() < self.len {
             panic!("cannot compare with suffix {}: {:?}", self.len, Bytes::copy_from_slice(lhs));
         }

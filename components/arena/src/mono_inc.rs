@@ -45,10 +45,6 @@ impl MonoIncArena {
 impl Arena for MonoIncArena {
     type Stats = BasicStats;
 
-    fn tryAlloc(&self, layout: Layout) -> Option<NonNull<u8>> {
-        Some(self.arenaCore.lock().alloc(layout))
-    }
-
     fn stats(&self) -> Self::Stats {
         self.arenaCore.lock().stats
     }

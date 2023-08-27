@@ -113,18 +113,15 @@ impl Default for ScanContext {
     }
 }
 
-/// Scan request
-///
-/// Now we only support forward scan.
+/// now we only support forward scan.
 #[derive(Debug, Clone)]
 pub struct ScanRequest {
     /// The start key of the encoded user key (without sequence).
     pub start_user_key: Bound<Bytes>,
     /// The end key of the encoded user key (without sequence).
     pub end_user_key: Bound<Bytes>,
-    /// Max visible sequence (inclusive), row key with sequence <= this can be
-    /// visible.
-    pub sequence: SequenceNumber,
+    /// Max visible sequence (inclusive), row key with sequence <= this can be visible
+    pub maxVisibleSeq: SequenceNumber,
     /// Schema and projection to read.
     pub projected_schema: ProjectedSchema,
     pub need_dedup: bool,
@@ -168,9 +165,7 @@ pub trait MemTable {
            row: &Row,
            schema: &Schema) -> Result<()>;
 
-    /// Scan the memtable.
-    ///
-    /// Returns the data in columnar format. The returned rows is guaranteed to be ordered by the primary key.
+    /// return the data in columnar format. The returned rows is guaranteed to be ordered by the primary key.
     fn scan(&self, ctx: ScanContext, scanRequest: ScanRequest) -> Result<ColumnarIter>;
 
     /// Returns an estimate of the number of bytes of data in used

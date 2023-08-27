@@ -16,9 +16,6 @@ pub trait Arena {
 
     // required methods
 
-    /// Try to allocate required memory described by layout. Return a pointer of
-    /// allocated space in success, while `None` if failed.
-    fn tryAlloc(&self, layout: Layout) -> Option<NonNull<u8>>;
 
     /// Get arena's statistics.
     fn stats(&self) -> Self::Stats;
@@ -26,9 +23,7 @@ pub trait Arena {
     // provided methods
 
     /// Allocate required memory. Panic if failed.
-    fn alloc(&self, layout: Layout) -> NonNull<u8> {
-        self.tryAlloc(layout).unwrap()
-    }
+    fn alloc(&self, layout: Layout) -> NonNull<u8>;
 }
 
 /// Basic statistics of arena. Offers [bytes_allocated] and [bytes_used].

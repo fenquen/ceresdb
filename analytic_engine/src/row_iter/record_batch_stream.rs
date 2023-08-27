@@ -43,7 +43,7 @@ use crate::{
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
 pub enum Error {
-    #[snafu(display("Failed to create sst reader, err:{:?}", source,))]
+    #[snafu(display("Failed to create sst reader, err:{:?}", source, ))]
     CreateSstReader { source: factory::Error },
 
     #[snafu(display("Fail to read sst meta, err:{}", source))]
@@ -56,9 +56,9 @@ pub enum Error {
     ScanMemtable { source: crate::memtable::Error },
 
     #[snafu(display(
-        "Fail to execute filter expression, err:{}.\nBacktrace:\n{}",
-        source,
-        backtrace
+    "Fail to execute filter expression, err:{}.\nBacktrace:\n{}",
+    source,
+    backtrace
     ))]
     FilterExec {
         source: DataFusionError,
@@ -66,9 +66,9 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Fail to downcast boolean array, actual data type:{:?}.\nBacktrace:\n{}",
-        data_type,
-        backtrace
+    "Fail to downcast boolean array, actual data type:{:?}.\nBacktrace:\n{}",
+    data_type,
+    backtrace
     ))]
     DowncastBooleanArray {
         data_type: ArrowDataType,
@@ -76,9 +76,9 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to get datafusion schema, err:{}.\nBacktrace:\n{}",
-        source,
-        backtrace
+    "Failed to get datafusion schema, err:{}.\nBacktrace:\n{}",
+    source,
+    backtrace
     ))]
     DatafusionSchema {
         source: DataFusionError,
@@ -86,9 +86,9 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to generate datafusion physical expr, err:{}.\nBacktrace:\n{}",
-        source,
-        backtrace
+    "Failed to generate datafusion physical expr, err:{}.\nBacktrace:\n{}",
+    source,
+    backtrace
     ))]
     DatafusionExpr {
         source: DataFusionError,
@@ -101,9 +101,9 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Timeout when read record batch, err:{}.\nBacktrace:\n{}",
-        source,
-        backtrace
+    "Timeout when read record batch, err:{}.\nBacktrace:\n{}",
+    source,
+    backtrace
     ))]
     Timeout {
         source: tokio::time::error::Elapsed,
@@ -130,7 +130,7 @@ impl SequencedRecordBatch {
 
 pub type SequencedRecordBatchRes = GenericResult<SequencedRecordBatch>;
 pub type BoxedPrefetchableRecordBatchStream =
-    Box<dyn PrefetchableStream<Item = SequencedRecordBatchRes>>;
+Box<dyn PrefetchableStream<Item=SequencedRecordBatchRes>>;
 
 /// Filter the `sequenced_record_batch` according to the `predicate`.
 fn filter_record_batch(
@@ -184,7 +184,7 @@ pub fn filter_stream(
         input_schema.as_ref(),
         &execution_props,
     )
-    .context(DatafusionExpr)?;
+        .context(DatafusionExpr)?;
 
     let stream =
         origin_stream.filter_map(move |sequence_record_batch| match sequence_record_batch {
@@ -197,45 +197,34 @@ pub fn filter_stream(
     Ok(Box::new(stream))
 }
 
-/// Build filtered (by `predicate`) [SequencedRecordBatchStream] from a
-/// memtable.
-pub fn filtered_stream_from_memtable(
-    projected_schema: ProjectedSchema,
-    need_dedup: bool,
-    memtable: &MemTableRef,
-    reverse: bool,
-    predicate: &Predicate,
-    deadline: Option<Instant>,
-    metrics_collector: Option<MetricsCollector>,
-) -> Result<BoxedPrefetchableRecordBatchStream> {
-    stream_from_memtable(
-        projected_schema.clone(),
-        need_dedup,
-        memtable,
-        reverse,
-        deadline,
-        metrics_collector,
-    )
-    .and_then(|origin_stream| {
-        filter_stream(
-            origin_stream,
-            projected_schema
-                .as_record_schema_with_key()
-                .to_arrow_schema_ref(),
-            predicate,
-        )
+/// build filtered (by `predicate`) [SequencedRecordBatchStream] from a memtable.
+pub fn filtered_stream_from_memtable(projected_schema: ProjectedSchema,
+                                     need_dedup: bool,
+                                     memtable: &MemTableRef,
+                                     reverse: bool,
+                                     predicate: &Predicate,
+                                     deadline: Option<Instant>,
+                                     metrics_collector: Option<MetricsCollector>) -> Result<BoxedPrefetchableRecordBatchStream> {
+    stream_from_memtable(projected_schema.clone(),
+                         need_dedup,
+                         memtable,
+                         reverse,
+                         deadline,
+                         metrics_collector,
+    ).and_then(|origin_stream| {
+        filter_stream(origin_stream,
+                      projected_schema.as_record_schema_with_key().to_arrow_schema_ref(),
+                      predicate)
     })
 }
 
 /// Build [SequencedRecordBatchStream] from a memtable.
-pub fn stream_from_memtable(
-    projected_schema: ProjectedSchema,
-    need_dedup: bool,
-    memtable: &MemTableRef,
-    reverse: bool,
-    deadline: Option<Instant>,
-    metrics_collector: Option<MetricsCollector>,
-) -> Result<BoxedPrefetchableRecordBatchStream> {
+pub fn stream_from_memtable(projected_schema: ProjectedSchema,
+                            need_dedup: bool,
+                            memtable: &MemTableRef,
+                            reverse: bool,
+                            deadline: Option<Instant>,
+                            metrics_collector: Option<MetricsCollector>) -> Result<BoxedPrefetchableRecordBatchStream> {
     let scan_ctx = ScanContext {
         deadline,
         ..Default::default()
@@ -246,7 +235,7 @@ pub fn stream_from_memtable(
     let scan_req = ScanRequest {
         start_user_key: Bound::Unbounded,
         end_user_key: Bound::Unbounded,
-        sequence: max_seq,
+        maxVisibleSeq: max_seq,
         projected_schema,
         need_dedup,
         reverse,
@@ -259,7 +248,7 @@ pub fn stream_from_memtable(
             record_batch,
             sequence: max_seq,
         })
-        .box_err()
+            .box_err()
     });
 
     Ok(Box::new(NoopPrefetcher(Box::new(stream))))
@@ -285,17 +274,17 @@ pub async fn filtered_stream_from_sst_file(
         store_picker,
         metrics_collector,
     )
-    .await
-    .and_then(|origin_stream| {
-        filter_stream(
-            origin_stream,
-            sst_read_options
-                .projected_schema
-                .as_record_schema_with_key()
-                .to_arrow_schema_ref(),
-            sst_read_options.predicate.as_ref(),
-        )
-    })
+        .await
+        .and_then(|origin_stream| {
+            filter_stream(
+                origin_stream,
+                sst_read_options
+                    .projected_schema
+                    .as_record_schema_with_key()
+                    .to_arrow_schema_ref(),
+                sst_read_options.predicate.as_ref(),
+            )
+        })
 }
 
 /// Build the [SequencedRecordBatchStream] from a sst.
@@ -335,7 +324,7 @@ pub async fn stream_from_sst_file(
             record_batch,
             sequence: max_seq,
         })
-        .box_err()
+            .box_err()
     });
 
     Ok(Box::new(stream))

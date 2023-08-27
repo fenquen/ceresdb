@@ -33,11 +33,9 @@ type ValueSize = u32;
 #[derive(Debug)]
 #[repr(C)]
 pub struct Node {
-    /// height of node, different from badger, The valid range of tower is [0,height]
+    /// height of node, different from badger, The valid range in tower is [0,height]
     height: usize,
-    /// The node tower
-    ///
-    /// only [0, height] parts is utilized to store node pointer, the key and value block are start from tower[height + 1]
+    /// only [0, height] parts is utilized to 保存在各个level上的当前node的next指针, the key and value block are start from tower[height + 1]
     tower: [AtomicPtr<Node>; MAX_HEIGHT],
 }
 
@@ -49,33 +47,35 @@ impl Node {
     /// This will only allocate the *exact* amount of memory needed within the
     /// given height.
     fn alloc<A>(arena: &A, key: &[u8], value: &[u8], height: usize) -> *mut Node where A: Arena<Stats=BasicStats> {
-        // Calculate node size to alloc
-        let size = mem::size_of::<Node>();
+        // node的struct大小
+        let nodeSize = mem::size_of::<Node>();
 
-        // Not all values in Node::tower will be utilized.
-        let not_used = (MAX_HEIGHT - height - 1) * mem::size_of::<AtomicPtr<Node>>();
+        // Node::tower 其实是不是全部都要用到的
+        let notUsedSize = (MAX_HEIGHT - height - 1) * mem::size_of::<AtomicPtr<Node>>();
 
-        // Space to store key/value: (key size) + key + (value size) + value
+        // node中用来保存kv数据的区域大小 (2个字节 key size) + key + (4个字节 value size) + value
         let kv_used = mem::size_of::<KeySize>() + key.len() + mem::size_of::<ValueSize>() + value.len();
 
         // UB in fact: the `not_used` size is able to be access in a "safe" way.
-        // It is guaranteed by the user to not use those memory.
-        let alloc_size = size - not_used + kv_used;
+        // 用户自己注意 not use those memory.
+        let alloc_size = nodeSize + kv_used - notUsedSize;
+
         let layout = unsafe { Layout::from_size_align_unchecked(alloc_size, mem::align_of::<Node>()) };
-        let node_ptr = arena.alloc(layout).as_ptr() as *mut Node;
+
+        let newNodePtr = arena.alloc(layout).as_ptr() as *mut Node;
 
         unsafe {
-            let node = &mut *node_ptr;
-            node.height = height;
-            ptr::write_bytes(node.tower.as_mut_ptr(), 0, height + 1);
-            Self::init_key_value(node, key, value);
+            let newNode = &mut *newNodePtr;
+            newNode.height = height;
+            ptr::write_bytes(newNode.tower.as_mut_ptr(), 0, height + 1);
+            Self::init_key_value(newNode, key, value);
 
-            node_ptr
+            newNodePtr
         }
     }
 
     /// Fetch next node ptr in given height
-    fn next_ptr(&self, height: usize) -> *mut Node {
+    fn nextPtrAtLevel(&self, height: usize) -> *mut Node {
         self.tower[height].load(Ordering::SeqCst)
     }
 
@@ -108,22 +108,24 @@ impl Node {
     /// KeySize/ValueSize (u16/u32), otherwise this function will panic
     unsafe fn init_key_value(node: &mut Node, key: &[u8], value: &[u8]) {
         let key_block = node.tower.as_mut_ptr().add(node.height + 1) as *mut u8;
+
+        // 写2字节key长度
         let key_size: KeySize = key.len().try_into().unwrap();
         let key_size_bytes = key_size.to_ne_bytes();
+        ptr::copy_nonoverlapping(key_size_bytes.as_ptr(), key_block, mem::size_of::<KeySize>());
 
-        ptr::copy_nonoverlapping(key_size_bytes.as_ptr(),
-                                 key_block,
-                                 mem::size_of::<KeySize>());
-
+        // 写入key
         let key_block = key_block.add(mem::size_of::<KeySize>());
         ptr::copy_nonoverlapping(key.as_ptr(), key_block, key.len());
 
         let value_block = key_block.add(key.len());
+
+        // 写4字节value长度
         let value_size: ValueSize = value.len().try_into().unwrap();
         let value_size_bytes = value_size.to_ne_bytes();
-
         ptr::copy_nonoverlapping(value_size_bytes.as_ptr(), value_block, mem::size_of::<ValueSize>());
 
+        // 写入value
         let value_block = value_block.add(mem::size_of::<ValueSize>());
         ptr::copy_nonoverlapping(value.as_ptr(), value_block, value.len());
     }
@@ -137,10 +139,10 @@ impl Node {
         // Move to key block
         let key_block = tower.add(self.height + 1) as *const u8;
 
-        // Load key size from key block
+        // memTable的key的打头2个字节是keySize fenquen
         let key_size = u16::from_ne_bytes(*(key_block as *const [u8; mem::size_of::<KeySize>()]));
 
-        // Move key block to the start of key
+        // 前进2个字节便是数据本身
         let key_block = key_block.add(mem::size_of::<KeySize>());
 
         (key_block, key_size)
@@ -237,70 +239,82 @@ impl<C: KeyComparator, A: Arena<Stats=BasicStats> + Clone> SkipList<C, A> {
     /// allowEqual=false) or node.key >= key (if allow_equal=true).
     /// Returns the node found.
     unsafe fn find_near(&self, key: &[u8], allowLess: bool, allow_equal: bool) -> *const Node {
-        let mut cursor: *const Node = self.core.head.as_ptr();
+        let mut cursorNode: *const Node = self.core.head.as_ptr();
         let mut level = self.height();
 
         loop {
             // assume cursor.key < key
-            let next_ptr = (*cursor).next_ptr(level);
-            if next_ptr.is_null() {
+            let nextNodePtr = (*cursorNode).nextPtrAtLevel(level);
+
+            if nextNodePtr.is_null() {
                 // cursor.key < key < END OF LIST
                 if level > 0 {
-                    // Can descend further to iterate closer to the end
+                    // can descend further to iterate closer to the end
                     level -= 1;
                     continue;
                 }
 
-                // 1. Level=0. Cannot descend further. Let's return something that makes sense
-                // 2. Try to return cursor. Make sure it is not a head node
-                if !allowLess || cursor == self.core.head.as_ptr() {
+                // 1. now level is 0 Cannot descend further. Let's return something that makes sense
+                // 2. try to return cursor. make sure it is not a head node
+                if !allowLess || cursorNode == self.core.head.as_ptr() {
                     return ptr::null();
                 }
 
-                return cursor;
+                return cursorNode;
             }
 
-            let next = &*next_ptr;
-            let res = self.keyComparator.compare_key(key, next.key());
+            let nextNode = &*nextNodePtr;
+
+            let res = self.keyComparator.compare(key, nextNode.key());
+
             if res == std::cmp::Ordering::Greater {
                 // cursor.key < next.key < key. We can continue to move right
-                cursor = next_ptr;
+                cursorNode = nextNodePtr;
                 continue;
             }
+
             if res == std::cmp::Ordering::Equal {
                 // cursor.key < key == next.key
                 if allow_equal {
-                    return next;
+                    return nextNode;
                 }
+
                 if !allowLess {
                     // We want >, so go to base level to grab the next bigger node
-                    return next.next_ptr(0);
+                    return nextNode.nextPtrAtLevel(0);
                 }
+
                 // We want <. If not base level, we should go closer in the next level.
                 if level > 0 {
                     level -= 1;
                     continue;
                 }
+
                 // On base level. Return cursor
-                if cursor == self.core.head.as_ptr() {
+                if cursorNode == self.core.head.as_ptr() {
                     return ptr::null();
                 }
-                return cursor;
+
+                return cursorNode;
             }
+
             // cursor.key < key < next.key
             if level > 0 {
                 level -= 1;
                 continue;
             }
+
             // At base level. Need to return something
             if !allowLess {
-                return next;
+                return nextNode;
             }
+
             // Try to return cursor. Make sure it is not a head node
-            if cursor == self.core.head.as_ptr() {
+            if cursorNode == self.core.head.as_ptr() {
                 return ptr::null();
             }
-            return cursor;
+
+            return cursorNode;
         }
     }
 
@@ -312,22 +326,24 @@ impl<C: KeyComparator, A: Arena<Stats=BasicStats> + Clone> SkipList<C, A> {
     /// out_after. Otherwise, out_before.key < key < out_after.key
     unsafe fn find_splice_for_level(&self,
                                     key: &[u8],
-                                    mut before: *mut Node,
+                                    mut prevNode: *mut Node,
                                     level: usize) -> (*mut Node, *mut Node) {
         loop {
             // Assume before.key < key
-            let next_ptr = (*before).next_ptr(level);
-            if next_ptr.is_null() {
-                return (before, ptr::null_mut());
+            let prevNextPtr = (*prevNode).nextPtrAtLevel(level);
+
+            if prevNextPtr.is_null() {
+                return (prevNode, ptr::null_mut());
             }
-            let next_node = &*next_ptr;
-            match self.keyComparator.compare_key(key, next_node.key()) {
-                // Equality case
-                std::cmp::Ordering::Equal => return (next_ptr, next_ptr),
+
+            let prevNextNode = &*prevNextPtr;
+
+            match self.keyComparator.compare(key, prevNextNode.key()) {
+                std::cmp::Ordering::Equal => return (prevNextPtr, prevNextPtr),
                 // before.key < key < next.key. We are done for this level
-                std::cmp::Ordering::Less => return (before, next_ptr),
-                // Keep moving right on this level
-                _ => before = next_ptr,
+                std::cmp::Ordering::Less => return (prevNode, prevNextPtr),
+                // keep moving right on this level
+                _ => prevNode = prevNextPtr,
             }
         }
     }
@@ -337,105 +353,111 @@ impl<C: KeyComparator, A: Arena<Stats=BasicStats> + Clone> SkipList<C, A> {
     /// The content of key and value will be copied into the list. Returns true
     /// if the node is inserted, otherwise return false (key is duplicated)
     ///
-    /// Panic: The skiplist will panic if the allocated memory
-    /// out of the capacity
+    /// panic if the allocated memory out of the capacity
     pub fn put(&self, key: &[u8], value: &[u8]) -> bool {
-        let mut list_height = self.height();
-        let mut prev = [ptr::null_mut(); MAX_HEIGHT + 1];
-        let mut next = [ptr::null_mut(); MAX_HEIGHT + 1];
-        prev[list_height + 1] = self.core.head.as_ptr();
-        // Recompute splice levels
-        for i in (0..=list_height).rev() {
-            // Use higher level to speed up for current level
-            let (p, n) = unsafe { self.find_splice_for_level(key, prev[i + 1], i) };
-            prev[i] = p;
-            next[i] = n;
-            if p == n {
-                // Key already exists
+        let mut skipListCurrentHeight = self.height();
+
+        let mut prevNodes = [ptr::null_mut(); MAX_HEIGHT + 1];
+        let mut nextNodes = [ptr::null_mut(); MAX_HEIGHT + 1];
+
+        prevNodes[skipListCurrentHeight + 1] = self.core.head.as_ptr();
+
+        // recompute splice levels
+        for i in (0..=skipListCurrentHeight).rev() {
+            // 首轮的时候prevNodes[i + 1]是core.head
+            // use higher level to speed up for current level
+            let (prevNode, nextNode) = unsafe { self.find_splice_for_level(key, prevNodes[i + 1], i) };
+            prevNodes[i] = prevNode;
+            nextNodes[i] = nextNode;
+
+            // key exist
+            if prevNode == nextNode {
                 return false;
             }
         }
 
-        // Create a new node
-        let height = self.random_height();
-        let node_ptr = Node::alloc(&self.core.arena, key, value, height);
+        // create a new node
+        let newNodeHeight = self.random_height();
+        let newNodePtr = Node::alloc(&self.core.arena, key, value, newNodeHeight);
 
-        // Try to increase skiplist height via CAS
-        while height > list_height {
-            match self.core.height.compare_exchange_weak(
-                list_height,
-                height,
-                Ordering::SeqCst,
-                Ordering::SeqCst,
-            ) {
-                // Successfully increased skiplist height
+        // 到了这里会需要增加跳表的level fenquen
+        // try to increase skiplist height via CAS
+        while newNodeHeight > skipListCurrentHeight {
+            match self.core.height.compare_exchange_weak(skipListCurrentHeight,
+                                                         newNodeHeight,
+                                                         Ordering::SeqCst,
+                                                         Ordering::SeqCst) {
+                // successfully increased skiplist height
                 Ok(_) => break,
-                Err(h) => list_height = h,
+                Err(h) => skipListCurrentHeight = h,
             }
         }
 
         // We always insert from the base level and up. After you add a node in base
         // leve, we cannot create a node in the level above because it would
         // have discovered the node in the base level
-        let x: &mut Node = unsafe { &mut *node_ptr };
-        for i in 0..=height {
+        let newNode = unsafe { &mut *newNodePtr };
+
+        // 因为新的node加入会影响到之前的结构
+        for i in 0..=newNodeHeight {
             loop {
-                if prev[i].is_null() {
-                    // This cannot happen in base level
+                // 目前想象不到什么时候会这样
+                if prevNodes[i].is_null() {
+                    // this cannot happen in base level
                     assert!(i > 1);
-                    // We haven't computed prev, next for this level because height exceeds old
-                    // list_height. For these levels, we expect the lists to be
-                    // sparse, so we can just search from head.
-                    let (p, n) =
-                        unsafe { self.find_splice_for_level(x.key(), self.core.head.as_ptr(), i) };
-                    prev[i] = p;
-                    next[i] = n;
-                    // Someone adds the exact same key before we are able to do so. This can only
-                    // happen on the base level. But we know we are not on the
-                    // base level.
+
+                    // we haven't computed prev, next for this level because height exceeds old
+                    // list_height. For these levels, we expect the lists to be sparse, so we can just search from head.
+                    let (p, n) = unsafe { self.find_splice_for_level(newNode.key(), self.core.head.as_ptr(), i) };
+                    prevNodes[i] = p;
+                    nextNodes[i] = n;
+
+                    // someone adds the exact same key before we are able to do so. This can only
+                    // happen on the base level. But we know we are not on the base level.
                     assert_ne!(p, n);
                 }
-                x.tower[i].store(next[i], Ordering::SeqCst);
-                match unsafe { &*prev[i] }.tower[i].compare_exchange(
-                    next[i],
-                    node_ptr,
-                    Ordering::SeqCst,
-                    Ordering::SeqCst,
-                ) {
-                    // Managed to insert x between prev[i] and next[i]. Go to the next level.
+
+                // 保存新node的next
+                newNode.tower[i].store(nextNodes[i], Ordering::SeqCst);
+
+                // 把新的node记录到各个level上的prevNode的tower中
+                match unsafe { &*prevNodes[i] }.tower[i].compare_exchange(nextNodes[i],
+                                                                          newNodePtr,
+                                                                          Ordering::SeqCst,
+                                                                          Ordering::SeqCst) {
                     Ok(_) => break,
                     Err(_) => {
                         // CAS failed. We need to recompute prev and next.
                         // It is unlikely to be helpful to try to use a different level as we redo
                         // the search, because it is unlikely that lots of
                         // nodes are inserted between prev[i] and next[i].
-                        let (p, n) = unsafe { self.find_splice_for_level(x.key(), prev[i], i) };
+                        let (p, n) = unsafe { self.find_splice_for_level(newNode.key(), prevNodes[i], i) };
                         if p == n {
                             assert_eq!(i, 0);
                             return false;
                         }
-                        prev[i] = p;
-                        next[i] = n;
+
+                        prevNodes[i] = p;
+                        nextNodes[i] = n;
                     }
                 }
             }
         }
+
         true
     }
 
-    /// Returns if the skiplist is empty
     pub fn is_empty(&self) -> bool {
         let node = self.core.head.as_ptr();
-        let next_ptr = unsafe { (*node).next_ptr(0) };
+        let next_ptr = unsafe { (*node).nextPtrAtLevel(0) };
         next_ptr.is_null()
     }
 
-    /// Returns len of the skiplist
     pub fn len(&self) -> usize {
         let mut node = self.core.head.as_ptr();
         let mut count = 0;
         loop {
-            let next_ptr = unsafe { (*node).next_ptr(0) };
+            let next_ptr = unsafe { (*node).nextPtrAtLevel(0) };
             if !next_ptr.is_null() {
                 count += 1;
                 node = next_ptr;
@@ -445,13 +467,12 @@ impl<C: KeyComparator, A: Arena<Stats=BasicStats> + Clone> SkipList<C, A> {
         }
     }
 
-    /// Returns the last element. If head (empty list), we return null. All the
-    /// find functions will NEVER return the head nodes
+    /// return the last element. If head (empty list), we return null. All the find functions will NEVER return the head nodes
     fn find_last(&self) -> *const Node {
         let mut node = self.core.head.as_ptr();
         let mut level = self.height();
         loop {
-            let next_ptr = unsafe { (*node).next_ptr(level) };
+            let next_ptr = unsafe { (*node).nextPtrAtLevel(level) };
             if !next_ptr.is_null() {
                 node = next_ptr;
                 continue;
@@ -551,7 +572,7 @@ impl<T: AsRef<SkipList<C, A>>, C: KeyComparator, A: Arena<Stats=BasicStats> + Cl
 
     pub fn next(&mut self) {
         assert!(self.valid());
-        unsafe { self.cursor = (*self.cursor).next_ptr(0); }
+        unsafe { self.cursor = (*self.cursor).nextPtrAtLevel(0); }
     }
 
     pub fn prev(&mut self) {
@@ -567,8 +588,8 @@ impl<T: AsRef<SkipList<C, A>>, C: KeyComparator, A: Arena<Stats=BasicStats> + Cl
         unsafe { self.cursor = self.skipList.as_ref().find_near(target, true, true); }
     }
 
-    pub fn seek_to_first(&mut self) {
-        unsafe { self.cursor = (*self.skipList.as_ref().core.head.as_ptr()).next_ptr(0); }
+    pub fn seekToFirst(&mut self) {
+        unsafe { self.cursor = (*self.skipList.as_ref().core.head.as_ptr()).nextPtrAtLevel(0); }
     }
 
     pub fn seek_to_last(&mut self) {

@@ -122,17 +122,3 @@ impl QueryExecutor for QueryExecutorImpl {
         Ok(record_batches)
     }
 }
-
-async fn optimize(ctx: &Context,
-                  dataFusionSessionContext: SessionContext,
-                  queryPlan: QueryPlan) -> Result<PhysicalPlanPtr> {
-    // dataFusionLogicalPlan 优化
-    let dataFusionLogicalPlan = dataFusionSessionContext.state().optimize(&queryPlan.dataFusionLogicalPlan).context(LogicalOptimize)?;
-    debug!("executor logical optimization finished, request_id:{}, plan: {:#?}",ctx.request_id, dataFusionLogicalPlan);
-
-    // dataFusionLogicalPlan变为物理
-    let dataFusionExecutionPlan = dataFusionSessionContext.state().create_physical_plan(&dataFusionLogicalPlan).await.context(PhysicalOptimize)?;
-    let physicalPlan = PhysicalPlanImpl::with_plan(dataFusionSessionContext, dataFusionExecutionPlan);
-
-    Ok(Box::new(physicalPlan))
-}

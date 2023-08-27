@@ -45,7 +45,7 @@ pub enum Error {
 
 define_result!(Error);
 
-// u64 + u32
+// 8个字节 sequenceNumber 4个字节 rowindex
 const KEY_SEQUENCE_BYTES_LEN: usize = 12;
 
 /// Row index in the batch
@@ -112,10 +112,12 @@ impl<'a> Encoder<Row> for ComparableInternalKey<'a> {
 
     fn encode<B: BufMut>(&self, buf: &mut B, row: &Row) -> Result<()> {
         let encoder = MemComparable;
+
         for idx in self.schema.primary_key_indexes() {
             encoder.encode(buf, &row[*idx]).context(EncodeKeyDatum)?;
         }
-        SequenceCodec.encode(buf, &self.keySequence)?;
+
+        KeySequenceCodec.encode(buf, &self.keySequence)?;
 
         Ok(())
     }
@@ -132,9 +134,9 @@ impl<'a> Encoder<Row> for ComparableInternalKey<'a> {
     }
 }
 
-struct SequenceCodec;
+struct KeySequenceCodec;
 
-impl Encoder<KeySequence> for SequenceCodec {
+impl Encoder<KeySequence> for KeySequenceCodec {
     type Error = Error;
 
     fn encode<B: BufMut>(&self, buf: &mut B, keySequence: &KeySequence) -> Result<()> {
@@ -151,15 +153,16 @@ impl Encoder<KeySequence> for SequenceCodec {
     }
 }
 
-impl Decoder<KeySequence> for SequenceCodec {
+impl Decoder<KeySequence> for KeySequenceCodec {
     type Error = Error;
 
     fn decode<B: SafeBuf>(&self, buf: &mut B) -> Result<KeySequence> {
-        let sequence = buf.try_get_u64().context(DecodeSequence)?;
         // Reverse sequence
+        let sequence = buf.try_get_u64().context(DecodeSequence)?;
         let sequence = SequenceNumber::MAX - sequence;
-        let row_index = buf.try_get_u32().context(DecodeIndex)?;
+
         // Reverse row index
+        let row_index = buf.try_get_u32().context(DecodeIndex)?;
         let row_index = RowIndex::MAX - row_index;
 
         Ok(KeySequence::new(sequence, row_index))
@@ -170,7 +173,7 @@ impl Decoder<KeySequence> for SequenceCodec {
 
 /// userKey sequence
 pub fn buildSeekKey<'a>(user_key: &[u8],
-                        sequence: SequenceNumber,
+                        sequence: u64,
                         scratch: &'a mut BytesMut) -> Result<&'a [u8]> {
     scratch.clear();
     scratch.reserve(user_key.len() + mem::size_of::<SequenceNumber>());
@@ -199,7 +202,7 @@ pub fn user_key_from_internal_key(internal_key: &[u8]) -> Result<(&[u8], KeySequ
     let (left, mut right) = internal_key.split_at(internal_key.len() - KEY_SEQUENCE_BYTES_LEN);
 
     // decode sequence number from right part
-    let sequence = SequenceCodec.decode(&mut right)?;
+    let sequence = KeySequenceCodec.decode(&mut right)?;
 
     Ok((left, sequence))
 }
