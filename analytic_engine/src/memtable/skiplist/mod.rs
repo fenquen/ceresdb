@@ -79,22 +79,22 @@ impl<A: Arena<Stats=BasicStats> + Clone + Sync + Send + 'static> MemTable for Sk
            putContext: &mut PutContext,
            keySequence: KeySequence,
            row: &Row,
-           schema: &Schema) -> Result<()> {
+           tableSchema: &Schema) -> Result<()> {
         trace!("skiplist put row, keySequence:{:?}, row:{:?}", keySequence, row);
 
-        let comparableInternalKey = ComparableInternalKey::new(keySequence, schema);
+        let comparableInternalKey = ComparableInternalKey::new(keySequence, tableSchema);
 
         //let keyByteVec = &mut ctx.key_buf;
-        // Reset key buffer
         putContext.keyBuf.clear();
-        // Reserve capacity for key
         putContext.keyBuf.reserve(comparableInternalKey.estimateEncodedSize(row));
-        // Encode key primary的列值+剩下的sequence量+剩下的rowId量
+        // memtable的key的编码的格式:primary的列值+剩下的sequence量+剩下的rowId量 fenqune
         comparableInternalKey.encode(&mut putContext.keyBuf, row).context(EncodeInternalKey)?;
 
         // encode row value. The ContiguousRowWriter will clear the buf.
-       // let row_value = &mut putContext.valueBuf;
-        let mut rowWriter = ContiguousRowWriter::new(&mut putContext.valueBuf, schema, &putContext.index_in_writer);
+        // let row_value = &mut putContext.valueBuf;
+        let mut rowWriter = ContiguousRowWriter::new(&mut putContext.valueBuf, tableSchema, &putContext.index_in_writer);
+        // 当insert时候落地到memTable时候自然需要对行的数据编码变成value格式如下 fenquen
+        // 表insert的时候含有null(特意写入null 写入时候未涉及到这个的column)
         rowWriter.writeRow(row).box_err().context(InvalidRow)?;
 
         self.skiplist.put(&putContext.keyBuf, &putContext.valueBuf);
@@ -110,7 +110,7 @@ impl<A: Arena<Stats=BasicStats> + Clone + Sync + Send + 'static> MemTable for Sk
     fn scan(&self, ctx: ScanContext, scanRequest: ScanRequest) -> Result<ColumnarIter> {
         debug!("scan skiplist memtable, ctx:{:?}, request:{:?}",ctx, scanRequest);
 
-      //  let num_rows = self.skiplist.len();
+        //  let num_rows = self.skiplist.len();
         let (reverse, batch_size) = (scanRequest.reverse, ctx.batch_size);
         let iter = ColumnarIterImpl::new(self, ctx, scanRequest)?;
         if reverse {

@@ -157,11 +157,12 @@ impl Node {
     unsafe fn load_value_size(&self,
                               key_block: *const u8,
                               key_size: KeySize) -> (*const u8, ValueSize) {
-        // Move to value block
+        // move to value block
         let value_block = key_block.add(key_size as usize);
+
         // Load value size from value block
-        let value_size =
-            u32::from_ne_bytes(*(value_block as *const [u8; mem::size_of::<ValueSize>()]));
+        let value_size = u32::from_ne_bytes(*(value_block as *const [u8; mem::size_of::<ValueSize>()]));
+
         // Move value block to the start of value
         let value_block = value_block.add(mem::size_of::<ValueSize>());
 

@@ -117,7 +117,7 @@ pub struct RoBitSet<'a> {
 }
 
 impl<'a> RoBitSet<'a> {
-    pub fn try_new(buffer: &'a [u8], num_bits: usize) -> Option<Self> {
+    pub fn new(buffer: &'a [u8], num_bits: usize) -> Option<Self> {
         if buffer.len() < BitSet::getByteNum(num_bits) {
             None
         } else {
@@ -125,7 +125,7 @@ impl<'a> RoBitSet<'a> {
         }
     }
 
-    /// Tells whether the bit at the `index` is set.
+    /// whether the bit at the `index` is set.
     pub fn is_set(&self, index: usize) -> Option<bool> {
         if index >= self.num_bits {
             return None;
@@ -135,7 +135,6 @@ impl<'a> RoBitSet<'a> {
         Some(set)
     }
 
-    /// Tells whether the bit at the `index` is set.
     #[inline]
     pub fn is_unset(&self, index: usize) -> Option<bool> {
         self.is_set(index).map(|v| !v)

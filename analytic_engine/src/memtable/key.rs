@@ -195,14 +195,14 @@ fn encode_sequence_number<B: SafeBufMut>(buf: &mut B, sequence: SequenceNumber) 
 }
 
 /// decode user key and sequence number from the internal key
-pub fn user_key_from_internal_key(internal_key: &[u8]) -> Result<(&[u8], KeySequence)> {
+pub fn extractUserKeyFromInternalKey(internal_key: &[u8]) -> Result<(&[u8], KeySequence)> {
     // empty user key is meaningless
     ensure!(internal_key.len() > KEY_SEQUENCE_BYTES_LEN, InternalKeyLen {len: internal_key.len()});
 
-    let (left, mut right) = internal_key.split_at(internal_key.len() - KEY_SEQUENCE_BYTES_LEN);
+    let (userKey, mut right) = internal_key.split_at(internal_key.len() - KEY_SEQUENCE_BYTES_LEN);
 
     // decode sequence number from right part
-    let sequence = KeySequenceCodec.decode(&mut right)?;
+    let keySequence = KeySequenceCodec.decode(&mut right)?;
 
-    Ok((left, sequence))
+    Ok((userKey, keySequence))
 }

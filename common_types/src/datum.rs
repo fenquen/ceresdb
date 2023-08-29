@@ -1013,9 +1013,7 @@ impl Serialize for Datum {
     }
 }
 
-/// A view to a datum.
-///
-/// Holds copy of integer like datum and reference of string like datum.
+/// a view to a datum hold copy of integer-like datum and reference of string-like datum.
 #[derive(Debug, PartialEq, PartialOrd)]
 pub enum DatumView<'a> {
     Null,

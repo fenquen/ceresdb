@@ -476,26 +476,22 @@ impl RecordBatchWithKey {
 }
 
 pub struct RecordBatchWithKeyBuilder {
-    schema_with_key: RecordSchemaWithKey,
-    builders: Vec<ColumnBlockBuilder>,
+    recordSchemaWithKey: RecordSchemaWithKey,
+    columnBlockBuilderVec: Vec<ColumnBlockBuilder>,
 }
 
 impl RecordBatchWithKeyBuilder {
-    pub fn new(schema_with_key: RecordSchemaWithKey) -> Self {
-        let builders = schema_with_key
-            .columns()
-            .iter()
-            .map(|column_schema| {
-                ColumnBlockBuilder::with_capacity(
-                    &column_schema.datumKind,
-                    0,
-                    column_schema.is_dictionary,
-                )
-            })
-            .collect();
+    pub fn new(recordSchemaWithKey: RecordSchemaWithKey) -> Self {
+        let builders =
+            recordSchemaWithKey.columns().iter().map(|column_schema| {
+                ColumnBlockBuilder::with_capacity(&column_schema.datumKind,
+                                                  0,
+                                                  column_schema.is_dictionary)
+            }).collect();
+
         Self {
-            schema_with_key,
-            builders,
+            recordSchemaWithKey,
+            columnBlockBuilderVec: builders,
         }
     }
 
@@ -512,8 +508,8 @@ impl RecordBatchWithKeyBuilder {
             })
             .collect();
         Self {
-            schema_with_key,
-            builders,
+            recordSchemaWithKey: schema_with_key,
+            columnBlockBuilderVec: builders,
         }
     }
 
@@ -521,7 +517,7 @@ impl RecordBatchWithKeyBuilder {
     ///
     /// REQUIRE: The row and the builder must have the same schema.
     pub fn append_row(&mut self, row: Row) -> Result<()> {
-        for (builder, datum) in self.builders.iter_mut().zip(row) {
+        for (builder, datum) in self.columnBlockBuilderVec.iter_mut().zip(row) {
             builder.append(datum).context(AppendDatum)?;
         }
 
@@ -532,13 +528,12 @@ impl RecordBatchWithKeyBuilder {
     /// REQUIRE:
     /// - The schema of `row` is the same as the source schema of the `projector`.
     /// - The projected schema (with key) is the same as the schema of the builder.
-    pub fn append_projected_contiguous_row<T: ContiguousRow>(&mut self,
-                                                             row: &ProjectedContiguousRow<T>) -> Result<()> {
-        assert_eq!(row.num_datum_views(), self.builders.len());
+    pub fn appendProjectedContiguousRow<T: ContiguousRow>(&mut self, row: &ProjectedContiguousRow<T>) -> Result<()> {
+        assert_eq!(row.datumViewNum(), self.columnBlockBuilderVec.len());
 
-        for (index, builder) in self.builders.iter_mut().enumerate() {
-            let datum_view = row.datum_view_at(index);
-            builder.append_view(datum_view).context(AppendDatum)?;
+        for (index, columnBlockBuilder) in self.columnBlockBuilderVec.iter_mut().enumerate() {
+            let datumView = row.datumViewAtIndex(index);
+            columnBlockBuilder.append_view(datumView).context(AppendDatum)?;
         }
 
         Ok(())
@@ -548,7 +543,7 @@ impl RecordBatchWithKeyBuilder {
     ///
     /// REQUIRE: The `row_view` and the builder must have the same schema.
     pub fn append_row_view(&mut self, row_view: &RowViewOnBatch) -> Result<()> {
-        for (builder, datum_view) in self.builders.iter_mut().zip(row_view.iter_columns()) {
+        for (builder, datum_view) in self.columnBlockBuilderVec.iter_mut().zip(row_view.iter_columns()) {
             let datum_view = datum_view.context(IterateDatum)?;
             builder.append_view(datum_view).context(AppendDatum)?;
         }
@@ -573,7 +568,7 @@ impl RecordBatchWithKeyBuilder {
 
         let added = cmp::min(num_rows - start, len);
 
-        for (builder, column) in self.builders.iter_mut().zip(record_batch.columns().iter()) {
+        for (builder, column) in self.columnBlockBuilderVec.iter_mut().zip(record_batch.columns().iter()) {
             builder
                 .append_block_range(column, start, added)
                 .context(AppendDatum)?;
@@ -584,7 +579,7 @@ impl RecordBatchWithKeyBuilder {
 
     /// The number of the appended rows.
     pub fn len(&self) -> usize {
-        self.builders
+        self.columnBlockBuilderVec
             .first()
             .map(|builder| builder.len())
             .unwrap_or(0)
@@ -597,7 +592,7 @@ impl RecordBatchWithKeyBuilder {
 
     /// Reset the builders for reuse.
     pub fn clear(&mut self) {
-        for builder in &mut self.builders {
+        for builder in &mut self.columnBlockBuilderVec {
             builder.clear();
         }
     }
@@ -605,14 +600,14 @@ impl RecordBatchWithKeyBuilder {
     /// Build [RecordBatchWithKey] and reset the builder.
     pub fn build(&mut self) -> Result<RecordBatchWithKey> {
         let column_blocks: Vec<_> = self
-            .builders
+            .columnBlockBuilderVec
             .iter_mut()
             .map(|builder| builder.build())
             .collect();
-        let arrow_schema = self.schema_with_key.to_arrow_schema_ref();
+        let arrow_schema = self.recordSchemaWithKey.to_arrow_schema_ref();
 
         Ok(RecordBatchWithKey {
-            schema_with_key: self.schema_with_key.clone(),
+            schema_with_key: self.recordSchemaWithKey.clone(),
             data: RecordBatchData::new(arrow_schema, column_blocks)?,
         })
     }

@@ -22,12 +22,7 @@ pub mod contiguous;
 
 #[derive(Debug, Snafu)]
 pub enum Error {
-    #[snafu(display(
-    "Column out of bound, len:{}, given:{}.\nBacktrace:\n{}",
-    len,
-    given,
-    backtrace
-    ))]
+    #[snafu(display("column out of bound, len:{}, given:{}.\nBacktrace:\n{}", len, given, backtrace))]
     ColumnOutOfBound {
         len: usize,
         given: usize,

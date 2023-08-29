@@ -27,7 +27,6 @@ use crate::memtable::{
     IterReverse, IterTimeout, ProjectSchema, Result, ScanContext, ScanRequest,
 };
 
-/// Iterator state
 #[derive(Debug, PartialEq)]
 enum State {
     /// The iterator struct is created but not initialized
@@ -38,13 +37,13 @@ enum State {
     Finished,
 }
 
-/// Columnar iterator for [SkipListMemTable]
+/// 用来迭代跳表的
 pub struct ColumnarIterImpl<A: Arena<Stats=BasicStats> + Clone + Sync + Send> {
     /// the internal skiplist iter
     skipListIter: SkipListIter<SkipList<BytewiseComparator, A>, BytewiseComparator, A>,
 
     // Schema related:
-    /// Schema of this memtable, used to decode row
+    /// schema of this memtable to decode row
     memtable_schema: Schema,
     /// Projection of schema to read
     projected_schema: ProjectedSchema,
@@ -54,17 +53,22 @@ pub struct ColumnarIterImpl<A: Arena<Stats=BasicStats> + Clone + Sync + Send> {
     batchSize: usize,
     deadline: Option<Instant>,
 
+    /// 目前的话start和end其实都未用到值都是unbound fenquen
     start_user_key: Bound<Bytes>,
+    /// 目前的话start和end其实都未用到值都是unbound fenquen
     end_user_key: Bound<Bytes>,
-    /// Max visible sequence
+
+    /// max visible sequence
     maxVisibleSeq: SequenceNumber,
-    /// State of iterator
+
+    /// state of iterator
     state: State,
+
     /// Last internal key this iterator returned
     // TODO(yingwen): Wrap a internal key struct?
     last_internal_key: Option<ArenaSlice<A>>,
 
-    /// Dedup rows with key
+    /// dedup rows with key
     need_dedup: bool,
 }
 
@@ -149,13 +153,13 @@ impl<A: Arena<Stats=BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
         let mut num_rows = 0;
 
         while self.skipListIter.valid() && num_rows < self.batchSize {
-            if let Some(row) = self.fetchNextRow()? {
-                let rowReader = ContiguousRowReader::new(&row, &self.memtable_schema).context(DecodeContinuousRow)?;
+            if let Some(rowData) = self.fetchNextRow()? {
+                let rowReader = ContiguousRowReader::new(&rowData, &self.memtable_schema).context(DecodeContinuousRow)?;
                 let projectedRow = ProjectedContiguousRow::new(rowReader, &self.projector);
 
                 trace!("column iterator fetch next row, row:{:?}", projectedRow);
 
-                builder.append_projected_contiguous_row(&projectedRow).context(AppendRow)?;
+                builder.appendProjectedContiguousRow(&projectedRow).context(AppendRow)?;
                 num_rows += 1;
             } else { // there is no more row to fetch
                 self.finish();
@@ -188,11 +192,12 @@ impl<A: Arena<Stats=BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
         // TODO(yingwen): Some operation like delete needs to be considered during iterating: we need to ignore this key if found a delete mark
         while self.skipListIter.valid() {
             let key = self.skipListIter.key();
-            let (userKey, keySequence) = key::user_key_from_internal_key(key).context(DecodeInternalKey)?;
 
-            // check user key is still in range
-            if self.is_after_end_bound(userKey) {
-                // Out of bound
+            // 实际上保存到内部的跳表中的key是internalKey是在原始的key的底子上再加上8个字节sequence和4个字节rowindex的 fenquen
+            let (userKey, keySequence) = key::extractUserKeyFromInternalKey(key).context(DecodeInternalKey)?;
+
+            // check user key is  out of bound
+            if self.isAfterEndBound(userKey) {
                 self.finish();
                 return Ok(None);
             }
@@ -201,13 +206,11 @@ impl<A: Arena<Stats=BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
                 // whether this user key is already returned
                 let same_key = match &self.last_internal_key {
                     Some(last_internal_key) => {
-                        // TODO(yingwen): Actually this call wont fail, only valid internal key will
-                        // be set as last_internal_key so maybe we can just unwrap it?
-                        let (last_user_key, _) = key::user_key_from_internal_key(last_internal_key).context(DecodeInternalKey)?;
+                        // TODO(yingwen): Actually this call wont fail, only valid internal key will be set as last_internal_key so maybe we can just unwrap it?
+                        let (last_user_key, _) = key::extractUserKeyFromInternalKey(last_internal_key).context(DecodeInternalKey)?;
                         userKey == last_user_key
                     }
-                    // This is the first user key
-                    None => false,
+                    None => false,// this is the first user key
                 };
 
                 // meet a duplicate key, move forward and continue to find next user key
@@ -248,7 +251,7 @@ impl<A: Arena<Stats=BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
     }
 
     /// return true if the key is after the `end_user_key` bound
-    fn is_after_end_bound(&self, key: &[u8]) -> bool {
+    fn isAfterEndBound(&self, key: &[u8]) -> bool {
         match &self.end_user_key {
             Bound::Included(end) => match key.cmp(end) {
                 Ordering::Less | Ordering::Equal => false,
@@ -258,7 +261,7 @@ impl<A: Arena<Stats=BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
                 Ordering::Less => false,
                 Ordering::Equal | Ordering::Greater => true,
             },
-            // All key is valid
+            // all key is valid
             Bound::Unbounded => false,
         }
     }

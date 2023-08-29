@@ -355,8 +355,10 @@ pub struct TableOptions {
     ///
     /// `None` means the table is doing the segment duration sampling and the actual duration is still unknown.
     pub segment_duration: Option<ReadableDuration>,
-    /// Table update mode, now support Overwrite(Default) and Append
+
+    /// updateMode默认是override需要去重的 fenquen
     pub update_mode: UpdateMode,
+
     /// Hint for storage format.
     pub storage_format_hint: StorageFormatHint,
 

@@ -16,9 +16,9 @@ use crate::{
 #[derive(Debug, Snafu)]
 pub enum Error {
     #[snafu(display(
-        "Invalid projection index, index:{}.\nBacktrace:\n{}",
-        index,
-        backtrace
+    "Invalid projection index, index:{}.\nBacktrace:\n{}",
+    index,
+    backtrace
     ))]
     InvalidProjectionIndex { index: usize, backtrace: Backtrace },
 
@@ -50,22 +50,17 @@ pub struct RowProjector {
     source_schema: Schema,
     /// The Vec stores the column index in source, and `None` means this column
     /// is not in source but required by reader, and need to filled by null.
-    /// The length of Vec is the same as the number of columns reader intended
-    /// to read.
+    /// The length of Vec is the same as the number of columns reader intended to read.
     source_projection: Vec<Option<usize>>,
 }
 
 impl RowProjector {
     /// The projected indexes of existed columns in the source schema.
     pub fn existed_source_projection(&self) -> Vec<usize> {
-        self.source_projection
-            .iter()
-            .filter_map(|index| *index)
-            .collect()
+        self.source_projection.iter().filter_map(|index| *index).collect()
     }
 
-    /// The projected indexes of all columns(existed and not exist) in the
-    /// source schema.
+    /// The projected indexes of all columns(existed and not exist) in the source schema.
     pub fn source_projection(&self) -> &[Option<usize>] {
         &self.source_projection
     }
@@ -74,13 +69,11 @@ impl RowProjector {
         &self.schema_with_key
     }
 
-    /// Project the row.
-    ///
     /// REQUIRE: The schema of row is the same as source schema.
-    pub fn project_row(&self, row: &Row, mut datums_buffer: Vec<Datum>) -> Row {
+    pub fn project_row(&self, row: &Row, mut datums: Vec<Datum>) -> Row {
         assert_eq!(self.source_schema.num_columns(), row.num_columns());
 
-        datums_buffer.reserve(self.schema_with_key.num_columns());
+        datums.reserve(self.schema_with_key.num_columns());
 
         for p in &self.source_projection {
             let datum = match p {
@@ -88,14 +81,13 @@ impl RowProjector {
                 None => Datum::Null,
             };
 
-            datums_buffer.push(datum);
+            datums.push(datum);
         }
 
-        Row::from_datums(datums_buffer)
+        Row::from_datums(datums)
     }
 
-    /// Returns a datum kind selected
-    /// using an index into the source schema columns.
+    /// return a datum kind selected using an index into the source schema columns.
     pub fn datum_kind(&self, index: usize) -> &DatumKind {
         assert!(index < self.source_schema.num_columns());
 
@@ -134,8 +126,7 @@ impl ProjectedSchema {
         self.0.projection()
     }
 
-    /// Returns the [RowProjector] to project the rows with source schema to
-    /// rows with [RecordSchemaWithKey].
+    /// returns the [RowProjector] to project the rows with source schema to rows with [RecordSchemaWithKey].
     ///
     /// REQUIRE: The key columns are the same as this schema.
     #[inline]
@@ -167,10 +158,7 @@ impl From<ProjectedSchema> for ceresdbproto::schema::ProjectedSchema {
     fn from(request: ProjectedSchema) -> Self {
         let table_schema_pb = (&request.0.original_schema).into();
         let projection_pb = request.0.projection.as_ref().map(|project| {
-            let project = project
-                .iter()
-                .map(|one_project| *one_project as u64)
-                .collect::<Vec<u64>>();
+            let project = project.iter().map(|one_project| *one_project as u64).collect::<Vec<u64>>();
             ceresdbproto::schema::Projection { idx: project }
         });
 
@@ -184,18 +172,9 @@ impl From<ProjectedSchema> for ceresdbproto::schema::ProjectedSchema {
 impl TryFrom<ceresdbproto::schema::ProjectedSchema> for ProjectedSchema {
     type Error = Error;
 
-    fn try_from(
-        pb: ceresdbproto::schema::ProjectedSchema,
-    ) -> std::result::Result<Self, Self::Error> {
-        let schema: Schema = pb
-            .table_schema
-            .context(EmptyTableSchema)?
-            .try_into()
-            .map_err(|e| Box::new(e) as _)
-            .context(ConvertTableSchema)?;
-        let projection = pb
-            .projection
-            .map(|v| v.idx.into_iter().map(|id| id as usize).collect());
+    fn try_from(pb: ceresdbproto::schema::ProjectedSchema) -> std::result::Result<Self, Self::Error> {
+        let schema: Schema = pb.table_schema.context(EmptyTableSchema)?.try_into().map_err(|e| Box::new(e) as _).context(ConvertTableSchema)?;
+        let projection = pb.projection.map(|v| v.idx.into_iter().map(|id| id as usize).collect());
 
         ProjectedSchema::new(schema, projection)
     }
@@ -232,13 +211,9 @@ impl ProjectedSchemaInner {
     fn new(schema: Schema, projection: Option<Vec<usize>>) -> Result<Self> {
         if let Some(p) = &projection {
             // Projection is provided, validate the projection is valid. This is necessary
-            // to avoid panic when creating RecordSchema and
-            // RecordSchemaWithKey.
+            // to avoid panic when creating RecordSchema and RecordSchemaWithKey.
             if let Some(max_idx) = p.iter().max() {
-                ensure!(
-                    *max_idx < schema.num_columns(),
-                    InvalidProjectionIndex { index: *max_idx }
-                );
+                ensure!(*max_idx < schema.num_columns(),InvalidProjectionIndex { index: *max_idx });
             }
 
             let schema_with_key = schema.project_record_schema_with_key(p);
@@ -264,19 +239,17 @@ impl ProjectedSchemaInner {
         self.projection.clone()
     }
 
-    // TODO(yingwen): We can fill missing not null column with default value instead
-    //  of returning error.
+    // TODO(yingwen): We can fill missing not null column with default value instead of returning error.
     fn try_project_with_key(&self, source_schema: &Schema) -> Result<RowProjector> {
-        debug_assert_eq!(
-            self.schema_with_key.key_columns(),
-            source_schema.key_columns()
-        );
+        debug_assert_eq!(self.schema_with_key.key_columns(), source_schema.key_columns());
+
         // We consider the two schema is equal if they have same version.
         if self.original_schema.version() == source_schema.version() {
             debug_assert_eq!(self.original_schema, *source_schema);
         }
 
         let mut source_projection = Vec::with_capacity(self.schema_with_key.num_columns());
+
         // For each column in `schema_with_key`
         for column_schema in self.schema_with_key.columns() {
             self.try_project_column(column_schema, source_schema, &mut source_projection)?;
@@ -289,12 +262,10 @@ impl ProjectedSchemaInner {
         })
     }
 
-    fn try_project_column(
-        &self,
-        column: &ColumnSchema,
-        source_schema: &Schema,
-        source_projection: &mut Vec<Option<usize>>,
-    ) -> Result<()> {
+    fn try_project_column(&self,
+                          column: &ColumnSchema,
+                          source_schema: &Schema,
+                          source_projection: &mut Vec<Option<usize>>) -> Result<()> {
         match source_schema.index_of(&column.name) {
             Some(source_idx) => {
                 // Column is in source
@@ -304,12 +275,8 @@ impl ProjectedSchemaInner {
                 } else {
                     // Different version, need to check column schema
                     let source_column = source_schema.column(source_idx);
-                    // TODO(yingwen): Data type is not checked here because we do not support alter
-                    // data type now.
-                    match column
-                        .compatible_for_read(source_column)
-                        .context(IncompatReadColumn)?
-                    {
+                    // TODO(yingwen): Data type is not checked here because we do not support alter data type now.
+                    match column.compatible_for_read(source_column).context(IncompatReadColumn)? {
                         ReadOp::Exact => {
                             source_projection.push(Some(source_idx));
                         }

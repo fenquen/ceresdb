@@ -54,16 +54,14 @@ const MAX_ROW_LEN: usize = 1024 * 1024 * 1024;
 
 /// Row encoded in a contiguous buffer.
 pub trait ContiguousRow {
-    /// Returns the number of datums.
+    /// return the number of datums.
     fn num_datum_views(&self) -> usize;
 
-    /// Returns [DatumView] of column in given index.
-    ///
-    /// Panic if index or buffer is out of bound.
+    /// return [DatumView] of column in given index.
     fn datum_view_at(&self, index: usize, datum_kind: &DatumKind) -> DatumView;
 }
 
-/// Here is the layout of the encoded continuous row:
+/// here is the layout of the encoded continuous row:
 /// ```plaintext
 /// +------------------+-----------------+-------------------------+-------------------------+
 /// | num_bits(u32)    |  nulls_bit_set  | datum encoding block... | var-len payload block   |
@@ -88,11 +86,12 @@ pub trait ContiguousRow {
 struct Encoding;
 
 impl Encoding {
-    const fn size_of_offset() -> usize {
-        mem::size_of::<Offset>()
+    const fn offsetSize() -> usize {
+        mem::size_of::<u32>()
     }
 
-    const fn size_of_num_byte() -> usize {
+    /// 名字有待改善 由目前的使用场合来看应该是rowData的打头的用来记录总的column数量的区域的大小
+    const fn byteNumSize() -> usize {
         mem::size_of::<u32>()
     }
 }
@@ -102,28 +101,21 @@ pub enum ContiguousRowReader<'a, T> {
     WithNulls(ContiguousRowReaderWithNulls<'a, T>),
 }
 
-pub struct ContiguousRowReaderNoNulls<'a, T> {
-    inner: &'a T,
-    byte_offsets: &'a [usize],
-    datum_offset: usize,
-}
-
 impl<'a, T: Deref<Target=[u8]>> ContiguousRowReader<'a, T> {
-    pub fn new(buf: &'a T, schema: &'a Schema) -> Result<Self> {
-        let byte_offsets = schema.byte_offsets();
+    pub fn new(rowData: &'a T, schema: &'a Schema) -> Result<Self> {
+        //let byte_offsets = schema.columnByteOffsetVec();
 
-        ensure!(buf.len() >= Encoding::size_of_num_byte(), NumNullColsMissing);
+        ensure!(rowData.len() >= Encoding::byteNumSize(), NumNullColsMissing);
 
-        let bitNum = u32::from_ne_bytes(buf[0..Encoding::size_of_num_byte()].try_into().unwrap()) as usize;
-        if bitNum > 0 {
-            ContiguousRowReaderWithNulls::try_new(buf, schema, bitNum).map(Self::WithNulls)
+        let columnNum = u32::from_ne_bytes(rowData[0..Encoding::byteNumSize()].try_into().unwrap()) as usize;
+        if columnNum > 0 {
+            ContiguousRowReaderWithNulls::new(rowData, schema, columnNum).map(Self::WithNulls)
         } else {
-            let reader = ContiguousRowReaderNoNulls {
-                inner: buf,
-                byte_offsets,
-                datum_offset: Encoding::size_of_num_byte(),
-            };
-            Ok(Self::NoNulls(reader))
+            Ok(Self::NoNulls(ContiguousRowReaderNoNulls {
+                rowData,
+                columnByteOffsetSlice: schema.columnByteOffsetVec(),
+                datumOffset: Encoding::byteNumSize(),
+            }))
         }
     }
 }
@@ -144,75 +136,81 @@ impl<'a, T: Deref<Target=[u8]>> ContiguousRow for ContiguousRowReader<'a, T> {
     }
 }
 
+pub struct ContiguousRowReaderNoNulls<'a, T> {
+    rowData: &'a T,
+    columnByteOffsetSlice: &'a [usize],
+    datumOffset: usize,
+}
+
+impl<'a, T: Deref<Target=[u8]>> ContiguousRow for ContiguousRowReaderNoNulls<'a, T> {
+    fn num_datum_views(&self) -> usize {
+        self.columnByteOffsetSlice.len()
+    }
+
+    fn datum_view_at(&self, index: usize, datum_kind: &DatumKind) -> DatumView<'a> {
+        let offset = self.columnByteOffsetSlice[index];
+        let datum_buf = &self.rowData[self.datumOffset + offset..];
+        datum_view_at(datum_buf, self.rowData, datum_kind)
+    }
+}
+
 pub struct ContiguousRowReaderWithNulls<'a, T> {
-    buf: &'a T,
-    byte_offsets: Vec<isize>,
-    datum_offset: usize,
+    rowData: &'a T,
+    actualColByteOffsetVec: Vec<isize>,
+    datumOffset: usize,
 }
 
 impl<'a, T: Deref<Target=[u8]>> ContiguousRowReaderWithNulls<'a, T> {
-    fn try_new(buf: &'a T, schema: &'a Schema, bitNum: usize) -> Result<Self> {
-        assert!(bitNum > 0);
+    fn new(rowData: &'a T, schema: &'a Schema, columnNum: usize) -> Result<Self> {
+        assert!(columnNum > 0);
 
-        let bit_set_size = BitSet::getByteNum(bitNum);
-        let bit_set_buf = &buf[Encoding::size_of_num_byte()..];
-        ensure!(
-            bit_set_buf.len() >= bit_set_size,
-            InvalidBitSetBytes {
-                expect_len: bit_set_size,
-                given_len: bit_set_buf.len()
-            }
-        );
+        // bitSet中要用到的bit数量和表的column数量相同
+        let bitSetSize = BitSet::getByteNum(columnNum);
+        let remaining = &rowData[Encoding::byteNumSize()..];
+        ensure!(remaining.len() >= bitSetSize, InvalidBitSetBytes {expect_len: bitSetSize, given_len: remaining.len()});
 
-        let nulls_bit_set = RoBitSet::try_new(&bit_set_buf[..bit_set_size], bitNum).unwrap();
+        // 记录column是不是null的
+        let bitSet = RoBitSet::new(&rowData[Encoding::byteNumSize()..Encoding::byteNumSize() + bitSetSize], columnNum).unwrap();
 
-        let mut fixed_byte_offsets = Vec::with_capacity(schema.num_columns());
-        let mut acc_null_bytes = 0;
-        for (index, expect_offset) in schema.byte_offsets().iter().enumerate() {
-            match nulls_bit_set.is_set(index) {
-                Some(true) => fixed_byte_offsets.push((*expect_offset - acc_null_bytes) as isize),
+        // 事实上schema.num_columns()和columnNum相等
+        let mut actualColumnByteOffsetVec = Vec::with_capacity(schema.num_columns());
+        // 总共的涉及到null的column的大小
+        let mut accumulatedNullColumnByteLen = 0;
+
+        for (columnIndex, columnOffset) in schema.columnByteOffsetVec().iter().enumerate() {
+            match bitSet.is_set(columnIndex) {
+                // 不是null
+                Some(true) => actualColumnByteOffsetVec.push((*columnOffset - accumulatedNullColumnByteLen) as isize),
                 Some(false) => {
-                    fixed_byte_offsets.push(-1);
-                    acc_null_bytes += byteSizeOfDatum(&schema.column(index).datumKind);
+                    actualColumnByteOffsetVec.push(-1);
+                    accumulatedNullColumnByteLen += byteSizeOfDatum(&schema.column(columnIndex).datumKind);
                 }
-                None => fixed_byte_offsets.push(-1),
+                None => actualColumnByteOffsetVec.push(-1),
             }
         }
 
         Ok(Self {
-            buf,
-            byte_offsets: fixed_byte_offsets,
-            datum_offset: Encoding::size_of_num_byte() + bit_set_size,
+            rowData,
+            actualColByteOffsetVec: actualColumnByteOffsetVec,
+            datumOffset: Encoding::byteNumSize() + bitSetSize,
         })
     }
 }
 
 impl<'a, T: Deref<Target=[u8]>> ContiguousRow for ContiguousRowReaderWithNulls<'a, T> {
     fn num_datum_views(&self) -> usize {
-        self.byte_offsets.len()
+        self.actualColByteOffsetVec.len()
     }
 
     fn datum_view_at(&self, index: usize, datum_kind: &DatumKind) -> DatumView<'a> {
-        let offset = self.byte_offsets[index];
+        let offset = self.actualColByteOffsetVec[index];
         if offset < 0 {
             DatumView::Null
         } else {
-            let datum_offset = self.datum_offset + offset as usize;
-            let datum_buf = &self.buf[datum_offset..];
-            datum_view_at(datum_buf, self.buf, datum_kind)
+            let datum_offset = self.datumOffset + offset as usize;
+            let datum_buf = &self.rowData[datum_offset..];
+            datum_view_at(datum_buf, self.rowData, datum_kind)
         }
-    }
-}
-
-impl<'a, T: Deref<Target=[u8]>> ContiguousRow for ContiguousRowReaderNoNulls<'a, T> {
-    fn num_datum_views(&self) -> usize {
-        self.byte_offsets.len()
-    }
-
-    fn datum_view_at(&self, index: usize, datum_kind: &DatumKind) -> DatumView<'a> {
-        let offset = self.byte_offsets[index];
-        let datum_buf = &self.inner[self.datum_offset + offset..];
-        datum_view_at(datum_buf, self.inner, datum_kind)
     }
 }
 
@@ -226,29 +224,24 @@ fn datum_view_at<'a>(datum_buf: &'a [u8],
 ///
 /// The caller must ensure the source schema of projector is the same as the schema of source row.
 pub struct ProjectedContiguousRow<'a, T> {
-    source_row: T,
-    projector: &'a RowProjector,
+    contiguousRow: T,
+    rowProjector: &'a RowProjector,
 }
 
 impl<'a, T: ContiguousRow> ProjectedContiguousRow<'a, T> {
-    pub fn new(source_row: T, projector: &'a RowProjector) -> Self {
-        Self {
-            source_row,
-            projector,
-        }
+    pub fn new(contiguousRow: T, rowProjector: &'a RowProjector) -> Self {
+        Self { contiguousRow, rowProjector }
     }
 
-    pub fn num_datum_views(&self) -> usize {
-        self.projector.source_projection().len()
+    pub fn datumViewNum(&self) -> usize {
+        self.rowProjector.source_projection().len()
     }
 
-    pub fn datum_view_at(&self, index: usize) -> DatumView {
-        let p = self.projector.source_projection()[index];
-
-        match p {
+    pub fn datumViewAtIndex(&self, index: usize) -> DatumView {
+        match self.rowProjector.source_projection()[index] {
             Some(index_in_source) => {
-                let datum_kind = self.projector.datum_kind(index_in_source);
-                self.source_row.datum_view_at(index_in_source, datum_kind)
+                let datum_kind = self.rowProjector.datum_kind(index_in_source);
+                self.contiguousRow.datum_view_at(index_in_source, datum_kind)
             }
             None => DatumView::Null,
         }
@@ -258,8 +251,8 @@ impl<'a, T: ContiguousRow> ProjectedContiguousRow<'a, T> {
 impl<'a, T: ContiguousRow> fmt::Debug for ProjectedContiguousRow<'a, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut list = f.debug_list();
-        for i in 0..self.num_datum_views() {
-            let view = self.datum_view_at(i);
+        for i in 0..self.datumViewNum() {
+            let view = self.datumViewAtIndex(i);
             list.entry(&view);
         }
         list.finish()
@@ -296,7 +289,7 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
         }
     }
 
-    /// Write a row to the buffer, the buffer will be reset first.
+    /// write a row to the buffer
     pub fn writeRow(&mut self, row: &Row) -> Result<()> {
         let mut nullColNum = 0;
 
@@ -320,14 +313,13 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
     }
 
     fn writeRowWithNulls(&mut self, row: &Row) -> Result<()> {
-
         let columnNum = self.tableSchema.num_columns();
 
         // assume most columns are not null, so use a bitset with all bit set at first.
         let mut nullsBitSet = BitSet::all_set(columnNum);
 
         // 对应的是打头的4字节 + bitset内容长度
-        let mut encodedLen = Encoding::size_of_num_byte() + nullsBitSet.as_bytes().len();
+        let mut encodedLen = Encoding::byteNumSize() + nullsBitSet.as_bytes().len();
         let mut num_bytes_of_variable_col = 0;
 
         for columnIndexInTable in 0..self.tableSchema.num_columns() {
@@ -355,7 +347,7 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
         self.buffer.reset(encodedLen, 0);
 
         let mut next_string_offset = encodedLen - num_bytes_of_variable_col;
-        let mut datum_offset = Encoding::size_of_num_byte() + nullsBitSet.as_bytes().len();
+        let mut datum_offset = Encoding::byteNumSize() + nullsBitSet.as_bytes().len();
         for columnIndexInTable in 0..self.tableSchema.num_columns() {
             if let Some(columnIndexInWrite) = self.indexInWriter.columnIndexInWriter(columnIndexInTable) {
                 let datum = &row[columnIndexInWrite];
@@ -371,9 +363,9 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
             }
         }
 
-        // 当insert时候有null的时候 头4字节记录全部column数量 a 后边是bitset fenquen
+        // 当insert时候(编码row)有null的时候 头4字节记录全部column数量 a 后边是bitset fenquen
         Self::writeSliceToOffset(self.buffer, &mut 0, &(columnNum as u32).to_ne_bytes());
-        Self::writeSliceToOffset(self.buffer, &mut Encoding::size_of_num_byte(), nullsBitSet.as_bytes());
+        Self::writeSliceToOffset(self.buffer, &mut Encoding::byteNumSize(), nullsBitSet.as_bytes());
 
         debug_assert_eq!(datum_offset, encodedLen - num_bytes_of_variable_col);
         debug_assert_eq!(next_string_offset, encodedLen);
@@ -383,13 +375,13 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
 
     fn writeRowWithoutNulls(&mut self, row: &Row) -> Result<()> {
         // 打头的4字节 + 变长数据实际保存地区的起始offset
-        let datum_buffer_len = Encoding::size_of_num_byte() + self.tableSchema.string_buffer_offset();
+        let datum_buffer_len = Encoding::byteNumSize() + self.tableSchema.string_buffer_offset();
 
         // 算到底要用掉的多少byte
         let mut encodedLen = datum_buffer_len;
         for columnIndexInTable in 0..self.tableSchema.num_columns() {
-            if let Some(columnIndexInWrite) = self.indexInWriter.columnIndexInWriter(columnIndexInTable) {
-                let datum = &row[columnIndexInWrite];
+            if let Some(columnIndexInWriter) = self.indexInWriter.columnIndexInWriter(columnIndexInTable) {
+                let datum = &row[columnIndexInWriter];
 
                 if !datum.is_fixed_sized() { // for the datum content and the length of it
                     let len = datum.size();
@@ -406,10 +398,10 @@ impl<'a, T: RowBuffer + 'a> ContiguousRowWriter<'a, T> {
         // 实际的写data
         let mut nextVarLenDataOffset = datum_buffer_len;
         // insert时候的头4字节用来记录全部的column数量当writeRowWithNulls时候会用到写入其它时候不写入 fenquen
-        let mut nextDatumOffset = Encoding::size_of_num_byte();
+        let mut nextDatumOffset = Encoding::byteNumSize();
         for columnIndexInTable in 0..self.tableSchema.num_columns() {
-            if let Some(columnIndexInWrite) = self.indexInWriter.columnIndexInWriter(columnIndexInTable) {
-                let datum = &row[columnIndexInWrite];
+            if let Some(columnIndexInWriter) = self.indexInWriter.columnIndexInWriter(columnIndexInTable) {
+                let datum = &row[columnIndexInWriter];
                 Self::writeDatum(self.buffer, datum, &mut nextDatumOffset, &mut nextVarLenDataOffset)?;
             } else {
                 unreachable!("the column is ensured to be non-null");
@@ -537,7 +529,7 @@ pub(crate) fn byteSizeOfDatum(kind: &DatumKind) -> usize {
         DatumKind::Double => mem::size_of::<f64>(),
         DatumKind::Float => mem::size_of::<f32>(),
         // The size of offset.
-        DatumKind::Varbinary | DatumKind::String => Encoding::size_of_offset(),
+        DatumKind::Varbinary | DatumKind::String => Encoding::offsetSize(),
         DatumKind::UInt64 => mem::size_of::<u64>(),
         DatumKind::UInt32 => mem::size_of::<u32>(),
         DatumKind::UInt16 => mem::size_of::<u16>(),
@@ -638,8 +630,8 @@ fn must_read_view<'a>(
 
 fn must_read_bytes<'a>(datum_buf: &'a [u8], string_buf: &'a [u8]) -> &'a [u8] {
     // Read offset of string in string buf.
-    let value_buf = datum_buf[..mem::size_of::<Offset>()].try_into().unwrap();
-    let offset = Offset::from_ne_bytes(value_buf) as usize;
+    let value_buf = datum_buf[..Encoding::offsetSize()].try_into().unwrap();
+    let offset = u32::from_ne_bytes(value_buf) as usize;
     let mut string_buf = &string_buf[offset..];
 
     // Read len of the string.

@@ -915,7 +915,7 @@ impl Schema {
 
     /// Returns byte offsets in contiguous row.
     #[inline]
-    pub fn byte_offsets(&self) -> &[usize] {
+    pub fn columnByteOffsetVec(&self) -> &[usize] {
         &self.column_schemas.columnByteOffsetVec
     }
 

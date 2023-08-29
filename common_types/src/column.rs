@@ -948,7 +948,7 @@ macro_rules! define_column_block_builder {
                         DatumKind::String =>{
                             if is_dictionary {
                                 Self::Dictionary(StringDictionaryBuilder::<Int32Type>::new())
-                            }else {
+                            } else {
                                 Self::String(StringBuilder::with_capacity(item_capacity, 1024))
                             }
                         }
@@ -960,8 +960,7 @@ macro_rules! define_column_block_builder {
                     }
                 }
 
-                /// Append the datum into the builder, the datum should have same the data
-                /// type of builder
+                /// Append the datum into the builder, the datum should have same the data type of builder
                 pub fn append(&mut self, datum: Datum) -> Result<()> {
                     let given = datum.kind();
                     match self {
@@ -973,8 +972,7 @@ macro_rules! define_column_block_builder {
                             _ => ConflictType {
                                 expect: DatumKind::Null,
                                 given,
-                            }
-                            .fail(),
+                            }.fail(),
                         },
                         Self::Timestamp(builder) => append_datum_into!(Timestamp, builder, Datum, datum),
                         Self::Varbinary(builder) => append_datum!(Varbinary, builder, Datum, datum),
@@ -999,10 +997,10 @@ macro_rules! define_column_block_builder {
                 }
 
                 /// Append the [DatumView] into the builder, the datum view should have same the data type of builder
-                pub fn append_view<'a>(&mut self, datum: DatumView<'a>) -> Result<()> {
-                    let given = datum.kind();
+                pub fn append_view<'a>(&mut self, datumView: DatumView<'a>) -> Result<()> {
+                    let given = datumView.kind();
                     match self {
-                        Self::Null { rows } => match datum {
+                        Self::Null { rows } => match datumView {
                             DatumView::Null => {
                                 *rows += 1;
                                 Ok(())
@@ -1010,27 +1008,26 @@ macro_rules! define_column_block_builder {
                             _ => ConflictType {
                                 expect: DatumKind::Null,
                                 given,
-                            }
-                            .fail(),
+                            }.fail(),
                         },
-                        Self::Timestamp(builder) => append_datum_into!(Timestamp, builder, DatumView, datum),
-                        Self::Varbinary(builder) => append_datum!(Varbinary, builder, DatumView, datum),
-                        Self::String(builder) => append_datum!(String, builder, DatumView, datum),
-                        Self::Date(builder) => append_datum!(Date, builder, DatumView, datum),
-                        Self::Time(builder) => append_datum!(Time, builder, DatumView, datum),
+                        Self::Timestamp(builder) => append_datum_into!(Timestamp, builder, DatumView, datumView),
+                        Self::Varbinary(builder) => append_datum!(Varbinary, builder, DatumView, datumView),
+                        Self::String(builder) => append_datum!(String, builder, DatumView, datumView),
+                        Self::Date(builder) => append_datum!(Date, builder, DatumView, datumView),
+                        Self::Time(builder) => append_datum!(Time, builder, DatumView, datumView),
                         Self::Dictionary(builder) => {
-                            match datum {
+                            match datumView {
                                 DatumView::Null => Ok(builder.append_null()),
                                 DatumView::String(v) => Ok(builder.append_value(v)),
                                 _ => ConflictType {
                                     expect: DatumKind::String,
-                                    given: datum.kind(),
+                                    given: datumView.kind(),
                                 }
                                 .fail()
                             }
                         },
                         $(
-                            Self::$Kind(builder) => append_datum!($Kind, builder, DatumView, datum),
+                            Self::$Kind(builder) => append_datum!($Kind, builder, DatumView, datumView),
                         )*
                     }
                 }

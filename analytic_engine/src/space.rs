@@ -39,23 +39,15 @@ impl SpaceAndTable {
     /// REQUIRE: The table must belongs to the space
     pub fn new(space: SpaceRef, tableData: TableDataRef) -> Self {
         // Checks table is in space
-        debug_assert!(space
-            .table_datas
-            .read()
-            .unwrap()
-            .find_table(&tableData.name)
-            .is_some());
-
+        debug_assert!(space.table_datas.read().unwrap().find_table(&tableData.name).is_some());
         Self { space, table_data: tableData }
     }
 
-    /// Get space info
     #[inline]
     pub fn space(&self) -> &SpaceRef {
         &self.space
     }
 
-    /// Get table data
     #[inline]
     pub fn table_data(&self) -> &TableDataRef {
         &self.table_data
