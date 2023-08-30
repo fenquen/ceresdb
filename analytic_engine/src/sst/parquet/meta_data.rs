@@ -28,9 +28,9 @@ pub enum Error {
     TableSchemaNotFound { backtrace: Backtrace },
 
     #[snafu(display(
-        "Failed to parse Xor8Filter from bytes, err:{}.\nBacktrace\n:{}",
-        source,
-        backtrace
+    "Failed to parse Xor8Filter from bytes, err:{}.\nBacktrace\n:{}",
+    source,
+    backtrace
     ))]
     ParseXor8Filter {
         source: std::io::Error,
@@ -38,9 +38,9 @@ pub enum Error {
     },
 
     #[snafu(display(
-        "Failed to build Xor8Filter, err:{}.\nBacktrace\n:{}",
-        source,
-        backtrace
+    "Failed to build Xor8Filter, err:{}.\nBacktrace\n:{}",
+    source,
+    backtrace
     ))]
     BuildXor8Filter {
         source: xorfilter::Error,
@@ -75,9 +75,7 @@ trait Filter: fmt::Debug {
     }
 
     /// Deserialize the binary array to bitmap index.
-    fn from_bytes(buf: Vec<u8>) -> Result<Self>
-    where
-        Self: Sized;
+    fn from_bytes(buf: Vec<u8>) -> Result<Self> where Self: Sized;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -110,13 +108,8 @@ impl Filter for Xor8Filter {
         self.xor8.to_bytes()
     }
 
-    fn from_bytes(buf: Vec<u8>) -> Result<Self>
-    where
-        Self: Sized,
-    {
-        Xor8::from_bytes(buf)
-            .context(ParseXor8Filter)
-            .map(|xor8| Self { xor8 })
+    fn from_bytes(buf: Vec<u8>) -> Result<Self> where Self: Sized {
+        Xor8::from_bytes(buf).context(ParseXor8Filter).map(|xor8| Self { xor8 })
     }
 }
 
@@ -160,18 +153,11 @@ impl RowGroupFilterBuilder {
     }
 
     pub(crate) fn build(self) -> Result<RowGroupFilter> {
-        self.builders
-            .into_iter()
-            .map(|b| {
-                b.map(|mut b| {
-                    b.build()
-                        .context(BuildXor8Filter)
-                        .map(|xor8| Box::new(Xor8Filter { xor8 }) as _)
-                })
-                .transpose()
-            })
-            .collect::<Result<Vec<_>>>()
-            .map(|column_filters| RowGroupFilter { column_filters })
+        self.builders.into_iter().map(|b| {
+            b.map(|mut b| {
+                b.build().context(BuildXor8Filter).map(|xor8| Box::new(Xor8Filter { xor8 }) as _)
+            }).transpose()
+        }).collect::<Result<Vec<_>>>().map(|column_filters| RowGroupFilter { column_filters })
     }
 }
 
@@ -188,11 +174,7 @@ impl PartialEq for RowGroupFilter {
         }
 
         for (a, b) in self.column_filters.iter().zip(other.column_filters.iter()) {
-            if !a
-                .as_ref()
-                .map(|a| a.to_bytes())
-                .eq(&b.as_ref().map(|b| b.to_bytes()))
-            {
+            if !a.as_ref().map(|a| a.to_bytes()).eq(&b.as_ref().map(|b| b.to_bytes())) {
                 return false;
             }
         }
@@ -231,7 +213,7 @@ impl RowGroupFilter {
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct ParquetFilter {
-    /// every filter is a row group filter consists of column filters.
+    /// a row group filter consists of column filters.
     pub row_group_filters: Vec<RowGroupFilter>,
 }
 
@@ -314,7 +296,7 @@ impl TryFrom<sst_pb::ParquetFilter> for ParquetFilter {
     }
 }
 
-/// Meta data of a sst file
+/// 其实和sstMeta相同
 #[derive(Clone, PartialEq)]
 pub struct ParquetMetaData {
     pub min_key: Bytes,
@@ -331,13 +313,13 @@ pub struct ParquetMetaData {
 pub type ParquetMetaDataRef = Arc<ParquetMetaData>;
 
 impl From<SstMeta> for ParquetMetaData {
-    fn from(meta: SstMeta) -> Self {
+    fn from(sstMeta: SstMeta) -> Self {
         Self {
-            min_key: meta.min_key,
-            max_key: meta.max_key,
-            time_range: meta.time_range,
-            max_sequence: meta.maxSeq,
-            schema: meta.schema,
+            min_key: sstMeta.min_key,
+            max_key: sstMeta.max_key,
+            time_range: sstMeta.time_range,
+            max_sequence: sstMeta.maxSeq,
+            schema: sstMeta.schema,
             parquet_filter: None,
             collapsible_cols_idx: Vec::new(),
         }
@@ -364,14 +346,7 @@ impl fmt::Debug for ParquetMetaData {
             .field("time_range", &self.time_range)
             .field("max_sequence", &self.max_sequence)
             .field("schema", &self.schema)
-            .field(
-                "filter_size",
-                &self
-                    .parquet_filter
-                    .as_ref()
-                    .map(|filter| filter.size())
-                    .unwrap_or(0),
-            )
+            .field("filter_size", &self.parquet_filter.as_ref().map(|filter| filter.size()).unwrap_or(0), )
             .field("collapsible_cols_idx", &self.collapsible_cols_idx)
             .finish()
     }

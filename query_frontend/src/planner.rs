@@ -292,7 +292,7 @@ impl<'a, P: MetaProvider> Planner<'a, P> {
         let plannerDelegate = PlannerDelegate::new(adapter);
 
         match statement {
-            Statement::Standard(s) => plannerDelegate.sql_statement_to_plan(*s),
+            Statement::Standard(s) => plannerDelegate.sqlStatementToLogicalPlan(*s),
             Statement::Create(s) => plannerDelegate.createTableToPlan(*s),
             Statement::Drop(s) => plannerDelegate.drop_table_to_plan(s),
             Statement::Describe(s) => plannerDelegate.describe_table_to_plan(s),
@@ -552,7 +552,7 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
         Self { metaAndContextProvider }
     }
 
-    pub(crate) fn sql_statement_to_plan(self, mut sqlStatement: SqlStatement) -> Result<Plan> {
+    pub(crate) fn sqlStatementToLogicalPlan(self, mut sqlStatement: SqlStatement) -> Result<Plan> {
         match sqlStatement {
             // query statement use data fusion planner
             SqlStatement::Explain { .. } | SqlStatement::Query(_) => {
@@ -565,9 +565,9 @@ impl<'a, P: MetaProvider> PlannerDelegate<'a, P> {
     }
 
     fn sqlStatement2DatafusionLogicalPlan(self, sqlStatement: SqlStatement) -> Result<Plan> {
-        let df_planner = SqlToRel::new_with_options(&self.metaAndContextProvider, DEFAULT_PARSER_OPTS);
+        let dataFusionPlanner = SqlToRel::new_with_options(&self.metaAndContextProvider, DEFAULT_PARSER_OPTS);
 
-        let dataFusionLogicalPlan = df_planner.sql_statement_to_plan(sqlStatement).context(DatafusionPlan)?;
+        let dataFusionLogicalPlan = dataFusionPlanner.sql_statement_to_plan(sqlStatement).context(DatafusionPlan)?;
 
         debug!("sql statement to data fusion plan, df_plan:\n{:#?}", dataFusionLogicalPlan);
 

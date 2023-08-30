@@ -216,11 +216,11 @@ pub fn decode_sst_meta_data(kv: &KeyValue) -> Result<ParquetMetaData> {
 ///
 /// TODO: allow pre-allocate buffer
 #[async_trait]
-trait RecordEncoder {
+pub trait RecordEncoder {
     /// Encode vector of arrow batch, return encoded row number
     async fn encode(&mut self, arrowRecordBatchVec: Vec<ArrowRecordBatch>) -> Result<usize>;
 
-    fn set_meta_data(&mut self, meta_data: ParquetMetaData) -> Result<()>;
+    fn encodeParquetMetaData(&mut self, parquetMetaData: ParquetMetaData) -> Result<()>;
 
     /// Return encoded bytes
     /// Note: trait method cannot receive `self`, so take a &mut self here to
@@ -235,44 +235,48 @@ struct ColumnarRecordEncoder<W> {
 }
 
 impl<W: AsyncWrite + Send + Unpin> ColumnarRecordEncoder<W> {
+    // writer是oss暴露的writer
     fn new(writer: W,
            schema: &Schema,
            num_rows_per_row_group: usize,
            max_buffer_size: usize,
            compression: Compression) -> Result<Self> {
-        let arrow_schema = schema.to_arrow_schema_ref();
+        let parquetWriteProperties =
+            WriterProperties::builder()
+                .set_max_row_group_size(num_rows_per_row_group)
+                .set_compression(compression).build();
 
-        let write_props = WriterProperties::builder()
-            .set_max_row_group_size(num_rows_per_row_group)
-            .set_compression(compression)
-            .build();
-
-        let arrow_writer =
+        let asyncArrowWriter =
             AsyncArrowWriter::try_new(writer,
-                                      arrow_schema.clone(),
+                                      schema.arrow_schema.clone(),
                                       max_buffer_size,
-                                      Some(write_props)).box_err().context(EncodeRecordBatch)?;
+                                      Some(parquetWriteProperties)).box_err().context(EncodeRecordBatch)?;
 
         Ok(Self {
-            asyncArrowWriter: Some(arrow_writer),
-            arrowSchema: arrow_schema,
+            asyncArrowWriter: Some(asyncArrowWriter),
+            arrowSchema: schema.arrow_schema.clone(),
         })
     }
 }
 
 #[async_trait]
 impl<W: AsyncWrite + Send + Unpin> RecordEncoder for ColumnarRecordEncoder<W> {
-    async fn encode(&mut self, arrow_record_batch_vec: Vec<ArrowRecordBatch>) -> Result<usize> {
+    async fn encode(&mut self, arrowRecordBatchVec: Vec<ArrowRecordBatch>) -> Result<usize> {
+        if arrowRecordBatchVec.is_empty() {
+            return Ok(0);
+        }
+
         assert!(self.asyncArrowWriter.is_some());
 
-        let record_batch = compute::concat_batches(&self.arrowSchema, &arrow_record_batch_vec).box_err().context(EncodeRecordBatch)?;
+        // 多个arrowRecordBatch合并
+        let combinedArrowRecordBatch = compute::concat_batches(&self.arrowSchema, &arrowRecordBatchVec).box_err().context(EncodeRecordBatch)?;
 
-        self.asyncArrowWriter.as_mut().unwrap().write(&record_batch).await.box_err().context(EncodeRecordBatch)?;
+        self.asyncArrowWriter.as_mut().unwrap().write(&combinedArrowRecordBatch).await.box_err().context(EncodeRecordBatch)?;
 
-        Ok(record_batch.num_rows())
+        Ok(combinedArrowRecordBatch.num_rows())
     }
 
-    fn set_meta_data(&mut self, meta_data: ParquetMetaData) -> Result<()> {
+    fn encodeParquetMetaData(&mut self, meta_data: ParquetMetaData) -> Result<()> {
         let key_value = encode_sst_meta_data(meta_data)?;
         self.asyncArrowWriter
             .as_mut()
@@ -378,31 +382,26 @@ impl<W: AsyncWrite + Unpin + Send> HybridRecordEncoder<W> {
 
 #[async_trait]
 impl<W: AsyncWrite + Unpin + Send> RecordEncoder for HybridRecordEncoder<W> {
-    async fn encode(&mut self, arrow_record_batch_vec: Vec<ArrowRecordBatch>) -> Result<usize> {
+    async fn encode(&mut self, arrowRecordBatchVec: Vec<ArrowRecordBatch>) -> Result<usize> {
+        if arrowRecordBatchVec.is_empty() {
+            return Ok(0);
+        }
+
         assert!(self.arrow_writer.is_some());
 
-        let record_batch = hybrid::convert_to_hybrid_record(
-            &self.tsid_type,
-            &self.non_collapsible_col_types,
-            &self.collapsible_col_types,
-            self.arrow_schema.clone(),
-            arrow_record_batch_vec,
-        )
-            .box_err()
-            .context(EncodeRecordBatch)?;
+        let record_batch =
+            hybrid::convert_to_hybrid_record(&self.tsid_type,
+                                             &self.non_collapsible_col_types,
+                                             &self.collapsible_col_types,
+                                             self.arrow_schema.clone(),
+                                             arrowRecordBatchVec, ).box_err().context(EncodeRecordBatch)?;
 
-        self.arrow_writer
-            .as_mut()
-            .unwrap()
-            .write(&record_batch)
-            .await
-            .box_err()
-            .context(EncodeRecordBatch)?;
+        self.arrow_writer.as_mut().unwrap().write(&record_batch).await.box_err().context(EncodeRecordBatch)?;
 
         Ok(record_batch.num_rows())
     }
 
-    fn set_meta_data(&mut self, mut meta_data: ParquetMetaData) -> Result<()> {
+    fn encodeParquetMetaData(&mut self, mut meta_data: ParquetMetaData) -> Result<()> {
         meta_data.collapsible_cols_idx = mem::take(&mut self.collapsible_col_idx);
         let key_value = encode_sst_meta_data(meta_data)?;
         self.arrow_writer
@@ -428,7 +427,7 @@ impl<W: AsyncWrite + Unpin + Send> RecordEncoder for HybridRecordEncoder<W> {
 }
 
 pub struct ParquetEncoder {
-    recordEncoder: Box<dyn RecordEncoder + Send>,
+    pub recordEncoder: Box<dyn RecordEncoder + Send>,
 }
 
 impl ParquetEncoder {
@@ -454,27 +453,9 @@ impl ParquetEncoder {
 
         Ok(ParquetEncoder { recordEncoder })
     }
-
-    /// encode the record batch with [ArrowWriter] and the encoded contents is written to the buffer.
-    pub async fn encode(&mut self, arrowRecordBatchVec: Vec<ArrowRecordBatch>) -> Result<usize> {
-        if arrowRecordBatchVec.is_empty() {
-            return Ok(0);
-        }
-
-        self.recordEncoder.encode(arrowRecordBatchVec).await
-    }
-
-    pub fn set_meta_data(&mut self, meta_data: ParquetMetaData) -> Result<()> {
-        self.recordEncoder.set_meta_data(meta_data)
-    }
-
-    pub async fn close(mut self) -> Result<()> {
-        self.recordEncoder.close().await
-    }
 }
 
-/// RecordDecoder is used for decoding ArrowRecordBatch based on
-/// `schema.StorageFormat`
+/// RecordDecoder is used for decoding ArrowRecordBatch based on `schema.StorageFormat`
 trait RecordDecoder {
     fn decode(&self, arrow_record_batch: ArrowRecordBatch) -> Result<ArrowRecordBatch>;
 }

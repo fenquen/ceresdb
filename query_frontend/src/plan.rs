@@ -67,10 +67,8 @@ pub struct QueryPlan {
 }
 
 impl Debug for QueryPlan {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("QueryPlan")
-            .field("df_plan", &self.dataFusionLogicalPlan)
-            .finish()
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("QueryPlan").field("df_plan", &self.dataFusionLogicalPlan).finish()
     }
 }
 

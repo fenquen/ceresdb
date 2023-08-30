@@ -104,7 +104,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, Clone)]
 pub struct RecordBatchData {
-    arrowRecordBatch: ArrowRecordBatch,
+    pub arrowRecordBatch: ArrowRecordBatch,
     columnBlockVec: Vec<ColumnBlock>,
 }
 
@@ -337,7 +337,7 @@ fn cast_arrow_record_batch(source: ArrowRecordBatch) -> Result<ArrowRecordBatch>
 #[derive(Debug)]
 pub struct RecordBatchWithKey {
     recordSchemaWithKey: RecordSchemaWithKey,
-    recordBatchData: RecordBatchData,
+    pub recordBatchData: RecordBatchData,
 }
 
 impl RecordBatchWithKey {

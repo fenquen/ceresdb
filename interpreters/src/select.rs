@@ -53,11 +53,11 @@ impl<T: QueryExecutor> Interpreter for SelectInterpreter<T> {
 
         let query_ctx = self.ctx.new_query_context().context(CreateQueryContext).context(Select)?;
 
-        //let query = Query::new(self.queryPlan);
-        let record_batches = self.queryExecutor.executeLogicalPlan(query_ctx, self.queryPlan).await.context(ExecutePlan).context(Select)?;
+        // let query = Query::new(self.queryPlan);
+        let recordBatchVec = self.queryExecutor.executeLogicalPlan(query_ctx, self.queryPlan).await.context(ExecutePlan).context(Select)?;
 
         debug!("interpreter execute select finish, request_id:{}",request_id);
 
-        Ok(Output::Records(record_batches))
+        Ok(Output::Records(recordBatchVec))
     }
 }

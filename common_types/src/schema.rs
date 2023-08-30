@@ -578,7 +578,7 @@ pub fn compare_row<LR: RowView, RR: RowView>(
 #[derive(Clone, PartialEq)]
 pub struct Schema {
     /// The underlying arrow schema, data type of fields must be supported by datum
-    arrow_schema: ArrowSchemaRef,
+    pub arrow_schema: ArrowSchemaRef,
     /// The primary key index list in columns
     primary_key_indexes: Vec<usize>,
     /// Index of timestamp key column

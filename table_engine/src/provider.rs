@@ -124,11 +124,11 @@ impl TableProviderImpl {
         &self.table
     }
 
-    pub async fn scan_table(&self,
-                            dataFusionSessionState: &SessionState,
-                            projection: Option<&Vec<usize>>,
-                            filters: &[Expr], // 下落到tablescan的where
-                            limit: Option<usize>) -> Result<Arc<dyn ExecutionPlan>> {
+    pub async fn scanTable(&self,
+                           dataFusionSessionState: &SessionState,
+                           projection: Option<&Vec<usize>>,
+                           filters: &[Expr], // 下落到tablescan的where
+                           limit: Option<usize>) -> Result<Arc<dyn ExecutionPlan>> {
         let ceresdbOptions = dataFusionSessionState.config_options().extensions.get::<CeresdbOptions>().unwrap();
         let request_id = RequestId::from(ceresdbOptions.request_id);
         let deadline = ceresdbOptions.request_timeout.map(|n| Instant::now() + Duration::from_millis(n));
@@ -159,12 +159,12 @@ impl TableProviderImpl {
         let uniqueKeyColumnNames = self.read_schema.unique_keys();
 
         let push_down_filters = filters.iter().filter_map(|filter| {
-                if Self::only_filter_unique_key_columns(filter, &uniqueKeyColumnNames) {
-                    Some(filter.clone())
-                } else {
-                    None
-                }
-            }).collect::<Vec<_>>();
+            if Self::only_filter_unique_key_columns(filter, &uniqueKeyColumnNames) {
+                Some(filter.clone())
+            } else {
+                None
+            }
+        }).collect::<Vec<_>>();
 
         PredicateBuilder::default()
             .add_pushdown_exprs(&push_down_filters)
@@ -205,7 +205,7 @@ impl TableProvider for TableProviderImpl {
                   projection: Option<&Vec<usize>>,
                   filters: &[Expr],
                   limit: Option<usize>) -> Result<Arc<dyn ExecutionPlan>> {
-        self.scan_table(dataFusionSessionState, projection, filters, limit).await
+        self.scanTable(dataFusionSessionState, projection, filters, limit).await
     }
 
     fn supports_filter_pushdown(&self, _filter: &Expr) -> Result<TableProviderFilterPushDown> {

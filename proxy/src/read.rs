@@ -70,26 +70,16 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             default_schema: schemaName,
             function_registry: &*instance.function_registry,
         };
+
         let frontend = Frontend::new(provider);
 
         let mut sqlContext = SqlContext::new(request_id, deadline);
 
         // Parse sql, frontend error of invalid sql already contains sql
         // TODO(yingwen): Maybe move sql from frontend error to outer error
-        let mut statementVec = frontend
-            .parse_sql(&mut sqlContext, sql)
-            .box_err()
-            .context(ErrWithCause {
-                code: StatusCode::BAD_REQUEST,
-                msg: "Failed to parse sql",
-            })?;
+        let mut statementVec = frontend.parse_sql(&mut sqlContext, sql).box_err().context(ErrWithCause { code: StatusCode::BAD_REQUEST, msg: "Failed to parse sql" })?;
 
-        ensure!(!statementVec.is_empty(),
-            ErrNoCause {
-                code: StatusCode::BAD_REQUEST,
-                msg: format!("No valid query statement provided, sql:{sql}",),
-            }
-        );
+        ensure!(!statementVec.is_empty(),ErrNoCause {code: StatusCode::BAD_REQUEST,msg: format!("No valid query statement provided, sql:{sql}",),});
 
         // TODO(yingwen): For simplicity, we only support executing one statement now
         // TODO(yingwen): INSERT/UPDATE/DELETE can be batched
@@ -130,10 +120,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
 
         let output = self.execute_plan(request_id, catalogName, schemaName, plan, deadline, ctx.enable_partition_table_access).await;
 
-        let output = output.box_err().with_context(|| ErrWithCause {
-            code: StatusCode::INTERNAL_SERVER_ERROR,
-            msg: format!("Failed to execute plan, sql:{sql}"),
-        })?;
+        let output = output.box_err().with_context(|| ErrWithCause { code: StatusCode::INTERNAL_SERVER_ERROR, msg: format!("Failed to execute plan, sql:{sql}") })?;
 
         let cost = beginTime.saturating_elapsed();
         info!("handle sql query success, catalog:{catalogName}, schema:{schemaName}, request_id:{request_id}, cost:{cost:?}, sql:{sql:?}");
@@ -163,9 +150,7 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
                                      ctx: Context,
                                      schema: &str,
                                      sql: &str) -> Result<Option<ForwardResult<SqlQueryResponse, Error>>> {
-        let table_name = frontend::parse_table_name_with_sql(sql)
-            .box_err()
-            .with_context(|| Internal { msg: format!("Failed to parse table name with sql, sql:{sql}") })?;
+        let table_name = frontend::parse_table_name_with_sql(sql).box_err().with_context(|| Internal { msg: format!("Failed to parse table name with sql, sql:{sql}") })?;
         if table_name.is_none() {
             warn!("Unable to forward sql query without table name, sql:{sql}",);
             return Ok(None);
@@ -185,23 +170,15 @@ impl<Q: QueryExecutor + 'static> Proxy<Q> {
             req: sql_request.into_request(),
             forwarded_from: ctx.forwarded_from,
         };
-        let do_query =
-            |mut client: StorageServiceClient<Channel>, request: tonic::Request<SqlQueryRequest>, _: &Endpoint| {
-                let query = async move {
-                    client
-                        .sql_query(request)
-                        .await
-                        .map(|resp| resp.into_inner())
-                        .box_err()
-                        .context(ErrWithCause {
-                            code: StatusCode::INTERNAL_SERVER_ERROR,
-                            msg: "Forwarded sql query failed",
-                        })
-                }
-                    .boxed();
 
-                Box::new(query) as _
-            };
+        let do_query = |mut client: StorageServiceClient<Channel>, request: tonic::Request<SqlQueryRequest>, _: &Endpoint| {
+            let query = async move {
+                client.sql_query(request).await.map(|resp| resp.into_inner())
+                    .box_err().context(ErrWithCause { code: StatusCode::INTERNAL_SERVER_ERROR, msg: "Forwarded sql query failed" })
+            }.boxed();
+
+            Box::new(query) as _
+        };
 
         let forward_result = self.forwarder.forward(forward_req, do_query).await;
         Ok(match forward_result {

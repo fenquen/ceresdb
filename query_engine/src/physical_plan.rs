@@ -58,9 +58,7 @@ impl PhysicalPlanImpl {
 
 impl Debug for PhysicalPlanImpl {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("DataFusionPhysicalPlan")
-            .field("plan", &self.dataFusionExecutionPlan)
-            .finish()
+        f.debug_struct("DataFusionPhysicalPlan").field("plan", &self.dataFusionExecutionPlan).finish()
     }
 }
 

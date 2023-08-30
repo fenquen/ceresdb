@@ -66,7 +66,7 @@ struct RecordBatchGroupWriter {
     /// stream化的memTable
     input: RecordBatchStream,
     inputExhausted: bool,
-    meta_data: SstMeta,
+    sstMeta: SstMeta,
     rowCountPerRowGroup: usize,
     max_buffer_size: usize,
     compression: Compression,
@@ -160,7 +160,7 @@ impl RecordBatchGroupWriter {
 
         let mut parquetEncoder =
             ParquetEncoder::new(writer,
-                                &self.meta_data.schema,
+                                &self.sstMeta.schema,
                                 self.useHybridEncoding,
                                 self.rowCountPerRowGroup,
                                 self.max_buffer_size,
@@ -173,7 +173,7 @@ impl RecordBatchGroupWriter {
         };
 
         loop {
-            // rowGroup是RecordBatchWithKeyVec fenquen
+            // rowGroup 是 RecordBatchWithKey 的Vec fenquen
             let recordBatchWithKeyVec = self.fetchNextRowGroup(&mut prevRecordBatchWithKey).await?;
 
             if recordBatchWithKeyVec.is_empty() {
@@ -186,10 +186,10 @@ impl RecordBatchGroupWriter {
 
             let batchNum = recordBatchWithKeyVec.len();
             for recordBatchWithKey in recordBatchWithKeyVec {
-                arrowRecordBatchVec.push(recordBatchWithKey.intoRecordBatch().intoArrowRecordBatch());
+                arrowRecordBatchVec.push(recordBatchWithKey.recordBatchData.arrowRecordBatch);
             }
 
-            let rowNum = parquetEncoder.encode(arrowRecordBatchVec).await.box_err().context(EncodeRecordBatch)?;
+            let rowNum = parquetEncoder.recordEncoder.encode(arrowRecordBatchVec).await.box_err().context(EncodeRecordBatch)?;
 
             // TODO: it will be better to use `arrow_row_group.clear()` to reuse the allocated memory.
             arrowRecordBatchVec = Vec::with_capacity(batchNum);
@@ -197,15 +197,15 @@ impl RecordBatchGroupWriter {
             totalRowNum += rowNum;
         }
 
-        let parquet_meta_data = {
-            let mut parquet_meta_data = ParquetMetaData::from(self.meta_data);
-            parquet_meta_data.parquet_filter = parquet_filter;
-            parquet_meta_data
+        let parquetMetaData = {
+            let mut parquetMetaData = ParquetMetaData::from(self.sstMeta);
+            parquetMetaData.parquet_filter = parquet_filter;
+            parquetMetaData
         };
 
-        parquetEncoder.set_meta_data(parquet_meta_data).box_err().context(EncodeRecordBatch)?;
+        parquetEncoder.recordEncoder.encodeParquetMetaData(parquetMetaData).box_err().context(EncodeRecordBatch)?;
 
-        parquetEncoder.close().await.box_err().context(EncodeRecordBatch)?;
+        parquetEncoder.recordEncoder.close().await.box_err().context(EncodeRecordBatch)?;
 
         Ok(totalRowNum)
     }
@@ -252,7 +252,7 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
             rowCountPerRowGroup: self.num_rows_per_row_group,
             max_buffer_size: self.max_buffer_size,
             compression: self.compression,
-            meta_data: sstMeta.clone(),
+            sstMeta: sstMeta.clone(),
             level: self.level,
         };
 

@@ -74,7 +74,7 @@ pub trait QueryExecutor: Clone + Send + Sync {
     /// Execute the query, returning the query results as RecordBatchVec
     ///
     /// REQUIRE: The meta data of tables in query should be found from ContextRef
-    async fn executeLogicalPlan(&self, ctx: ContextRef, queryPlan: QueryPlan) -> Result<RecordBatchVec>;
+    async fn executeLogicalPlan(&self, ctx: ContextRef, queryPlan: QueryPlan) -> Result<Vec<RecordBatch>>;
 }
 
 #[derive(Clone, Default)]
@@ -90,7 +90,7 @@ impl QueryExecutorImpl {
 
 #[async_trait]
 impl QueryExecutor for QueryExecutorImpl {
-    async fn executeLogicalPlan(&self, ctx: ContextRef, queryPlan: QueryPlan) -> Result<RecordBatchVec> {
+    async fn executeLogicalPlan(&self, ctx: ContextRef, queryPlan: QueryPlan) -> Result<Vec<RecordBatch>> {
         // register catalogs to datafusion execution context.
         let catalogName_catalogProvider = CatalogProviderImpl::new_adapters(queryPlan.tableContainer.clone());
         let dataFusionSessionContext = ctx.buildDataFusionSessionContext(&self.config, ctx.request_id, ctx.deadline);
@@ -99,7 +99,7 @@ impl QueryExecutor for QueryExecutorImpl {
             dataFusionSessionContext.register_catalog(&catalogName, Arc::new(catalogProvider));
         }
 
-        let begin_instant = Instant::now();
+        let beginTime = Instant::now();
 
         // dataFusionLogicalPlan优化 dataFusion包办
         let dataFusionLogicalPlan = dataFusionSessionContext.state().optimize(&queryPlan.dataFusionLogicalPlan).context(LogicalOptimize)?;
@@ -114,11 +114,11 @@ impl QueryExecutor for QueryExecutorImpl {
         let stream = physicalPlan.execute().context(ExecutePhysical)?;
 
         // collect all records in the pool, as the stream may perform some costly calculation
-        let record_batches = stream.try_collect().await.context(Collect)?;
+        let recordBatchVec = stream.try_collect().await.context(Collect)?;
 
         info!("executor executed plan, request_id:{}, cost:{}ms, plan_and_metrics: {}",
-            ctx.request_id,begin_instant.saturating_elapsed().as_millis(),physicalPlan.metrics_to_string());
+            ctx.request_id,beginTime.saturating_elapsed().as_millis(),physicalPlan.metrics_to_string());
 
-        Ok(record_batches)
+        Ok(recordBatchVec)
     }
 }

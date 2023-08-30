@@ -265,7 +265,7 @@ impl WalsOpener for KafkaWalsOpener {
         let kafka_wal_config = match config {
             WalStorageConfig::Kafka(config) => config.clone(),
             _ => {
-                return InvalidWalConfig { msg: format!("invalid wal storage config while opening kafka wal, config:{config:?}")}.fail();
+                return InvalidWalConfig { msg: format!("invalid wal storage config while opening kafka wal, config:{config:?}") }.fail();
             }
         };
 
@@ -380,19 +380,15 @@ fn open_storage(storageOptions: StorageOptions,
         // 默认是0
         if storageOptions.disk_cache_capacity.as_byte() > 0 {
             let path = Path::new(&storageOptions.disk_cache_dir).join(DISK_CACHE_DIR_NAME);
-            tokio::fs::create_dir_all(&path).await.context(CreateDir {
-                path: path.to_string_lossy().into_owned(),
-            })?;
+            tokio::fs::create_dir_all(&path).await.context(CreateDir { path: path.to_string_lossy().into_owned() })?;
 
-            objectStore = Arc::new(
-                ObjectStoreWithDiskCache::try_new(
-                    path.to_string_lossy().into_owned(),
-                    storageOptions.disk_cache_capacity.as_byte() as usize,
-                    storageOptions.disk_cache_page_size.as_byte() as usize,
-                    objectStore,
-                    storageOptions.disk_cache_partition_bits,
-                ).await.context(OpenObjectStore)?,
-            ) as _;
+            objectStore = Arc::new(ObjectStoreWithDiskCache::try_new(
+                path.to_string_lossy().into_owned(),
+                storageOptions.disk_cache_capacity.as_byte() as usize,
+                storageOptions.disk_cache_page_size.as_byte() as usize,
+                objectStore,
+                storageOptions.disk_cache_partition_bits,
+            ).await.context(OpenObjectStore)?) as _;
         }
 
         // 增强成 ObjectStoreWithMemCache

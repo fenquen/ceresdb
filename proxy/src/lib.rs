@@ -138,11 +138,9 @@ impl<QueryExecutor0: QueryExecutor + 'static> Proxy<QueryExecutor0> {
         self.instance.catalog_manager.default_catalog_name()
     }
 
-    async fn maybe_forward_prom_remote_query(
-        &self,
-        metric: String,
-        req: PrometheusRemoteQueryRequest,
-    ) -> Result<Option<ForwardResult<PrometheusRemoteQueryResponse, Error>>> {
+    async fn maybe_forward_prom_remote_query(&self,
+                                             metric: String,
+                                             req: PrometheusRemoteQueryRequest) -> Result<Option<ForwardResult<PrometheusRemoteQueryResponse, Error>>> {
         let req_ctx = req.context.as_ref().unwrap();
         let forward_req = ForwardRequest {
             schema: req_ctx.database.clone(),
@@ -214,7 +212,7 @@ impl<QueryExecutor0: QueryExecutor + 'static> Proxy<QueryExecutor0> {
             let timestamp_name = &table_ref.schema().column(table_ref.schema().timestamp_index()).name.clone();
             let ts_col = Column::from_name(timestamp_name);
             let range = find_time_range(&query.dataFusionLogicalPlan, &ts_col)
-                .box_err().context(Internal { msg: "Failed to find time range",})?;
+                .box_err().context(Internal { msg: "Failed to find time range" })?;
             match range.end {
                 Bound::Included(x) | Bound::Excluded(x) => {
                     if let Expr::Literal(ScalarValue::Int64(Some(x))) = x {
@@ -254,17 +252,13 @@ impl<QueryExecutor0: QueryExecutor + 'static> Proxy<QueryExecutor0> {
 
     fn get_schema(&self, catalog: &CatalogRef, schema_name: &str) -> Result<SchemaRef> {
         // TODO: support create schema if not exist
-        let schema = catalog
-            .schema_by_name(schema_name)
-            .box_err()
-            .with_context(|| ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: format!("Failed to find schema, schema_name:{schema_name}"),
-            })?
-            .context(ErrNoCause {
-                code: StatusCode::BAD_REQUEST,
-                msg: format!("Schema not found, schema_name:{schema_name}"),
-            })?;
+        let schema = catalog.schema_by_name(schema_name).box_err().with_context(|| ErrWithCause {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
+            msg: format!("Failed to find schema, schema_name:{schema_name}"),
+        })?.context(ErrNoCause {
+            code: StatusCode::BAD_REQUEST,
+            msg: format!("Schema not found, schema_name:{schema_name}"),
+        })?;
         Ok(schema)
     }
 
@@ -279,12 +273,10 @@ impl<QueryExecutor0: QueryExecutor + 'static> Proxy<QueryExecutor0> {
         Ok(table)
     }
 
-    async fn maybe_open_partition_table_if_not_exist(
-        &self,
-        catalog_name: &str,
-        schema_name: &str,
-        table_name: &str,
-    ) -> Result<()> {
+    async fn maybe_open_partition_table_if_not_exist(&self,
+                                                     catalog_name: &str,
+                                                     schema_name: &str,
+                                                     table_name: &str) -> Result<()> {
         let catalog = self.get_catalog(catalog_name)?;
 
         let schema = self.get_schema(&catalog, schema_name)?;
@@ -309,17 +301,16 @@ impl<QueryExecutor0: QueryExecutor + 'static> Proxy<QueryExecutor0> {
                 if table.id().as_u64() == partition_table_info.id {
                     return Ok(());
                 }
+
                 info!("Drop partition table because the id of the table in ceresdb is different from the one in ceresmeta, catalog_name:{catalog_name}, schema_name:{schema_name}, table_name:{table_name}, old_table_id:{}, new_table_id:{}",
-                             table.id().as_u64(), partition_table_info.id);
-                // Drop partition table because the id of the table in ceresdb is different from
-                // the one in ceresmeta.
+                    table.id().as_u64(), partition_table_info.id);
+                // Drop partition table because the id of the table in ceresdb is different from the one in ceresmeta.
                 self.drop_partition_table(
                     schema.clone(),
                     catalog_name.to_string(),
                     schema_name.to_string(),
                     table_name.to_string(),
-                )
-                    .await?;
+                ).await?;
             }
             (Some(table), None) => {
                 // Drop partition table because it does not exist in ceresmeta but exists in
@@ -331,8 +322,7 @@ impl<QueryExecutor0: QueryExecutor + 'static> Proxy<QueryExecutor0> {
                         catalog_name.to_string(),
                         schema_name.to_string(),
                         table_name.to_string(),
-                    )
-                        .await?;
+                    ).await?;
                 }
                 // No need to create non-partition table.
                 return Ok(());
@@ -352,26 +342,19 @@ impl<QueryExecutor0: QueryExecutor + 'static> Proxy<QueryExecutor0> {
             partition_table_info.partition_info.as_ref().unwrap(),
             0usize,
         );
-        let table = self
-            .instance
-            .remote_engine_ref
-            .get_table_info(GetTableInfoRequest {
-                table: TableIdentifier {
-                    catalog: catalog_name.to_string(),
-                    schema: schema_name.to_string(),
-                    table: first_sub_partition_table_name,
-                },
-            })
-            .await
-            .box_err()
-            .with_context(|| ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: "Failed to get table",
-            })?;
+        let table = self.instance.remote_engine_ref.get_table_info(GetTableInfoRequest {
+            table: TableIdentifier {
+                catalog: catalog_name.to_string(),
+                schema: schema_name.to_string(),
+                table: first_sub_partition_table_name,
+            },
+        }).await.box_err().with_context(|| ErrWithCause {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
+            msg: "Failed to get table",
+        })?;
 
         // Partition table is a virtual table, so we need to create it manually.
-        // Partition info is stored in ceresmeta, so we need to use create_table_request
-        // to create it.
+        // Partition info is stored in ceresmeta, so we need to use create_table_request to create it.
         let create_table_request = CreateTableRequest {
             catalogName: catalog_name.to_string(),
             schemaName: schema_name.to_string(),
@@ -384,47 +367,36 @@ impl<QueryExecutor0: QueryExecutor + 'static> Proxy<QueryExecutor0> {
             shard_id: DEFAULT_SHARD_ID,
             partition_info: partition_table_info.partition_info,
         };
+
         let create_opts = CreateOptions {
             tableEngine: self.instance.partition_table_engine.clone(),
             create_if_not_exists: true,
         };
-        schema
-            .create_table(create_table_request.clone(), create_opts)
-            .await
-            .box_err()
-            .with_context(|| ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: format!("Failed to create table, request:{create_table_request:?}"),
-            })?;
+
+        schema.create_table(create_table_request.clone(), create_opts).await.box_err().with_context(|| ErrWithCause {
+            code: StatusCode::INTERNAL_SERVER_ERROR,
+            msg: format!("Failed to create table, request:{create_table_request:?}"),
+        })?;
+
         Ok(())
     }
 
-    async fn drop_partition_table(
-        &self,
-        schema: SchemaRef,
-        catalog_name: String,
-        schema_name: String,
-        table_name: String,
-    ) -> Result<()> {
+    async fn drop_partition_table(&self,
+                                  schema: SchemaRef,
+                                  catalog_name: String,
+                                  schema_name: String,
+                                  table_name: String) -> Result<()> {
         let opts = DropOptions {
             table_engine: self.instance.partition_table_engine.clone(),
         };
-        schema
-            .drop_table(
-                DropTableRequest {
-                    catalog_name,
-                    schema_name,
-                    table_name: table_name.clone(),
-                    engine: PARTITION_TABLE_ENGINE_TYPE.to_string(),
-                },
-                opts,
-            )
-            .await
-            .box_err()
-            .with_context(|| ErrWithCause {
-                code: StatusCode::INTERNAL_SERVER_ERROR,
-                msg: format!("Failed to drop partition table, table_name:{table_name}"),
-            })?;
+
+        schema.drop_table(
+            DropTableRequest {
+                catalog_name,
+                schema_name,
+                table_name: table_name.clone(),
+                engine: PARTITION_TABLE_ENGINE_TYPE.to_string(),
+            }, opts).await.box_err().with_context(|| ErrWithCause { code: StatusCode::INTERNAL_SERVER_ERROR, msg: format!("Failed to drop partition table, table_name:{table_name}") })?;
         Ok(())
     }
 
@@ -491,8 +463,7 @@ impl<QueryExecutor0: QueryExecutor + 'static> Proxy<QueryExecutor0> {
                          enable_partition_table_access: bool) -> Result<InterpreterPtr> {
         let interpreter_ctx = InterpreterContext::builder(request_id, deadline)
             .default_catalog_and_schema(catalog.to_string(), schema.to_string())
-            .enable_partition_table_access(enable_partition_table_access)
-            .build();
+            .enable_partition_table_access(enable_partition_table_access).build();
 
         let interpreter_factory =
             InterpreterFactory::new(self.instance.query_executor.clone(),

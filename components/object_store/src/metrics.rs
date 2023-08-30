@@ -53,23 +53,20 @@ lazy_static! {
         "latency of object store's operation",
         &["op"],
         exponential_buckets(0.0005, 2.0, 20).unwrap()
-    )
-    .unwrap();
+    ).unwrap();
+
     static ref OBJECT_STORE_THROUGHPUT_HISTOGRAM_VEC: HistogramVec = register_histogram_vec!(
         "object_store_throughput",
         "throughput of object store's operation",
         &["op"],
         // The max bound value is 64 * 2^24 = 1GB
         exponential_buckets(64.0, 4.0, 12).unwrap()
-    )
-    .unwrap();
+    ).unwrap();
 }
 
 lazy_static! {
-    pub static ref OBJECT_STORE_DURATION_HISTOGRAM: ObjectStoreDurationHistogram =
-        ObjectStoreDurationHistogram::from(&OBJECT_STORE_DURATION_HISTOGRAM_VEC);
-    pub static ref OBJECT_STORE_THROUGHPUT_HISTOGRAM: ObjectStoreThroughputHistogram =
-        ObjectStoreThroughputHistogram::from(&OBJECT_STORE_THROUGHPUT_HISTOGRAM_VEC);
+    pub static ref OBJECT_STORE_DURATION_HISTOGRAM: ObjectStoreDurationHistogram = ObjectStoreDurationHistogram::from(&OBJECT_STORE_DURATION_HISTOGRAM_VEC);
+    pub static ref OBJECT_STORE_THROUGHPUT_HISTOGRAM: ObjectStoreThroughputHistogram = ObjectStoreThroughputHistogram::from(&OBJECT_STORE_THROUGHPUT_HISTOGRAM_VEC);
 }
 
 pub const METRICS: &str = "METRICS";

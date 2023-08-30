@@ -123,7 +123,7 @@ impl<P> Frontend<P> {
 }
 
 impl<P: MetaProvider> Frontend<P> {
-    /// Create logical plan for the statement
+    /// create logical plan for the statement
     pub fn statementToPlan(&self, ctx: &mut Context, statement: Statement) -> Result<Plan> {
         let planner = Planner::new(&self.provider, ctx.request_id, ctx.read_parallelism);
 
