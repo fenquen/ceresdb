@@ -51,20 +51,15 @@ pub struct RowGroupPruner<'a> {
 }
 
 impl<'a> RowGroupPruner<'a> {
-    // TODO: DataFusion already change predicates to PhyscialExpr, we should keep up
-    // with upstream.
+    // TODO: DataFusion already change predicates to PhyscialExpr, we should keep up with upstream.
     // https://github.com/apache/arrow-datafusion/issues/4695
-    pub fn try_new(
-        schema: &'a SchemaRef,
-        row_groups: &'a [RowGroupMetaData],
-        parquet_filter: Option<&'a ParquetFilter>,
-        predicates: &'a [Expr],
-        metrics_collector: Option<MetricsCollector>,
-    ) -> Result<Self> {
+    pub fn try_new(schema: &'a SchemaRef,
+                   row_groups: &'a [RowGroupMetaData],
+                   parquet_filter: Option<&'a ParquetFilter>,
+                   predicates: &'a [Expr],
+                   metrics_collector: Option<MetricsCollector>) -> Result<Self> {
         if let Some(f) = parquet_filter {
-            ensure!(f.len() == row_groups.len(), OtherNoCause {
-                msg: format!("expect sst_filters.len() == row_groups.len(), num_sst_filters:{}, num_row_groups:{}", f.len(), row_groups.len()),
-            });
+            ensure!(f.len() == row_groups.len(), OtherNoCause {msg: format!("expect sst_filters.len() == row_groups.len(), num_sst_filters:{}, num_row_groups:{}", f.len(), row_groups.len()),});
         }
 
         let metrics = Metrics {

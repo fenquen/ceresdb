@@ -144,7 +144,7 @@ impl<'a> TimeBucket<'a> {
     fn call(&self) -> Result<ColumnBlock> {
         // TODO(tanruixiang) : mising is_dictionary params
         let mut out_column_builder =
-            ColumnBlockBuilder::with_capacity(&DatumKind::Timestamp, self.column.num_rows(), false);
+            ColumnBlockBuilder::newWithCapacity(&DatumKind::Timestamp, self.column.num_rows(), false);
         for ts_opt in self.column.iter() {
             match ts_opt {
                 Some(ts) => {
@@ -153,12 +153,12 @@ impl<'a> TimeBucket<'a> {
                         period: self.period,
                     })?;
                     out_column_builder
-                        .append(Datum::Timestamp(truncated))
+                        .appendDatum(Datum::Timestamp(truncated))
                         .context(BuildColumn)?;
                 }
                 None => {
                     out_column_builder
-                        .append(Datum::Null)
+                        .appendDatum(Datum::Null)
                         .context(BuildColumn)?;
                 }
             }

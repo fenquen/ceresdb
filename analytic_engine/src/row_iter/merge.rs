@@ -318,11 +318,11 @@ impl BufferedStreamState {
     /// Take record batch slice with at most `len` rows from cursor and advance
     /// the cursor.
     fn take_record_batch_slice(&mut self, len: usize) -> RecordBatchWithKey {
-        let len_to_fetch = cmp::min(self.buffered_record_batch.record_batch.num_rows() - self.cursor, len);
+        let len_to_fetch = cmp::min(self.buffered_record_batch.record_batch.rowCount() - self.cursor, len);
 
         let record_batch = self.buffered_record_batch.record_batch.slice(self.cursor, len_to_fetch);
 
-        self.cursor += record_batch.num_rows();
+        self.cursor += record_batch.rowCount();
 
         record_batch
     }
@@ -640,7 +640,7 @@ impl MergeIterator {
     ) -> Self {
         let heap_cap = streams.len();
         let record_batch_builder =
-            RecordBatchWithKeyBuilder::with_capacity(schema.clone(), iter_options.batch_size);
+            RecordBatchWithKeyBuilder::newWithCapacity(schema.clone(), iter_options.batch_size);
         Self {
             table_id,
             request_id,
@@ -773,7 +773,7 @@ impl MergeIterator {
         let record_batch = if self.record_batch_builder.is_empty() {
             let record_batch = buffered_stream.take_record_batch_slice(num_rows_to_fetch);
 
-            self.metrics.total_rows_fetch_from_one += record_batch.num_rows();
+            self.metrics.total_rows_fetch_from_one += record_batch.rowCount();
 
             Some(record_batch)
         } else {

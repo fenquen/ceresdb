@@ -65,9 +65,9 @@ struct RecordBatchGroupWriter {
     useHybridEncoding: bool,
     /// stream化的memTable
     input: RecordBatchStream,
-    input_exhausted: bool,
+    inputExhausted: bool,
     meta_data: SstMeta,
-    num_rows_per_row_group: usize,
+    rowCountPerRowGroup: usize,
     max_buffer_size: usize,
     compression: Compression,
     level: Level,
@@ -79,25 +79,26 @@ impl RecordBatchGroupWriter {
     /// Except the last one, every row group is ensured to contains exactly
     /// `self.num_rows_per_row_group`. As for the last one, it will cover all the left rows.
     async fn fetchNextRowGroup(&mut self, prevRecordBatchWithKey: &mut Option<RecordBatchWithKey>) -> Result<Vec<RecordBatchWithKey>> {
-        let mut currentRowGroup = vec![];
+        let mut recordBatchWithKeyVec = vec![];
 
+        // rowGroup包含了多个recordBatchWithKey 而 recordBatchWithKey 包含多个 row的 fenquen
         // used to record the number of remaining rows to fill `curr_row_group`.
-        let mut remaining = self.num_rows_per_row_group;
+        let mut remaining = self.rowCountPerRowGroup;
 
         // keep filling `curr_row_group` until `remaining` is zero.
         while remaining > 0 {
             // use the `prev_record_batch` to fill `curr_row_group` if possible.
             if let Some(v) = prevRecordBatchWithKey {
-                let total_rows = v.num_rows();
+                let total_rows = v.rowCount();
 
                 if total_rows <= remaining {
                     // the whole record batch is part of the `curr_row_group`, and let's feed it into `curr_row_group`.
-                    currentRowGroup.push(prevRecordBatchWithKey.take().unwrap());
+                    recordBatchWithKeyVec.push(prevRecordBatchWithKey.take().unwrap());
                     remaining -= total_rows;
                 } else {
                     // only first `remaining` rows of the record batch belongs to `curr_row_group`,
                     // the rest should be put to `prev_record_batch` for next row group.
-                    currentRowGroup.push(v.slice(0, remaining));
+                    recordBatchWithKeyVec.push(v.slice(0, remaining));
                     *v = v.slice(remaining, total_rows - remaining);
                     remaining = 0;
                 }
@@ -105,27 +106,27 @@ impl RecordBatchGroupWriter {
                 continue;
             }
 
-            if self.input_exhausted {
+            if self.inputExhausted {
                 break;
             }
 
             // 之前的recordBatch已经用光了,拿取下轮
             match self.input.next().await {
                 Some(v) => {
-                    let v = v.context(PollRecordBatch)?;
-                    debug_assert!(!v.is_empty(), "found empty record batch, request id:{}", self.requestId);
+                    let recordBatchWithKey = v.context(PollRecordBatch)?;
+                    debug_assert!(!recordBatchWithKey.is_empty(), "found empty record batch, request id:{}", self.requestId);
 
                     // updated the exhausted `prev_record_batch`, and let next loop to continue to fill `curr_row_group`.
-                    prevRecordBatchWithKey.replace(v);
+                    prevRecordBatchWithKey.replace(recordBatchWithKey);
                 }
                 None => {
-                    self.input_exhausted = true;
+                    self.inputExhausted = true;
                     break;
                 }
             };
         }
 
-        Ok(currentRowGroup)
+        Ok(recordBatchWithKeyVec)
     }
 
     /// Build the parquet filter for the given `row_group`.
@@ -146,52 +147,54 @@ impl RecordBatchGroupWriter {
         builder.build().box_err().context(BuildParquetFilter)
     }
 
-    fn need_custom_filter(&self) -> bool {
+    fn needCustomFilter(&self) -> bool {
         // TODO: support filter in hybrid storage format [#435](https://github.com/CeresDB/ceresdb/issues/435)
         !self.useHybridEncoding && !self.level.is_min()
     }
 
-    async fn writeAll<W: AsyncWrite + Send + Unpin + 'static>(mut self, sink: W) -> Result<usize> {
+    async fn writeAll<W: AsyncWrite + Send + Unpin + 'static>(mut self, writer: W) -> Result<usize> {
+        // iter运行1把的成果便是RecordBatchWithKey
         let mut prevRecordBatchWithKey: Option<RecordBatchWithKey> = None;
         let mut arrowRecordBatchVec = Vec::new();
-        let mut total_num_rows = 0;
+        let mut totalRowNum = 0;
 
         let mut parquetEncoder =
-            ParquetEncoder::new(sink,
+            ParquetEncoder::new(writer,
                                 &self.meta_data.schema,
                                 self.useHybridEncoding,
-                                self.num_rows_per_row_group,
+                                self.rowCountPerRowGroup,
                                 self.max_buffer_size,
                                 self.compression).box_err().context(EncodeRecordBatch)?;
 
-        let mut parquet_filter = if self.need_custom_filter() {
+        let mut parquet_filter = if self.needCustomFilter() {
             Some(ParquetFilter::default())
         } else {
             None
         };
 
         loop {
-            // fenquen rowGroup也称的是Vec<RecordBatchWithKey>
-            let row_group = self.fetchNextRowGroup(&mut prevRecordBatchWithKey).await?;
-            if row_group.is_empty() {
+            // rowGroup是RecordBatchWithKeyVec fenquen
+            let recordBatchWithKeyVec = self.fetchNextRowGroup(&mut prevRecordBatchWithKey).await?;
+
+            if recordBatchWithKeyVec.is_empty() {
                 break;
             }
 
             if let Some(filter) = &mut parquet_filter {
-                filter.push_row_group_filter(self.build_row_group_filter(&row_group)?);
+                filter.row_group_filters.push(self.build_row_group_filter(&recordBatchWithKeyVec)?);
             }
 
-            let num_batches = row_group.len();
-            for record_batch in row_group {
-                arrowRecordBatchVec.push(record_batch.into_record_batch().into_arrow_record_batch());
+            let batchNum = recordBatchWithKeyVec.len();
+            for recordBatchWithKey in recordBatchWithKeyVec {
+                arrowRecordBatchVec.push(recordBatchWithKey.intoRecordBatch().intoArrowRecordBatch());
             }
 
-            let num_rows = parquetEncoder.encode_record_batches(arrowRecordBatchVec).await.box_err().context(EncodeRecordBatch)?;
+            let rowNum = parquetEncoder.encode(arrowRecordBatchVec).await.box_err().context(EncodeRecordBatch)?;
 
             // TODO: it will be better to use `arrow_row_group.clear()` to reuse the allocated memory.
-            arrowRecordBatchVec = Vec::with_capacity(num_batches);
+            arrowRecordBatchVec = Vec::with_capacity(batchNum);
 
-            total_num_rows += num_rows;
+            totalRowNum += rowNum;
         }
 
         let parquet_meta_data = {
@@ -204,7 +207,7 @@ impl RecordBatchGroupWriter {
 
         parquetEncoder.close().await.box_err().context(EncodeRecordBatch)?;
 
-        Ok(total_num_rows)
+        Ok(totalRowNum)
     }
 }
 
@@ -217,7 +220,7 @@ struct ObjectStoreMultiUploadAbortor<'a> {
 impl<'a> ObjectStoreMultiUploadAbortor<'a> {
     async fn initialize(objectStore: &'a Arc<dyn ObjectStore>,
                         location: &'a Path) -> Result<(ObjectStoreMultiUploadAbortor<'a>, Box<dyn AsyncWrite + Unpin + Send>, )> {
-        let (sessionId, uploader) = objectStore.put_multipart(location).await.context(Storage)?;
+        let (sessionId, writer) = objectStore.put_multipart(location).await.context(Storage)?;
 
         let aborter = Self {
             location,
@@ -225,7 +228,7 @@ impl<'a> ObjectStoreMultiUploadAbortor<'a> {
             objectStore,
         };
 
-        Ok((aborter, uploader))
+        Ok((aborter, writer))
     }
 
     async fn abort(self) -> Result<()> {
@@ -245,18 +248,18 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
             useHybridEncoding: self.useHybridEncoding,
             requestId,
             input,
-            input_exhausted: false,
-            num_rows_per_row_group: self.num_rows_per_row_group,
+            inputExhausted: false,
+            rowCountPerRowGroup: self.num_rows_per_row_group,
             max_buffer_size: self.max_buffer_size,
             compression: self.compression,
             meta_data: sstMeta.clone(),
             level: self.level,
         };
 
-        let (aborter, sink) =
+        let (aborter, writer) =
             ObjectStoreMultiUploadAbortor::initialize(self.objectStore, self.sstFilePath).await?;
 
-        let total_num_rows = match recordBatchGroupWriter.writeAll(sink).await {
+        let totalRowNum = match recordBatchGroupWriter.writeAll(writer).await {
             Ok(v) => v,
             Err(e) => {
                 if let Err(e) = aborter.abort().await {
@@ -277,7 +280,7 @@ impl<'a> SstWriter for ParquetSstWriter<'a> {
 
         Ok(SstInfo {
             file_size: file_head.size,
-            row_num: total_num_rows,
+            row_num: totalRowNum,
             storage_format,
         })
     }

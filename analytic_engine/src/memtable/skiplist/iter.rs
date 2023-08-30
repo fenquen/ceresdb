@@ -18,8 +18,6 @@ use generic_error::BoxError;
 use log::trace;
 use skiplist::{ArenaSlice, SkipListIter, SkipList};
 use snafu::ResultExt;
-use time_ext::InstantExt;
-
 use crate::memtable::{
     key::{self, KeySequence},
     skiplist::{BytewiseComparator, SkipListMemTable},
@@ -46,7 +44,7 @@ pub struct ColumnarIterImpl<A: Arena<Stats=BasicStats> + Clone + Sync + Send> {
     /// schema of this memtable to decode row
     memtable_schema: Schema,
     /// Projection of schema to read
-    projected_schema: ProjectedSchema,
+    projectedSchema: ProjectedSchema,
     projector: RowProjector,
 
     // Options related:
@@ -87,7 +85,7 @@ impl<A: Arena<Stats=BasicStats> + Clone + Sync + Send> Iterator for ColumnarIter
 impl<A: Arena<Stats=BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
     pub fn new(memtable: &SkipListMemTable<A>, ctx: ScanContext, request: ScanRequest) -> Result<Self> {
         // create projection for the memtable schema
-        let projector = request.projected_schema.try_project_with_key(&memtable.schema).context(ProjectSchema)?;
+        let projector = request.projected_schema.tryProjectWithKey(&memtable.schema).context(ProjectSchema)?;
 
         let skipListIter = memtable.skiplist.iter();
 
@@ -95,7 +93,7 @@ impl<A: Arena<Stats=BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
             Self {
                 skipListIter,
                 memtable_schema: memtable.schema.clone(),
-                projected_schema: request.projected_schema,
+                projectedSchema: request.projected_schema,
                 projector,
                 batchSize: ctx.batch_size,
                 deadline: ctx.deadline,
@@ -147,39 +145,39 @@ impl<A: Arena<Stats=BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
         debug_assert_eq!(State::Initialized, self.state);
         assert!(self.batchSize > 0);
 
-        let mut builder =
-            RecordBatchWithKeyBuilder::with_capacity(self.projected_schema.to_record_schema_with_key(),
-                                                     self.batchSize);
-        let mut num_rows = 0;
+        let mut recordBatchWithKeyBuilder =
+            RecordBatchWithKeyBuilder::newWithCapacity(self.projectedSchema.to_record_schema_with_key(),
+                                                       self.batchSize);
+        let mut rowNum = 0;
 
-        while self.skipListIter.valid() && num_rows < self.batchSize {
+        while self.skipListIter.valid() && rowNum < self.batchSize {
             if let Some(rowData) = self.fetchNextRow()? {
                 let rowReader = ContiguousRowReader::new(&rowData, &self.memtable_schema).context(DecodeContinuousRow)?;
                 let projectedRow = ProjectedContiguousRow::new(rowReader, &self.projector);
 
                 trace!("column iterator fetch next row, row:{:?}", projectedRow);
 
-                builder.appendProjectedContiguousRow(&projectedRow).context(AppendRow)?;
-                num_rows += 1;
+                // 调用 columnBlockBuilder.append
+                recordBatchWithKeyBuilder.appendProjectedContiguousRow(&projectedRow).context(AppendRow)?;
+                rowNum += 1;
             } else { // there is no more row to fetch
                 self.finish();
                 break;
             }
         }
 
-        if num_rows > 0 {
+        if rowNum > 0 {
             if let Some(deadline) = self.deadline {
-                if deadline.check_deadline() {
+                if Instant::now() > deadline {
                     return IterTimeout {}.fail();
                 }
             }
 
-            let batch = builder.build().context(BuildRecordBatch)?;
-            trace!("column iterator send one batch:{:?}", batch);
+            let recordBatchWithKey = recordBatchWithKeyBuilder.build().context(BuildRecordBatch)?;
+            trace!("column iterator send one batch:{:?}", recordBatchWithKey);
 
-            Ok(Some(batch))
-        } else {
-            // if iter is invalid after seek (nothing matched), then it may not be marked as finished yet
+            Ok(Some(recordBatchWithKey))
+        } else { // if iter is invalid after seek (nothing matched), then it may not be marked as finished yet
             self.finish();
             Ok(None)
         }

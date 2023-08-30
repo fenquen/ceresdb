@@ -145,7 +145,7 @@ impl SystemTable for Tables {
 
         let projector = request
             .projected_schema
-            .try_project_with_key(&self.schema)
+            .tryProjectWithKey(&self.schema)
             .expect("Should succeed to try_project_key of sys_tables");
         for catalog in &catalogs {
             for schema in &catalog
@@ -167,7 +167,7 @@ impl SystemTable for Tables {
                 }
             }
         }
-        let record_batch = builder.build().unwrap().into_record_batch();
+        let record_batch = builder.build().unwrap().intoRecordBatch();
         Ok(Box::pin(OneRecordBatchStream {
             schema: self.schema.clone().to_record_schema(),
             record_batch: Some(record_batch),

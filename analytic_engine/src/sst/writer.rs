@@ -57,6 +57,7 @@ pub mod error {
 pub use error::*;
 
 pub type RecordBatchStreamItem = std::result::Result<RecordBatchWithKey, GenericError>;
+
 // TODO(yingwen): SstReader also has a RecordBatchStream, can we use same type?
 pub type RecordBatchStream = Box<dyn Stream<Item=RecordBatchStreamItem> + Send + Unpin>;
 

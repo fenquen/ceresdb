@@ -232,20 +232,12 @@ impl RowGroupFilter {
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct ParquetFilter {
     /// every filter is a row group filter consists of column filters.
-    row_group_filters: Vec<RowGroupFilter>,
+    pub row_group_filters: Vec<RowGroupFilter>,
 }
 
 impl ParquetFilter {
-    pub fn push_row_group_filter(&mut self, row_group_filter: RowGroupFilter) {
-        self.row_group_filters.push(row_group_filter);
-    }
-
     pub fn len(&self) -> usize {
         self.row_group_filters.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
     }
 
     pub fn size(&self) -> usize {

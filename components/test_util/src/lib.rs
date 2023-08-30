@@ -31,7 +31,7 @@ pub fn init_log_for_test() {
 pub fn assert_record_batches_eq(expected: &[&str], record_batches: Vec<RecordBatch>) {
     let arrow_record_batch = record_batches
         .into_iter()
-        .map(|record| record.into_arrow_record_batch())
+        .map(|record| record.intoArrowRecordBatch())
         .collect::<Vec<_>>();
 
     let expected_lines: Vec<String> = expected.iter().map(|&s| s.into()).collect();

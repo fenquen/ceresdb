@@ -59,7 +59,7 @@ impl Stream for ToDfStream {
 
     fn poll_next(mut self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         match self.0.as_mut().poll_next(ctx) {
-            Poll::Ready(Some(Ok(record_batch))) => Poll::Ready(Some(Ok(record_batch.into_arrow_record_batch()))),
+            Poll::Ready(Some(Ok(record_batch))) => Poll::Ready(Some(Ok(record_batch.intoArrowRecordBatch()))),
             Poll::Ready(Some(Err(e))) => Poll::Ready(Some(Err(DataFusionError::External(Box::new(e))))),
             Poll::Ready(None) => Poll::Ready(None),
             Poll::Pending => Poll::Pending,

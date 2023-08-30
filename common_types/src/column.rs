@@ -1,6 +1,6 @@
 // Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
-//! Column
+
 use std::sync::Arc;
 
 use arrow::{
@@ -91,6 +91,7 @@ impl NullColumn {
 macro_rules! define_numeric_column {
     ($($Kind: ident), *) => {
         $(paste! {
+            // DoubleColumn(Float64Array) column内部的包含了对应的array a fenquen
             #[derive(Debug, Clone)]
             pub struct [<$Kind Column>]([<$Kind Array>]);
 
@@ -109,9 +110,7 @@ macro_rules! define_numeric_column {
     }
 }
 
-define_numeric_column!(
-    Float, Double, UInt64, UInt32, UInt16, UInt8, Int64, Int32, Int16, Int8, Boolean
-);
+define_numeric_column!(Float, Double, UInt64, UInt32, UInt16, UInt8, Int64, Int32, Int16, Int8, Boolean);
 
 #[derive(Debug, Clone)]
 pub struct TimestampColumn(TimestampMillisecondArray);
@@ -259,16 +258,8 @@ macro_rules! impl_column {
 }
 
 impl_column!(NullColumn, get_null_datum, get_null_datum_view);
-impl_column!(
-    TimestampColumn,
-    get_timestamp_datum,
-    get_timestamp_datum_view
-);
-impl_column!(
-    VarbinaryColumn,
-    get_varbinary_datum,
-    get_varbinary_datum_view
-);
+impl_column!(TimestampColumn, get_timestamp_datum, get_timestamp_datum_view);
+impl_column!(VarbinaryColumn, get_varbinary_datum, get_varbinary_datum_view);
 impl_column!(StringColumn, get_string_datum, get_string_datum_view);
 
 impl StringDictionaryColumn {
@@ -323,13 +314,9 @@ impl StringDictionaryColumn {
 macro_rules! impl_dedup {
     ($Column: ident) => {
         impl $Column {
-            /// If datum i is not equal to previous datum i - 1, mark `selected[i]` to
-            /// true.
-            ///
+            /// If datum i is not equal to previous datum i - 1, mark `selected[i]` to true.
             /// The first datum is marked to true.
-            ///
-            /// The size of selected must equal to the size of this column and
-            /// initialized to false.
+            /// The size of selected must equal to the size of this column and initialized to false.
             #[allow(clippy::float_cmp)]
             pub fn dedup(&self, selected: &mut [bool]) {
                 if self.0.is_empty() {
@@ -720,10 +707,7 @@ macro_rules! impl_column_block {
     };
 }
 
-impl_column_block!(
-    Null, Timestamp, Double, Float, Varbinary, String, UInt64, UInt32, UInt16, UInt8, Int64, Int32,
-    Int16, Int8, Boolean, Date, Time
-);
+impl_column_block!(Null, Timestamp, Double, Float, Varbinary, String, UInt64, UInt32, UInt16, UInt8, Int64, Int32,Int16, Int8, Boolean, Date, Time);
 
 // TODO(yingwen): We can add a unsafe function that don't do bound check.
 
@@ -801,18 +785,11 @@ macro_rules! define_column_block {
     }
 }
 
-// Define column blocks, Null is defined explicitly in macro.
-define_column_block!(
-    Timestamp, Double, Float, Varbinary, UInt64, UInt32, UInt16, UInt8, Int64, Int32, Int16, Int8,
-    Boolean, Date, Time
-);
+define_column_block!(Timestamp, Double, Float, Varbinary, UInt64, UInt32, UInt16, UInt8, Int64, Int32, Int16, Int8,Boolean, Date, Time);
 
 impl ColumnBlock {
     pub fn try_cast_arrow_array_ref(array: &ArrayRef) -> Result<Self> {
-        let datum_kind =
-            DatumKind::from_data_type(array.data_type()).with_context(|| UnsupportedArray {
-                data_type: array.data_type().clone(),
-            })?;
+        let datum_kind = DatumKind::from_data_type(array.data_type()).with_context(|| UnsupportedArray { data_type: array.data_type().clone()})?;
         Self::try_from_arrow_array_ref(&datum_kind, array)
     }
 
@@ -828,8 +805,7 @@ impl ColumnBlock {
     }
 }
 
-// TODO: This is a temp workaround to support nanoseconds, a better way
-// is to support nanoseconds natively.
+// TODO: This is a temp workaround to support nanoseconds, a better way is to support nanoseconds natively.
 // This is also required for influxql.
 pub fn cast_nanosecond_to_mills(array: &ArrayRef) -> Result<Arc<dyn Array>> {
     let column = ColumnarValue::Array(array.clone());
@@ -839,8 +815,8 @@ pub fn cast_nanosecond_to_mills(array: &ArrayRef) -> Result<Arc<dyn Array>> {
         // It will use the default option internally when found None.
         None,
     ).with_context(|| CastTimestamp {
-            data_type: DataType::Timestamp(TimeUnit::Millisecond, None),
-        })?;
+        data_type: DataType::Timestamp(TimeUnit::Millisecond, None),
+    })?;
 
     match mills_column {
         ColumnarValue::Array(array) => Ok(array),
@@ -849,13 +825,10 @@ pub fn cast_nanosecond_to_mills(array: &ArrayRef) -> Result<Arc<dyn Array>> {
 }
 
 fn cast_array<'a, T: 'static>(datum_kind: &DatumKind, array: &'a ArrayRef) -> Result<&'a T> {
-    array
-        .as_any()
-        .downcast_ref::<T>()
-        .with_context(|| InvalidArrayType {
-            datum_kind: *datum_kind,
-            data_type: array.data_type().clone(),
-        })
+    array.as_any().downcast_ref::<T>().with_context(|| InvalidArrayType {
+        datum_kind: *datum_kind,
+        data_type: array.data_type().clone(),
+    })
 }
 
 macro_rules! append_datum {
@@ -863,10 +836,7 @@ macro_rules! append_datum {
         match $datum {
             $DatumType::Null => Ok($builder.append_null()),
             $DatumType::$Kind(v) => Ok($builder.append_value(v)),
-            _ => ConflictType {
-                expect: DatumKind::$Kind,
-                given: $datum.kind(),
-            }.fail(),
+            _ => ConflictType {expect: DatumKind::$Kind, given: $datum.kind()}.fail(),
         }
     };
 }
@@ -876,11 +846,7 @@ macro_rules! append_datum_into {
         match $datum {
             $DatumType::Null => Ok($builder.append_null()),
             $DatumType::$Kind(v) => Ok($builder.append_value(v.into())),
-            _ => ConflictType {
-                expect: DatumKind::$Kind,
-                given: $datum.kind(),
-            }
-            .fail(),
+            _ => ConflictType {expect: DatumKind::$Kind, given: $datum.kind()}.fail(),
         }
     };
 }
@@ -896,8 +862,7 @@ macro_rules! append_block {
                 Ok(())
             }
             $BlockType::$Kind(v) => {
-                // There is no convenient api to copy a range of data from array to builder, so
-                // we still need to clone value one by one using a for loop.
+                // there is no convenient api to copy a range of data from array to builder, so we still need to clone value one by one using a for loop.
                 let end = std::cmp::min($start + $len, v.num_rows());
                 for i in $start..end {
                     let value_opt = v.value(i);
@@ -912,238 +877,252 @@ macro_rules! append_block {
                 }
                 Ok(())
             }
-            _ => ConflictType {
-                expect: DatumKind::$Kind,
-                given: $block.datum_kind(),
-            }
-            .fail(),
+            _ => ConflictType {expect: DatumKind::$Kind, given: $block.datum_kind()}.fail(),
         }
     };
 }
 
-macro_rules! define_column_block_builder {
-    ($(($Kind: ident, $Builder: ident)), *) => {
-        paste! {
-            pub enum ColumnBlockBuilder {
-                Null { rows: usize },
-                Timestamp(TimestampMillisecondBuilder),
-                Varbinary(BinaryBuilder),
-                String(StringBuilder),
-                Date(DateBuilder),
-                Time(TimeBuilder),
-                Dictionary(StringDictionaryBuilder::<Int32Type>),
-                $(
-                    $Kind($Builder),
-                )*
-            }
 
-            impl ColumnBlockBuilder {
-                /// Create by data type with initial capacity
-                pub fn with_capacity(data_type: &DatumKind, item_capacity: usize, is_dictionary : bool) -> Self {
-                    match data_type {
-                        DatumKind::Null => Self::Null { rows: 0 },
-                        DatumKind::Timestamp => Self::Timestamp(TimestampMillisecondBuilder::with_capacity(item_capacity)),
-                        // The data_capacity is set as 1024, because the item is variable-size type.
-                        DatumKind::Varbinary => Self::Varbinary(BinaryBuilder::with_capacity(item_capacity, 1024)),
-                        DatumKind::String =>{
-                            if is_dictionary {
-                                Self::Dictionary(StringDictionaryBuilder::<Int32Type>::new())
-                            } else {
-                                Self::String(StringBuilder::with_capacity(item_capacity, 1024))
-                            }
-                        }
-                        DatumKind::Date => Self::Date(DateBuilder::with_capacity(item_capacity)),
-                        DatumKind::Time => Self::Time(TimeBuilder::with_capacity(item_capacity)),
-                        $(
-                            DatumKind::$Kind => Self::$Kind($Builder::with_capacity(item_capacity)),
-                        )*
-                    }
-                }
+pub enum ColumnBlockBuilder {
+    Null { rows: usize },
+    Timestamp(TimestampMillisecondBuilder),
+    Varbinary(BinaryBuilder),
+    String(StringBuilder),
+    Date(DateBuilder),
+    Time(TimeBuilder),
+    Dictionary(StringDictionaryBuilder::<Int32Type>),
 
-                /// Append the datum into the builder, the datum should have same the data type of builder
-                pub fn append(&mut self, datum: Datum) -> Result<()> {
-                    let given = datum.kind();
-                    match self {
-                        Self::Null { rows } => match datum {
-                            Datum::Null => {
-                                *rows += 1;
-                                Ok(())
-                            }
-                            _ => ConflictType {
-                                expect: DatumKind::Null,
-                                given,
-                            }.fail(),
-                        },
-                        Self::Timestamp(builder) => append_datum_into!(Timestamp, builder, Datum, datum),
-                        Self::Varbinary(builder) => append_datum!(Varbinary, builder, Datum, datum),
-                        Self::String(builder) => append_datum!(String, builder, Datum, datum),
-                        Self::Date(builder) => append_datum!(Date, builder, Datum, datum),
-                        Self::Time(builder) => append_datum!(Time, builder, Datum, datum),
-                        Self::Dictionary(builder) => {
-                            match datum {
-                                Datum::Null => Ok(builder.append_null()),
-                                Datum::String(v) => Ok(builder.append_value(v)),
-                                _ => ConflictType {
-                                    expect: DatumKind::String,
-                                    given: datum.kind(),
-                                }
-                                .fail()
-                            }
-                        },
-                        $(
-                            Self::$Kind(builder) => append_datum!($Kind, builder, Datum, datum),
-                        )*
-                    }
-                }
-
-                /// Append the [DatumView] into the builder, the datum view should have same the data type of builder
-                pub fn append_view<'a>(&mut self, datumView: DatumView<'a>) -> Result<()> {
-                    let given = datumView.kind();
-                    match self {
-                        Self::Null { rows } => match datumView {
-                            DatumView::Null => {
-                                *rows += 1;
-                                Ok(())
-                            }
-                            _ => ConflictType {
-                                expect: DatumKind::Null,
-                                given,
-                            }.fail(),
-                        },
-                        Self::Timestamp(builder) => append_datum_into!(Timestamp, builder, DatumView, datumView),
-                        Self::Varbinary(builder) => append_datum!(Varbinary, builder, DatumView, datumView),
-                        Self::String(builder) => append_datum!(String, builder, DatumView, datumView),
-                        Self::Date(builder) => append_datum!(Date, builder, DatumView, datumView),
-                        Self::Time(builder) => append_datum!(Time, builder, DatumView, datumView),
-                        Self::Dictionary(builder) => {
-                            match datumView {
-                                DatumView::Null => Ok(builder.append_null()),
-                                DatumView::String(v) => Ok(builder.append_value(v)),
-                                _ => ConflictType {
-                                    expect: DatumKind::String,
-                                    given: datumView.kind(),
-                                }
-                                .fail()
-                            }
-                        },
-                        $(
-                            Self::$Kind(builder) => append_datum!($Kind, builder, DatumView, datumView),
-                        )*
-                    }
-                }
-
-                /// Append rows in [start..start + len) from `block` to the builder.
-                ///
-                /// Returns rows actually appended.
-                pub fn append_block_range(&mut self, block: &ColumnBlock, start: usize, len: usize) -> Result<()> {
-                    match self {
-                        Self::Null { rows } => {
-                            if start + len >= block.num_rows() {
-                                *rows += block.num_rows() - start;
-                            } else {
-                                *rows += len;
-                            }
-                            Ok(())
-                        },
-                        Self::Timestamp(builder) => append_block!(Timestamp, builder, ColumnBlock, block, start, len),
-                        Self::Varbinary(builder) => append_block!(Varbinary, builder, ColumnBlock, block, start, len),
-                        Self::String(builder) => append_block!(String, builder, ColumnBlock, block, start, len),
-                        Self::Date(builder) => append_block!(Date, builder, ColumnBlock, block, start, len),
-                        Self::Time(builder) => append_block!(Time, builder, ColumnBlock, block, start, len),
-                        Self::Dictionary(builder) => {
-                                match block {
-                                    ColumnBlock::Null(v) => {
-                                        let end = std::cmp::min(start + len, v.num_rows());
-                                        for _ in start..end {
-                                            builder.append_null();
-                                        }
-                                        Ok(())
-                                    }
-                                    ColumnBlock::StringDictionary(v) => {
-                                        let end = std::cmp::min(start + len, v.num_rows());
-                                        for i in start..end {
-                                            if v.0.is_null(i) {
-                                                builder.append_null();
-                                            } else {
-                                                let value = v.datum(i);
-                                                builder.append_value(value.as_str().unwrap());
-                                            }
-                                        }
-                                        Ok(())
-                                    }
-                                    _ => ConflictType {
-                                        expect: DatumKind::String,
-                                        given: block.datum_kind(),
-                                    }
-                                    .fail(),
-                                }
-                        },
-                        $(
-                            Self::$Kind(builder) => append_block!($Kind, builder, ColumnBlock, block, start, len),
-                        )*
-                    }
-                }
-
-                pub fn len(&self) -> usize {
-                    match &self {
-                        Self::Null { rows } => *rows,
-                        Self::Timestamp(builder) => builder.len(),
-                        Self::Varbinary(builder) => builder.len(),
-                        Self::String(builder) => builder.len(),
-                        Self::Date(builder) => builder.len(),
-                        Self::Time(builder) => builder.len(),
-                        Self::Dictionary(builder) => builder.len(),
-                        $(
-                            Self::$Kind(builder) =>  builder.len(),
-                        )*
-                    }
-                }
-
-                // Build and reset the builder.
-                pub fn build(&mut self) -> ColumnBlock {
-                    match self {
-                        Self::Null { rows } => {
-                            let block = ColumnBlock::new_null(*rows);
-                            *rows = 0;
-                            block
-                        }
-                        Self::Timestamp(builder) => TimestampColumn::from(builder.finish()).into(),
-                        Self::Varbinary(builder) => VarbinaryColumn::from(builder.finish()).into(),
-                        Self::String(builder) => StringColumn::from(builder.finish()).into(),
-                        Self::Date(builder) => DateColumn::from(builder.finish()).into(),
-                        Self::Time(builder) => TimeColumn::from(builder.finish()).into(),
-                        Self::Dictionary(builder) => {
-                            StringDictionaryColumn::from(builder.finish()).into()
-                        },
-                        $(
-                            Self::$Kind(builder) => [<$Kind Column>]::from(builder.finish()).into(),
-                        )*
-                    }
-                }
-            }
-        }
-    }
+    Double(DoubleBuilder),
+    Float(FloatBuilder),
+    UInt64(UInt64Builder),
+    UInt32(UInt32Builder),
+    UInt16(UInt16Builder),
+    UInt8(UInt8Builder),
+    Int64(Int64Builder),
+    Int32(Int32Builder),
+    Int16(Int16Builder),
+    Int8(Int8Builder),
+    Boolean(BooleanBuilder),
 }
 
-// Define column block builders, Null and Timestamp are defined explicitly in macro.
-define_column_block_builder!(
-    (Double, DoubleBuilder),
-    (Float, FloatBuilder),
-    (UInt64, UInt64Builder),
-    (UInt32, UInt32Builder),
-    (UInt16, UInt16Builder),
-    (UInt8, UInt8Builder),
-    (Int64, Int64Builder),
-    (Int32, Int32Builder),
-    (Int16, Int16Builder),
-    (Int8, Int8Builder),
-    (Boolean, BooleanBuilder)
-);
-
 impl ColumnBlockBuilder {
+    pub fn newWithCapacity(datumKind: &DatumKind, capacity: usize, is_dictionary: bool) -> Self {
+        match datumKind {
+            DatumKind::Null => Self::Null { rows: 0 },
+            DatumKind::Timestamp => Self::Timestamp(TimestampMillisecondBuilder::with_capacity(capacity)),
+            // The data_capacity is set as 1024, because the item is variable-size type.
+            DatumKind::Varbinary => Self::Varbinary(BinaryBuilder::with_capacity(capacity, 1024)),
+            DatumKind::String => {
+                if is_dictionary {
+                    Self::Dictionary(StringDictionaryBuilder::<Int32Type>::new())
+                } else {
+                    Self::String(StringBuilder::with_capacity(capacity, 1024))
+                }
+            }
+            DatumKind::Date => Self::Date(DateBuilder::with_capacity(capacity)),
+            DatumKind::Time => Self::Time(TimeBuilder::with_capacity(capacity)),
+            DatumKind::Double => Self::Double(DoubleBuilder::with_capacity(capacity)),
+            DatumKind::Float => Self::Float(FloatBuilder::with_capacity(capacity)),
+            DatumKind::UInt64 => Self::UInt64(UInt64Builder::with_capacity(capacity)),
+            DatumKind::UInt32 => Self::UInt32(UInt32Builder::with_capacity(capacity)),
+            DatumKind::UInt16 => Self::UInt16(UInt16Builder::with_capacity(capacity)),
+            DatumKind::UInt8 => Self::UInt8(UInt8Builder::with_capacity(capacity)),
+            DatumKind::Int64 => Self::Int64(Int64Builder::with_capacity(capacity)),
+            DatumKind::Int32 => Self::Int32(Int32Builder::with_capacity(capacity)),
+            DatumKind::Int16 => Self::Int16(Int16Builder::with_capacity(capacity)),
+            DatumKind::Int8 => Self::Int8(Int8Builder::with_capacity(capacity)),
+            DatumKind::Boolean => Self::Boolean(BooleanBuilder::with_capacity(capacity)),
+        }
+    }
+
+    /// Append the datum into the builder, the datum should have same the data type of builder
+    pub fn appendDatum(&mut self, datum: Datum) -> Result<()> {
+        let given = datum.kind();
+        match self {
+            Self::Null { rows } => match datum {
+                Datum::Null => {
+                    *rows += 1;
+                    Ok(())
+                }
+                _ => ConflictType { expect: DatumKind::Null, given }.fail(),
+            },
+            Self::Timestamp(builder) => append_datum_into!(Timestamp, builder, Datum, datum),
+            Self::Varbinary(builder) => append_datum!(Varbinary, builder, Datum, datum),
+            Self::String(builder) => append_datum!(String, builder, Datum, datum),
+            Self::Date(builder) => append_datum!(Date, builder, Datum, datum),
+            Self::Time(builder) => append_datum!(Time, builder, Datum, datum),
+            Self::Dictionary(builder) => {
+                match datum {
+                    Datum::Null => Ok(builder.append_null()),
+                    Datum::String(v) => Ok(builder.append_value(v)),
+                    _ => ConflictType { expect: DatumKind::String, given: datum.kind() }.fail()
+                }
+            }
+            Self::Double(builder) => append_datum!(Double, builder, Datum, datum),
+            Self::Float(builder) => append_datum!(Float, builder, Datum, datum),
+            Self::UInt64(builder) => append_datum!(UInt64, builder, Datum, datum),
+            Self::UInt32(builder) => append_datum!(UInt32, builder, Datum, datum),
+            Self::UInt16(builder) => append_datum!(UInt16, builder, Datum, datum),
+            Self::UInt8(builder) => append_datum!(UInt8, builder, Datum, datum),
+            Self::Int64(builder) => append_datum!(Int64, builder, Datum, datum),
+            Self::Int32(builder) => append_datum!(Int32, builder, Datum, datum),
+            Self::Int16(builder) => append_datum!(Int16, builder, Datum, datum),
+            Self::Int8(builder) => append_datum!(Int8, builder, Datum, datum),
+            Self::Boolean(builder) => append_datum!(Boolean, builder, Datum, datum),
+        }
+    }
+
+    /// Append the [DatumView] into the builder, the datum view should have same the data type of builder
+    pub fn appendDatumView<'a>(&mut self, datumView: DatumView<'a>) -> Result<()> {
+        let given = datumView.kind();
+        match self {
+            Self::Null { rows } => match datumView {
+                DatumView::Null => {
+                    *rows += 1;
+                    Ok(())
+                }
+                _ => ConflictType { expect: DatumKind::Null, given }.fail(),
+            },
+            Self::Timestamp(builder) => append_datum_into!(Timestamp, builder, DatumView, datumView),
+            Self::Varbinary(builder) => append_datum!(Varbinary, builder, DatumView, datumView),
+            Self::String(builder) => append_datum!(String, builder, DatumView, datumView),
+            Self::Date(builder) => append_datum!(Date, builder, DatumView, datumView),
+            Self::Time(builder) => append_datum!(Time, builder, DatumView, datumView),
+            Self::Dictionary(builder) => {
+                match datumView {
+                    DatumView::Null => Ok(builder.append_null()),
+                    DatumView::String(v) => Ok(builder.append_value(v)),
+                    _ => ConflictType { expect: DatumKind::String, given: datumView.kind() }.fail()
+                }
+            }
+            Self::Double(builder) => append_datum!(Double, builder, DatumView, datumView),
+            Self::Float(builder) => append_datum!(Float, builder, DatumView, datumView),
+            Self::UInt64(builder) => append_datum!(UInt64, builder, DatumView, datumView),
+            Self::UInt32(builder) => append_datum!(UInt32, builder, DatumView, datumView),
+            Self::UInt16(builder) => append_datum!(UInt16, builder, DatumView, datumView),
+            Self::UInt8(builder) => append_datum!(UInt8, builder, DatumView, datumView),
+            Self::Int64(builder) => append_datum!(Int64, builder, DatumView, datumView),
+            Self::Int32(builder) => append_datum!(Int32, builder, DatumView, datumView),
+            Self::Int16(builder) => append_datum!(Int16, builder, DatumView, datumView),
+            Self::Int8(builder) => append_datum!(Int8, builder, DatumView, datumView),
+            Self::Boolean(builder) => append_datum!(Boolean, builder, DatumView, datumView),
+        }
+    }
+
+    /// Append rows in [start..start + len) from `block` to the builder return rows actually appended.
+    pub fn append_block_range(&mut self, block: &ColumnBlock, start: usize, len: usize) -> Result<()> {
+        match self {
+            Self::Null { rows } => {
+                if start + len >= block.num_rows() {
+                    *rows += block.num_rows() - start;
+                } else {
+                    *rows += len;
+                }
+                Ok(())
+            }
+            Self::Timestamp(builder) => append_block!(Timestamp, builder, ColumnBlock, block, start, len),
+            Self::Varbinary(builder) => append_block!(Varbinary, builder, ColumnBlock, block, start, len),
+            Self::String(builder) => append_block!(String, builder, ColumnBlock, block, start, len),
+            Self::Date(builder) => append_block!(Date, builder, ColumnBlock, block, start, len),
+            Self::Time(builder) => append_block!(Time, builder, ColumnBlock, block, start, len),
+            Self::Dictionary(builder) => {
+                match block {
+                    ColumnBlock::Null(v) => {
+                        let end = std::cmp::min(start + len, v.num_rows());
+                        for _ in start..end {
+                            builder.append_null();
+                        }
+                        Ok(())
+                    }
+                    ColumnBlock::StringDictionary(v) => {
+                        let end = std::cmp::min(start + len, v.num_rows());
+                        for i in start..end {
+                            if v.0.is_null(i) {
+                                builder.append_null();
+                            } else {
+                                let value = v.datum(i);
+                                builder.append_value(value.as_str().unwrap());
+                            }
+                        }
+                        Ok(())
+                    }
+                    _ => ConflictType {
+                        expect: DatumKind::String,
+                        given: block.datum_kind(),
+                    }
+                        .fail(),
+                }
+            }
+            Self::Double(builder) => append_block!(Double, builder, ColumnBlock, block, start, len),
+            Self::Float(builder) => append_block!(Float, builder, ColumnBlock, block, start, len),
+            Self::UInt64(builder) => append_block!(UInt64, builder, ColumnBlock, block, start, len),
+            Self::UInt32(builder) => append_block!(UInt32, builder, ColumnBlock, block, start, len),
+            Self::UInt16(builder) => append_block!(UInt16, builder, ColumnBlock, block, start, len),
+            Self::UInt8(builder) => append_block!(UInt8, builder, ColumnBlock, block, start, len),
+            Self::Int64(builder) => append_block!(Int64, builder, ColumnBlock, block, start, len),
+            Self::Int32(builder) => append_block!(Int32, builder, ColumnBlock, block, start, len),
+            Self::Int16(builder) => append_block!(Int16, builder, ColumnBlock, block, start, len),
+            Self::Int8(builder) => append_block!(Int8, builder, ColumnBlock, block, start, len),
+            Self::Boolean(builder) => append_block!(Boolean, builder, ColumnBlock, block, start, len),
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        match &self {
+            Self::Null { rows } => *rows,
+            Self::Timestamp(builder) => builder.len(),
+            Self::Varbinary(builder) => builder.len(),
+            Self::String(builder) => builder.len(),
+            Self::Date(builder) => builder.len(),
+            Self::Time(builder) => builder.len(),
+            Self::Dictionary(builder) => builder.len(),
+            Self::Double(builder) => builder.len(),
+            Self::Float(builder) => builder.len(),
+            Self::UInt64(builder) => builder.len(),
+            Self::UInt32(builder) => builder.len(),
+            Self::UInt16(builder) => builder.len(),
+            Self::UInt8(builder) => builder.len(),
+            Self::Int64(builder) => builder.len(),
+            Self::Int32(builder) => builder.len(),
+            Self::Int16(builder) => builder.len(),
+            Self::Int8(builder) => builder.len(),
+            Self::Boolean(builder) => builder.len(),
+        }
+    }
+
+    // Build and reset the builder.
+    pub fn build(&mut self) -> ColumnBlock {
+        match self {
+            Self::Null { rows } => {
+                let block = ColumnBlock::new_null(*rows);
+                *rows = 0;
+                block
+            }
+            Self::Timestamp(builder) => TimestampColumn::from(builder.finish()).into(),
+            Self::Varbinary(builder) => VarbinaryColumn::from(builder.finish()).into(),
+            Self::String(builder) => StringColumn::from(builder.finish()).into(),
+            Self::Date(builder) => DateColumn::from(builder.finish()).into(),
+            Self::Time(builder) => TimeColumn::from(builder.finish()).into(),
+            Self::Dictionary(builder) => {
+                StringDictionaryColumn::from(builder.finish()).into()
+            }
+            Self::Double(builder) => DoubleColumn::from(builder.finish()).into(),
+            Self::Float(builder) => FloatColumn::from(builder.finish()).into(),
+            Self::UInt64(builder) => UInt64Column::from(builder.finish()).into(),
+            Self::UInt32(builder) => UInt32Column::from(builder.finish()).into(),
+            Self::UInt16(builder) => UInt16Column::from(builder.finish()).into(),
+            Self::UInt8(builder) => UInt8Column::from(builder.finish()).into(),
+            Self::Int64(builder) => Int64Column::from(builder.finish()).into(),
+            Self::Int32(builder) => Int32Column::from(builder.finish()).into(),
+            Self::Int16(builder) => Int16Column::from(builder.finish()).into(),
+            Self::Int8(builder) => Int8Column::from(builder.finish()).into(),
+            Self::Boolean(builder) => BooleanColumn::from(builder.finish()).into(),
+        }
+    }
+
     /// Create by data type
     pub fn new(data_type: &DatumKind, is_dictionry: bool) -> Self {
-        Self::with_capacity(data_type, 0, is_dictionry)
+        Self::newWithCapacity(data_type, 0, is_dictionry)
     }
 
     pub fn is_empty(&self) -> bool {

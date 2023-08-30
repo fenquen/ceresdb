@@ -218,7 +218,7 @@ pub fn decode_sst_meta_data(kv: &KeyValue) -> Result<ParquetMetaData> {
 #[async_trait]
 trait RecordEncoder {
     /// Encode vector of arrow batch, return encoded row number
-    async fn encode(&mut self, record_batches: Vec<ArrowRecordBatch>) -> Result<usize>;
+    async fn encode(&mut self, arrowRecordBatchVec: Vec<ArrowRecordBatch>) -> Result<usize>;
 
     fn set_meta_data(&mut self, meta_data: ParquetMetaData) -> Result<()>;
 
@@ -235,11 +235,11 @@ struct ColumnarRecordEncoder<W> {
 }
 
 impl<W: AsyncWrite + Send + Unpin> ColumnarRecordEncoder<W> {
-    fn try_new(sink: W,
-               schema: &Schema,
-               num_rows_per_row_group: usize,
-               max_buffer_size: usize,
-               compression: Compression) -> Result<Self> {
+    fn new(writer: W,
+           schema: &Schema,
+           num_rows_per_row_group: usize,
+           max_buffer_size: usize,
+           compression: Compression) -> Result<Self> {
         let arrow_schema = schema.to_arrow_schema_ref();
 
         let write_props = WriterProperties::builder()
@@ -248,7 +248,7 @@ impl<W: AsyncWrite + Send + Unpin> ColumnarRecordEncoder<W> {
             .build();
 
         let arrow_writer =
-            AsyncArrowWriter::try_new(sink,
+            AsyncArrowWriter::try_new(writer,
                                       arrow_schema.clone(),
                                       max_buffer_size,
                                       Some(write_props)).box_err().context(EncodeRecordBatch)?;
@@ -265,17 +265,9 @@ impl<W: AsyncWrite + Send + Unpin> RecordEncoder for ColumnarRecordEncoder<W> {
     async fn encode(&mut self, arrow_record_batch_vec: Vec<ArrowRecordBatch>) -> Result<usize> {
         assert!(self.asyncArrowWriter.is_some());
 
-        let record_batch = compute::concat_batches(&self.arrowSchema, &arrow_record_batch_vec)
-            .box_err()
-            .context(EncodeRecordBatch)?;
+        let record_batch = compute::concat_batches(&self.arrowSchema, &arrow_record_batch_vec).box_err().context(EncodeRecordBatch)?;
 
-        self.asyncArrowWriter
-            .as_mut()
-            .unwrap()
-            .write(&record_batch)
-            .await
-            .box_err()
-            .context(EncodeRecordBatch)?;
+        self.asyncArrowWriter.as_mut().unwrap().write(&record_batch).await.box_err().context(EncodeRecordBatch)?;
 
         Ok(record_batch.num_rows())
     }
@@ -316,13 +308,11 @@ struct HybridRecordEncoder<W> {
 }
 
 impl<W: AsyncWrite + Unpin + Send> HybridRecordEncoder<W> {
-    fn try_new(
-        sink: W,
-        schema: &Schema,
-        num_rows_per_row_group: usize,
-        max_buffer_size: usize,
-        compression: Compression,
-    ) -> Result<Self> {
+    fn new(writer: W,
+           schema: &Schema,
+           num_rows_per_row_group: usize,
+           max_buffer_size: usize,
+           compression: Compression) -> Result<Self> {
         // TODO: What we really want here is a unique ID, tsid is one case
         // Maybe support other cases later.
         let tsid_idx = schema.index_of_tsid().context(TsidRequired)?;
@@ -368,7 +358,7 @@ impl<W: AsyncWrite + Unpin + Send> HybridRecordEncoder<W> {
             .build();
 
         let arrow_writer = AsyncArrowWriter::try_new(
-            sink,
+            writer,
             arrow_schema.clone(),
             max_buffer_size,
             Some(write_props),
@@ -438,52 +428,48 @@ impl<W: AsyncWrite + Unpin + Send> RecordEncoder for HybridRecordEncoder<W> {
 }
 
 pub struct ParquetEncoder {
-    record_encoder: Box<dyn RecordEncoder + Send>,
+    recordEncoder: Box<dyn RecordEncoder + Send>,
 }
 
 impl ParquetEncoder {
-    pub fn new<W: AsyncWrite + Unpin + Send + 'static>(sink: W,
+    pub fn new<W: AsyncWrite + Unpin + Send + 'static>(writer: W,
                                                        schema: &Schema,
                                                        useHybridEncoding: bool,
                                                        num_rows_per_row_group: usize,
                                                        max_buffer_size: usize,
                                                        compression: Compression) -> Result<Self> {
-        let record_encoder: Box<dyn RecordEncoder + Send> = if useHybridEncoding {
-            Box::new(HybridRecordEncoder::try_new(
-                sink,
-                schema,
-                num_rows_per_row_group,
-                max_buffer_size,
-                compression,
-            )?)
+        let recordEncoder: Box<dyn RecordEncoder + Send> = if useHybridEncoding {
+            Box::new(HybridRecordEncoder::new(writer,
+                                              schema,
+                                              num_rows_per_row_group,
+                                              max_buffer_size,
+                                              compression)?)
         } else {
-            Box::new(ColumnarRecordEncoder::try_new(
-                sink,
-                schema,
-                num_rows_per_row_group,
-                max_buffer_size,
-                compression,
-            )?)
+            Box::new(ColumnarRecordEncoder::new(writer,
+                                                schema,
+                                                num_rows_per_row_group,
+                                                max_buffer_size,
+                                                compression)?)
         };
 
-        Ok(ParquetEncoder { record_encoder })
+        Ok(ParquetEncoder { recordEncoder })
     }
 
-    /// Encode the record batch with [ArrowWriter] and the encoded contents is written to the buffer.
-    pub async fn encode_record_batches(&mut self, arrow_record_batches: Vec<ArrowRecordBatch>) -> Result<usize> {
+    /// encode the record batch with [ArrowWriter] and the encoded contents is written to the buffer.
+    pub async fn encode(&mut self, arrow_record_batches: Vec<ArrowRecordBatch>) -> Result<usize> {
         if arrow_record_batches.is_empty() {
             return Ok(0);
         }
 
-        self.record_encoder.encode(arrow_record_batches).await
+        self.recordEncoder.encode(arrow_record_batches).await
     }
 
     pub fn set_meta_data(&mut self, meta_data: ParquetMetaData) -> Result<()> {
-        self.record_encoder.set_meta_data(meta_data)
+        self.recordEncoder.set_meta_data(meta_data)
     }
 
     pub async fn close(mut self) -> Result<()> {
-        self.record_encoder.close().await
+        self.recordEncoder.close().await
     }
 }
 

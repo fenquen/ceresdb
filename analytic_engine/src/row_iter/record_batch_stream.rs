@@ -124,7 +124,7 @@ pub struct SequencedRecordBatch {
 impl SequencedRecordBatch {
     #[inline]
     pub fn num_rows(&self) -> usize {
-        self.record_batch.num_rows()
+        self.record_batch.rowCount()
     }
 }
 

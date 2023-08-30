@@ -54,18 +54,16 @@ const MAX_ROW_LEN: usize = 1024 * 1024 * 1024;
 
 /// Row encoded in a contiguous buffer.
 pub trait ContiguousRow {
-    /// return the number of datums.
-    fn num_datum_views(&self) -> usize;
+    fn datumViewNum(&self) -> usize;
 
-    /// return [DatumView] of column in given index.
-    fn datum_view_at(&self, index: usize, datum_kind: &DatumKind) -> DatumView;
+    fn datumViewAtIndex(&self, columnIndexInTable: usize, datumKind: &DatumKind) -> DatumView;
 }
 
 /// here is the layout of the encoded continuous row:
 /// ```plaintext
-/// +------------------+-----------------+-------------------------+-------------------------+
-/// | num_bits(u32)    |  nulls_bit_set  | datum encoding block... | var-len payload block   |
-/// +------------------+-----------------+-------------------------+-------------------------+
+/// -----------------------------------------------------------------------------------------------------------------------------------------------
+/// | bit_num(u32)     | nulls_bit_set(可能是不存在的由前边的4字节的值来决定的)| datum encoding block...| var-len (string varBinary等变长的)payload ...|
+/// -----------------------------------------------------------------------------------------------------------------------------------------------
 /// ```
 /// The first block is the number of bits of the `nulls_bit_set`, which is used
 /// to rebuild the bit set. The `nulls_bit_set` is used to record which columns
@@ -121,17 +119,17 @@ impl<'a, T: Deref<Target=[u8]>> ContiguousRowReader<'a, T> {
 }
 
 impl<'a, T: Deref<Target=[u8]>> ContiguousRow for ContiguousRowReader<'a, T> {
-    fn num_datum_views(&self) -> usize {
+    fn datumViewNum(&self) -> usize {
         match self {
-            Self::NoNulls(v) => v.num_datum_views(),
-            Self::WithNulls(v) => v.num_datum_views(),
+            Self::NoNulls(v) => v.datumViewNum(),
+            Self::WithNulls(v) => v.datumViewNum(),
         }
     }
 
-    fn datum_view_at(&self, index: usize, datum_kind: &DatumKind) -> DatumView {
+    fn datumViewAtIndex(&self, index: usize, datum_kind: &DatumKind) -> DatumView {
         match self {
-            Self::NoNulls(v) => v.datum_view_at(index, datum_kind),
-            Self::WithNulls(v) => v.datum_view_at(index, datum_kind),
+            Self::NoNulls(v) => v.datumViewAtIndex(index, datum_kind),
+            Self::WithNulls(v) => v.datumViewAtIndex(index, datum_kind),
         }
     }
 }
@@ -143,20 +141,20 @@ pub struct ContiguousRowReaderNoNulls<'a, T> {
 }
 
 impl<'a, T: Deref<Target=[u8]>> ContiguousRow for ContiguousRowReaderNoNulls<'a, T> {
-    fn num_datum_views(&self) -> usize {
+    fn datumViewNum(&self) -> usize {
         self.columnByteOffsetSlice.len()
     }
 
-    fn datum_view_at(&self, index: usize, datum_kind: &DatumKind) -> DatumView<'a> {
-        let offset = self.columnByteOffsetSlice[index];
-        let datum_buf = &self.rowData[self.datumOffset + offset..];
-        datum_view_at(datum_buf, self.rowData, datum_kind)
+    fn datumViewAtIndex(&self, columnIndexInTable: usize, datumKind: &DatumKind) -> DatumView<'a> {
+        let datum_buf = &self.rowData[self.datumOffset + self.columnByteOffsetSlice[columnIndexInTable]..];
+        datum_view_at(datum_buf, self.rowData, datumKind)
     }
 }
 
 pub struct ContiguousRowReaderWithNulls<'a, T> {
     rowData: &'a T,
-    actualColByteOffsetVec: Vec<isize>,
+    /// 要是实际的column data 是 null 那么对应的实际保存的offset是-1 fenquen
+    actualColumnByteOffsetVec: Vec<isize>,
     datumOffset: usize,
 }
 
@@ -191,33 +189,100 @@ impl<'a, T: Deref<Target=[u8]>> ContiguousRowReaderWithNulls<'a, T> {
 
         Ok(Self {
             rowData,
-            actualColByteOffsetVec: actualColumnByteOffsetVec,
+            actualColumnByteOffsetVec,
             datumOffset: Encoding::byteNumSize() + bitSetSize,
         })
     }
 }
 
 impl<'a, T: Deref<Target=[u8]>> ContiguousRow for ContiguousRowReaderWithNulls<'a, T> {
-    fn num_datum_views(&self) -> usize {
-        self.actualColByteOffsetVec.len()
+    fn datumViewNum(&self) -> usize {
+        self.actualColumnByteOffsetVec.len()
     }
 
-    fn datum_view_at(&self, index: usize, datum_kind: &DatumKind) -> DatumView<'a> {
-        let offset = self.actualColByteOffsetVec[index];
+    fn datumViewAtIndex(&self, columnIndexInTable: usize, datumKind: &DatumKind) -> DatumView<'a> {
+        let offset = self.actualColumnByteOffsetVec[columnIndexInTable];
         if offset < 0 {
             DatumView::Null
         } else {
-            let datum_offset = self.datumOffset + offset as usize;
-            let datum_buf = &self.rowData[datum_offset..];
-            datum_view_at(datum_buf, self.rowData, datum_kind)
+            // let datum_offset = self.datumOffset + offset as usize;
+            let datumData = &self.rowData[self.datumOffset + offset as usize..];
+            datum_view_at(datumData, self.rowData, datumKind)
         }
     }
 }
 
-fn datum_view_at<'a>(datum_buf: &'a [u8],
-                     string_buf: &'a [u8],
-                     datum_kind: &DatumKind) -> DatumView<'a> {
-    must_read_view(datum_kind, datum_buf, string_buf)
+fn datum_view_at<'a>(datumData: &'a [u8], rowData: &'a [u8], datumKind: &DatumKind) -> DatumView<'a> {
+    match datumKind {
+        DatumKind::Null => DatumView::Null,
+        DatumKind::Timestamp => {
+            let value_buf = datumData[..mem::size_of::<i64>()].try_into().unwrap();
+            let ts = Timestamp::new(i64::from_ne_bytes(value_buf));
+            DatumView::Timestamp(ts)
+        }
+        DatumKind::Double => {
+            let value_buf = datumData[..mem::size_of::<f64>()].try_into().unwrap();
+            let v = f64::from_ne_bytes(value_buf);
+            DatumView::Double(v)
+        }
+        DatumKind::Float => {
+            let value_buf = datumData[..mem::size_of::<f32>()].try_into().unwrap();
+            let v = f32::from_ne_bytes(value_buf);
+            DatumView::Float(v)
+        }
+        DatumKind::Varbinary => {
+            let bytes = must_read_bytes(datumData, rowData);
+            DatumView::Varbinary(bytes)
+        }
+        DatumKind::String => {
+            let bytes = must_read_bytes(datumData, rowData);
+            let v = unsafe { str::from_utf8_unchecked(bytes) };
+            DatumView::String(v)
+        }
+        DatumKind::UInt64 => {
+            let value_buf = datumData[..mem::size_of::<u64>()].try_into().unwrap();
+            let v = u64::from_ne_bytes(value_buf);
+            DatumView::UInt64(v)
+        }
+        DatumKind::UInt32 => {
+            let value_buf = datumData[..mem::size_of::<u32>()].try_into().unwrap();
+            let v = u32::from_ne_bytes(value_buf);
+            DatumView::UInt32(v)
+        }
+        DatumKind::UInt16 => {
+            let value_buf = datumData[..mem::size_of::<u16>()].try_into().unwrap();
+            let v = u16::from_ne_bytes(value_buf);
+            DatumView::UInt16(v)
+        }
+        DatumKind::UInt8 => DatumView::UInt8(datumData[0]),
+        DatumKind::Int64 => {
+            let value_buf = datumData[..mem::size_of::<i64>()].try_into().unwrap();
+            let v = i64::from_ne_bytes(value_buf);
+            DatumView::Int64(v)
+        }
+        DatumKind::Int32 => {
+            let value_buf = datumData[..mem::size_of::<i32>()].try_into().unwrap();
+            let v = i32::from_ne_bytes(value_buf);
+            DatumView::Int32(v)
+        }
+        DatumKind::Int16 => {
+            let value_buf = datumData[..mem::size_of::<i16>()].try_into().unwrap();
+            let v = i16::from_ne_bytes(value_buf);
+            DatumView::Int16(v)
+        }
+        DatumKind::Int8 => DatumView::Int8(datumData[0] as i8),
+        DatumKind::Boolean => DatumView::Boolean(datumData[0] != 0),
+        DatumKind::Date => {
+            let value_buf = datumData[..mem::size_of::<i32>()].try_into().unwrap();
+            let v = i32::from_ne_bytes(value_buf);
+            DatumView::Date(v)
+        }
+        DatumKind::Time => {
+            let value_buf = datumData[..mem::size_of::<i64>()].try_into().unwrap();
+            let v = i64::from_ne_bytes(value_buf);
+            DatumView::Time(v)
+        }
+    }
 }
 
 /// Contiguous row with projection information.
@@ -237,11 +302,11 @@ impl<'a, T: ContiguousRow> ProjectedContiguousRow<'a, T> {
         self.rowProjector.source_projection().len()
     }
 
-    pub fn datumViewAtIndex(&self, index: usize) -> DatumView {
-        match self.rowProjector.source_projection()[index] {
-            Some(index_in_source) => {
-                let datum_kind = self.rowProjector.datum_kind(index_in_source);
-                self.contiguousRow.datum_view_at(index_in_source, datum_kind)
+    pub fn datumViewAtIndex(&self, columnIndexInProjection: usize) -> DatumView {
+        match self.rowProjector.sourceProjection[columnIndexInProjection] {
+            Some(columnIndexInTable) => {
+                let datumKind = self.rowProjector.datumKindAtIndex(columnIndexInTable);
+                self.contiguousRow.datumViewAtIndex(columnIndexInTable, datumKind)
             }
             None => DatumView::Null,
         }
@@ -541,90 +606,6 @@ pub(crate) fn byteSizeOfDatum(kind: &DatumKind) -> usize {
         DatumKind::Boolean => mem::size_of::<bool>(),
         DatumKind::Date => mem::size_of::<i32>(),
         DatumKind::Time => mem::size_of::<i64>(),
-    }
-}
-
-/// Read datum view from given datum buf, and may reference the string in
-/// `string_buf`.
-///
-/// Panic if out of bound.
-///
-/// ## Safety
-/// The string in buffer must be valid utf8.
-fn must_read_view<'a>(
-    datum_kind: &DatumKind,
-    datum_buf: &'a [u8],
-    string_buf: &'a [u8],
-) -> DatumView<'a> {
-    match datum_kind {
-        DatumKind::Null => DatumView::Null,
-        DatumKind::Timestamp => {
-            let value_buf = datum_buf[..mem::size_of::<i64>()].try_into().unwrap();
-            let ts = Timestamp::new(i64::from_ne_bytes(value_buf));
-            DatumView::Timestamp(ts)
-        }
-        DatumKind::Double => {
-            let value_buf = datum_buf[..mem::size_of::<f64>()].try_into().unwrap();
-            let v = f64::from_ne_bytes(value_buf);
-            DatumView::Double(v)
-        }
-        DatumKind::Float => {
-            let value_buf = datum_buf[..mem::size_of::<f32>()].try_into().unwrap();
-            let v = f32::from_ne_bytes(value_buf);
-            DatumView::Float(v)
-        }
-        DatumKind::Varbinary => {
-            let bytes = must_read_bytes(datum_buf, string_buf);
-            DatumView::Varbinary(bytes)
-        }
-        DatumKind::String => {
-            let bytes = must_read_bytes(datum_buf, string_buf);
-            let v = unsafe { str::from_utf8_unchecked(bytes) };
-            DatumView::String(v)
-        }
-        DatumKind::UInt64 => {
-            let value_buf = datum_buf[..mem::size_of::<u64>()].try_into().unwrap();
-            let v = u64::from_ne_bytes(value_buf);
-            DatumView::UInt64(v)
-        }
-        DatumKind::UInt32 => {
-            let value_buf = datum_buf[..mem::size_of::<u32>()].try_into().unwrap();
-            let v = u32::from_ne_bytes(value_buf);
-            DatumView::UInt32(v)
-        }
-        DatumKind::UInt16 => {
-            let value_buf = datum_buf[..mem::size_of::<u16>()].try_into().unwrap();
-            let v = u16::from_ne_bytes(value_buf);
-            DatumView::UInt16(v)
-        }
-        DatumKind::UInt8 => DatumView::UInt8(datum_buf[0]),
-        DatumKind::Int64 => {
-            let value_buf = datum_buf[..mem::size_of::<i64>()].try_into().unwrap();
-            let v = i64::from_ne_bytes(value_buf);
-            DatumView::Int64(v)
-        }
-        DatumKind::Int32 => {
-            let value_buf = datum_buf[..mem::size_of::<i32>()].try_into().unwrap();
-            let v = i32::from_ne_bytes(value_buf);
-            DatumView::Int32(v)
-        }
-        DatumKind::Int16 => {
-            let value_buf = datum_buf[..mem::size_of::<i16>()].try_into().unwrap();
-            let v = i16::from_ne_bytes(value_buf);
-            DatumView::Int16(v)
-        }
-        DatumKind::Int8 => DatumView::Int8(datum_buf[0] as i8),
-        DatumKind::Boolean => DatumView::Boolean(datum_buf[0] != 0),
-        DatumKind::Date => {
-            let value_buf = datum_buf[..mem::size_of::<i32>()].try_into().unwrap();
-            let v = i32::from_ne_bytes(value_buf);
-            DatumView::Date(v)
-        }
-        DatumKind::Time => {
-            let value_buf = datum_buf[..mem::size_of::<i64>()].try_into().unwrap();
-            let v = i64::from_ne_bytes(value_buf);
-            DatumView::Time(v)
-        }
     }
 }
 

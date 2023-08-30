@@ -239,9 +239,9 @@ impl WriteRequest {
             .build()
             .map_err(|e| Box::new(e) as _)
             .context(ConvertRowGroup)?;
-        let record_batch = record_batch_with_key.into_record_batch();
+        let record_batch = record_batch_with_key.intoRecordBatch();
         let compress_output =
-            ipc::encode_record_batch(&record_batch.into_arrow_record_batch(), compress_options)
+            ipc::encode_record_batch(&record_batch.intoArrowRecordBatch(), compress_options)
                 .map_err(|e| Box::new(e) as _)
                 .context(ConvertRowGroup)?;
 

@@ -294,7 +294,7 @@ impl TryFrom<&SqlDataType> for DatumKind {
                     _ => UnsupportedDataType {
                         sql_type: sql_type.clone(),
                     }
-                    .fail(),
+                        .fail(),
                 }
             }
 
@@ -302,7 +302,7 @@ impl TryFrom<&SqlDataType> for DatumKind {
             _ => UnsupportedDataType {
                 sql_type: sql_type.clone(),
             }
-            .fail(),
+                .fail(),
         }
     }
 }
@@ -592,8 +592,8 @@ impl Datum {
     }
 
     pub fn do_with_bytes<F>(&self, mut f: F)
-    where
-        F: FnMut(&[u8]),
+        where
+            F: FnMut(&[u8]),
     {
         match self {
             Datum::Double(v) => {
@@ -830,7 +830,7 @@ impl Datum {
             (abs_nanos / NANOSECONDS - hours * 3600) as u32,
             (abs_nanos % NANOSECONDS) as u32,
         )
-        .unwrap();
+            .unwrap();
         let minute_sec = &(time.to_string())[3..];
         if *v < 0 {
             format!("-{hours:02}:{minute_sec}")
@@ -864,7 +864,7 @@ impl Datum {
             InvalidTimeNoCause {
                 msg: "Invalid time format".to_string(),
             }
-            .fail()
+                .fail()
         }
     }
 
@@ -988,8 +988,8 @@ impl From<Option<&[u8]>> for Datum {
 /// impl serde serialize for Datum
 impl Serialize for Datum {
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: Serializer,
+        where
+            S: Serializer,
     {
         match self {
             Datum::Null => serializer.serialize_none(),
@@ -1059,10 +1059,7 @@ impl<'a> DatumView<'a> {
         }
     }
 
-    pub fn do_with_bytes<F>(&self, mut f: F)
-    where
-        F: FnMut(&[u8]),
-    {
+    pub fn do_with_bytes<F>(&self, mut f: F) where F: FnMut(&[u8]) {
         match self {
             DatumView::Double(v) => {
                 let arr = v.to_le_bytes();

@@ -212,17 +212,12 @@ impl ColumnSchema {
         matches!(typ, DatumKind::String)
     }
 
-    /// Convert `self` to [`arrow::datatypes::Field`]
     pub fn to_arrow_field(&self) -> Field {
         From::from(self)
     }
 
-    /// Returns Ok if column with `writer_schema` can write to column with the
-    /// same schema as `self`.
-    pub fn compatible_for_write(
-        &self,
-        writer_schema: &ColumnSchema,
-    ) -> std::result::Result<(), CompatError> {
+    /// return Ok if column with `writer_schema` can write to column with the same schema as `self`.
+    pub fn compatible_for_write(&self, writer_schema: &ColumnSchema) -> std::result::Result<(), CompatError> {
         ensure!(
             self.datumKind == writer_schema.datumKind,
             IncompatDataType {
@@ -241,31 +236,21 @@ impl ColumnSchema {
         Ok(())
     }
 
-    /// Returns `Ok` if the source schema can read by this schema, now we won't
-    /// validate data type of column
-    pub fn compatible_for_read(
-        &self,
-        source_schema: &ColumnSchema,
-    ) -> std::result::Result<ReadOp, CompatError> {
+    /// Returns `Ok` if the source schema can read by this schema, now we won't validate data type of column
+    pub fn compatible_for_read(&self,
+                               source_schema: &ColumnSchema) -> std::result::Result<ReadOp, CompatError> {
         if self.is_nullable {
-            // Column is nullable
             if self.id == source_schema.id {
-                // Same column
+                // same column
                 Ok(ReadOp::Exact)
             } else {
-                // Not the same column, maybe dropped, fill by null.
+                // not the same column, maybe dropped, fill by null.
                 Ok(ReadOp::FillNull)
             }
         } else {
             // Column is not null. We consider the old column was dropped if they have
-            // different column id and also try to fill by null, so we
-            // also check column id.
-            ensure!(
-                self.id == source_schema.id && !source_schema.is_nullable,
-                NotNullable {
-                    name: &source_schema.name,
-                }
-            );
+            // different column id and also try to fill by null, so we also check column id.
+            ensure!(self.id == source_schema.id && !source_schema.is_nullable,NotNullable {name: &source_schema.name});
 
             Ok(ReadOp::Exact)
         }
@@ -315,7 +300,7 @@ impl TryFrom<&Arc<Field>> for ColumnSchema {
         Ok(Self {
             id,
             name: field.name().clone(),
-            datumKind: DatumKind::from_data_type(field.data_type()).context(UnsupportedDataType { data_type: field.data_type().clone()})?,
+            datumKind: DatumKind::from_data_type(field.data_type()).context(UnsupportedDataType { data_type: field.data_type().clone() })?,
             is_nullable: field.is_nullable(),
             is_tag,
             is_dictionary,
@@ -327,25 +312,24 @@ impl TryFrom<&Arc<Field>> for ColumnSchema {
 }
 
 impl From<&ColumnSchema> for Field {
-    fn from(col_schema: &ColumnSchema) -> Self {
-        let metadata = encode_arrow_field_meta_data(col_schema);
-
+    fn from(columnSchema: &ColumnSchema) -> Self {
         // If the column sholud use dictionary, create correspond dictionary type.
-        let mut field = if col_schema.is_dictionary {
-            Field::new_dict(
-                &col_schema.name,
-                DataType::Dictionary(Box::new(DataType::Int32), Box::new(DataType::Utf8)),
-                col_schema.is_nullable,
-                col_schema.id.into(),
-                // TODO(tanruixiang): how to use dict_is_ordered
-                false,
-            )
+        let mut field = if columnSchema.is_dictionary {
+            Field::new_dict(&columnSchema.name,
+                            DataType::Dictionary(Box::new(DataType::Int32), Box::new(DataType::Utf8)),
+                            columnSchema.is_nullable,
+                            columnSchema.id.into(),
+                            // TODO(tanruixiang): how to use dict_is_ordered
+                            false)
         } else {
-            Field::new(&col_schema.name,
-                       col_schema.datumKind.into(),
-                       col_schema.is_nullable,
-            )
+            Field::new(&columnSchema.name, columnSchema.datumKind.into(), columnSchema.is_nullable)
         };
+
+        let mut metadata = HashMap::new();
+        metadata.insert(ArrowFieldMetaKey::Id.to_string(), columnSchema.id.to_string());
+        metadata.insert(ArrowFieldMetaKey::IsTag.to_string(), columnSchema.is_tag.to_string());
+        metadata.insert(ArrowFieldMetaKey::IsDictionary.to_string(), columnSchema.is_dictionary.to_string());
+        metadata.insert(ArrowFieldMetaKey::Comment.to_string(), columnSchema.comment.clone());
 
         field.set_metadata(metadata);
 
@@ -388,17 +372,6 @@ fn decode_arrow_field_meta_data(meta: &HashMap<String, String>) -> Result<ArrowF
             is_dictionary: parse_arrow_field_meta_value(meta, ArrowFieldMetaKey::IsDictionary)?,
         })
     }
-}
-
-fn encode_arrow_field_meta_data(col_schema: &ColumnSchema) -> HashMap<String, String> {
-    let mut meta = HashMap::new();
-
-    meta.insert(ArrowFieldMetaKey::Id.to_string(), col_schema.id.to_string());
-    meta.insert(ArrowFieldMetaKey::IsTag.to_string(), col_schema.is_tag.to_string());
-    meta.insert(ArrowFieldMetaKey::IsDictionary.to_string(), col_schema.is_dictionary.to_string());
-    meta.insert(ArrowFieldMetaKey::Comment.to_string(), col_schema.comment.clone());
-
-    meta
 }
 
 /// ColumnSchema builder

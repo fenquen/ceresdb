@@ -424,7 +424,7 @@ impl<Q: QueryExecutor + 'static> RemoteEngineService for RemoteEngineServiceImpl
                 let new_stream: Self::ReadStream = Box::pin(stream.map(|res| match res {
                     Ok(record_batch) => {
                         let resp = match ipc::encode_record_batch(
-                            &record_batch.into_arrow_record_batch(),
+                            &record_batch.intoArrowRecordBatch(),
                             CompressOptions {
                                 compress_min_length: DEFAULT_COMPRESS_MIN_LENGTH,
                                 method: CompressionMethod::Zstd,

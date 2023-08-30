@@ -141,6 +141,7 @@ pub fn build_hybrid_arrow_schema(schema: &Schema) -> ArrowSchemaRef {
 }
 
 struct StringArrayWrapper<'a>(&'a StringArray);
+
 struct BinaryArrayWrapper<'a>(&'a BinaryArray);
 
 /// VariableSizeArray is a trait of variable-size array, such as StringArray and
@@ -502,12 +503,12 @@ fn build_hybrid_record(
         non_collapsible_col_arrays,
         collapsible_col_arrays,
     ]
-    .into_iter()
-    .flatten()
-    .map(|indexed_array| (indexed_array.idx, indexed_array.array))
-    .collect::<BTreeMap<_, _>>()
-    .into_values()
-    .collect::<Vec<_>>();
+        .into_iter()
+        .flatten()
+        .map(|indexed_array| (indexed_array.idx, indexed_array.array))
+        .collect::<BTreeMap<_, _>>()
+        .into_values()
+        .collect::<Vec<_>>();
 
     ArrowRecordBatch::try_new(arrow_schema, all_columns)
         .box_err()
@@ -516,13 +517,11 @@ fn build_hybrid_record(
 
 /// Converts arrow record batch into hybrid record format describe in
 /// `StorageFormat::Hybrid`
-pub fn convert_to_hybrid_record(
-    tsid_type: &IndexedType,
-    non_collapsible_col_types: &[IndexedType],
-    collapsible_col_types: &[IndexedType],
-    hybrid_arrow_schema: ArrowSchemaRef,
-    arrow_record_batches: Vec<ArrowRecordBatch>,
-) -> Result<ArrowRecordBatch> {
+pub fn convert_to_hybrid_record(tsid_type: &IndexedType,
+                                non_collapsible_col_types: &[IndexedType],
+                                collapsible_col_types: &[IndexedType],
+                                hybrid_arrow_schema: ArrowSchemaRef,
+                                arrow_record_batches: Vec<ArrowRecordBatch>) -> Result<ArrowRecordBatch> {
     // TODO: should keep tsid ordering here?
     let mut batch_by_tsid = BTreeMap::new();
     for (record_idx, record_batch) in arrow_record_batches.iter().enumerate() {

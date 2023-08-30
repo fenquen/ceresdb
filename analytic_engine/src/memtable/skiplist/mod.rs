@@ -39,7 +39,6 @@ struct Metrics {
 }
 
 pub struct SkipListMemTable<A: Arena<Stats=BasicStats> + Clone + Sync + Send> {
-    /// Schema of this memtable, is immutable.
     schema: Schema,
     skiplist: SkipList<BytewiseComparator, A>,
     /// The last sequence of the rows in this memtable. Update to this field require external synchronization.
@@ -112,11 +111,11 @@ impl<A: Arena<Stats=BasicStats> + Clone + Sync + Send + 'static> MemTable for Sk
 
         //  let num_rows = self.skiplist.len();
         let (reverse, batch_size) = (scanRequest.reverse, ctx.batch_size);
-        let iter = ColumnarIterImpl::new(self, ctx, scanRequest)?;
+        let columnarIterImpl = ColumnarIterImpl::new(self, ctx, scanRequest)?;
         if reverse {
-            Ok(Box::new(ReversedColumnarIterator::new(iter, self.skiplist.len(), batch_size)))
+            Ok(Box::new(ReversedColumnarIterator::new(columnarIterImpl, self.skiplist.len(), batch_size)))
         } else {
-            Ok(Box::new(iter))
+            Ok(Box::new(columnarIterImpl))
         }
     }
 

@@ -246,10 +246,10 @@ fn build_column_block<'a, I: Iterator<Item = &'a Datum>>(
     is_dictionary: bool,
 ) -> stream::Result<ColumnBlock> {
     let mut builder =
-        ColumnBlockBuilder::with_capacity(data_type, iter.size_hint().0, is_dictionary);
+        ColumnBlockBuilder::newWithCapacity(data_type, iter.size_hint().0, is_dictionary);
     for datum in iter {
         builder
-            .append(datum.clone())
+            .appendDatum(datum.clone())
             .box_err()
             .context(ErrWithSource {
                 msg: "append datum",

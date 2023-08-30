@@ -333,7 +333,7 @@ impl<'a> Reader<'a> {
 
         let row_projector = self
             .projected_schema
-            .try_project_with_key(&meta_data.custom().schema)
+            .tryProjectWithKey(&meta_data.custom().schema)
             .box_err()
             .context(Projection)?;
         self.meta_data = Some(meta_data);

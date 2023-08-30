@@ -58,7 +58,7 @@ impl<I: RecordBatchWithKeyIterator> DedupIterator<I> {
         let schema = iter.schema();
 
         let record_batch_builder =
-            RecordBatchWithKeyBuilder::with_capacity(schema.clone(), iter_options.batch_size);
+            RecordBatchWithKeyBuilder::newWithCapacity(schema.clone(), iter_options.batch_size);
         Self {
             request_id,
             schema: schema.clone(),
@@ -74,7 +74,7 @@ impl<I: RecordBatchWithKeyIterator> DedupIterator<I> {
     fn dedup_batch(&mut self, record_batch: RecordBatchWithKey) -> Result<RecordBatchWithKey> {
         self.selected_rows.clear();
         // Ignore all rows by default.
-        self.selected_rows.resize(record_batch.num_rows(), false);
+        self.selected_rows.resize(record_batch.rowCount(), false);
 
         if record_batch.is_empty() {
             return Ok(record_batch);
@@ -119,7 +119,7 @@ impl<I: RecordBatchWithKeyIterator> DedupIterator<I> {
 
         // Eventhough all rows are duplicate, we can still use row pointed by
         // prev_row_idx because they have same row key.
-        self.prev_row = Some(record_batch.clone_row_at(record_batch.num_rows() - 1));
+        self.prev_row = Some(record_batch.clone_row_at(record_batch.rowCount() - 1));
 
         self.filter_batch(record_batch, selected_num)
     }
@@ -131,9 +131,9 @@ impl<I: RecordBatchWithKeyIterator> DedupIterator<I> {
         selected_num: usize,
     ) -> Result<RecordBatchWithKey> {
         self.total_selected_rows += selected_num;
-        self.total_duplications += record_batch.num_rows() - selected_num;
+        self.total_duplications += record_batch.rowCount() - selected_num;
 
-        if selected_num == record_batch.num_rows() {
+        if selected_num == record_batch.rowCount() {
             // No duplicate rows in batch.
             return Ok(record_batch);
         }

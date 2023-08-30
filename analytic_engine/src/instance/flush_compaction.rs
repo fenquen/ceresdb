@@ -851,7 +851,7 @@ fn split_record_batch_with_time_ranges(record_batch: RecordBatchWithKey,
         .map(|_| RecordBatchWithKeyBuilder::new(record_batch.schema_with_key().clone()))
         .collect();
 
-    for row_idx in 0..record_batch.num_rows() {
+    for row_idx in 0..record_batch.rowCount() {
         let datum = record_batch.column(timestamp_idx).datum(row_idx);
         let timestamp = datum.as_timestamp().unwrap();
         let mut idx = None;

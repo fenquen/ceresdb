@@ -328,7 +328,7 @@ pub struct IndexInWriterSchema(Vec<Option<usize>>);
 impl IndexInWriterSchema {
     /// Create a index mapping for same schema with `num_columns` columns.
     pub fn for_same_schema(num_columns: usize) -> IndexInWriterSchema {
-        IndexInWriterSchema( (0..num_columns).map(Some).collect())
+        IndexInWriterSchema((0..num_columns).map(Some).collect())
     }
 
     /// Returns the column index in writer schema of the column with index
@@ -358,10 +358,9 @@ impl IndexInWriterSchema {
 }
 
 // TODO(yingwen): No need to compare all elements in ColumnSchemas, Schema, RecordSchema, custom PartialEq for them.
-
 #[derive(PartialEq)]
 pub(crate) struct ColumnSchemas {
-    columnSchemas: Vec<ColumnSchema>,
+    columnSchemaVec: Vec<ColumnSchema>,
     columnName_columnIndex: HashMap<String, usize>,
     /// byte offsets of each column in contiguous row.
     columnByteOffsetVec: Vec<usize>,
@@ -382,7 +381,7 @@ impl ColumnSchemas {
         }
 
         Self {
-            columnSchemas,
+            columnSchemaVec: columnSchemas,
             columnName_columnIndex,
             columnByteOffsetVec,
             stringBufferOffset: currentOffset,
@@ -396,11 +395,11 @@ impl ColumnSchemas {
     }
 
     pub fn columns(&self) -> &[ColumnSchema] {
-        &self.columnSchemas
+        &self.columnSchemaVec
     }
 
     pub fn column(&self, i: usize) -> &ColumnSchema {
-        &self.columnSchemas[i]
+        &self.columnSchemaVec[i]
     }
 
     pub fn index_of(&self, name: &str) -> Option<usize> {
@@ -410,7 +409,7 @@ impl ColumnSchemas {
 
 impl fmt::Debug for ColumnSchemas {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("ColumnSchemas").field("columns", &self.columnSchemas).finish()
+        f.debug_struct("ColumnSchemas").field("columns", &self.columnSchemaVec).finish()
     }
 }
 
@@ -424,54 +423,46 @@ impl fmt::Debug for ColumnSchemas {
 /// the final query result, where the additional fields is never used.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RecordSchema {
-    arrow_schema: ArrowSchemaRef,
-    column_schemas: Arc<ColumnSchemas>,
+    pub arrowSchema: ArrowSchemaRef,
+    columnSchemas: Arc<ColumnSchemas>,
 }
 
 impl RecordSchema {
-    fn from_column_schemas(column_schemas: ColumnSchemas, arrow_schema: &ArrowSchemaRef) -> Self {
-        // Convert to arrow fields.
-        let fields = column_schemas
-            .columnSchemas
-            .iter()
-            .map(|col| col.to_arrow_field())
-            .collect::<Vec<_>>();
+    fn from_column_schemas(columnSchemas: ColumnSchemas, arrow_schema: &ArrowSchemaRef) -> Self {
+        // convert to arrow fields.
+        let arrowFields = columnSchemas.columnSchemaVec.iter().map(|columnSchema| columnSchema.to_arrow_field()).collect::<Vec<_>>();
 
-        // Build arrow schema.
-        let arrow_schema = Arc::new(ArrowSchema::new_with_metadata(
-            fields,
-            arrow_schema.metadata().to_owned(),
-        ));
+        let arrowSchema = Arc::new(ArrowSchema::new_with_metadata(arrowFields, arrow_schema.metadata().to_owned()));
 
         Self {
-            arrow_schema,
-            column_schemas: Arc::new(column_schemas),
+            arrowSchema,
+            columnSchemas: Arc::new(columnSchemas),
         }
     }
 
     pub fn num_columns(&self) -> usize {
-        self.column_schemas.num_columns()
+        self.columnSchemas.num_columns()
     }
 
     pub fn columns(&self) -> &[ColumnSchema] {
-        self.column_schemas.columns()
+        self.columnSchemas.columns()
     }
 
     pub fn index_of(&self, name: &str) -> Option<usize> {
-        self.column_schemas.index_of(name)
+        self.columnSchemas.index_of(name)
     }
 
     pub fn column(&self, i: usize) -> &ColumnSchema {
-        self.column_schemas.column(i)
+        self.columnSchemas.column(i)
     }
 
     pub fn column_by_name(&self, name: &str) -> Option<&ColumnSchema> {
-        let index = self.column_schemas.index_of(name)?;
-        Some(self.column_schemas.column(index))
+        let index = self.columnSchemas.index_of(name)?;
+        Some(self.columnSchemas.column(index))
     }
 
     pub fn to_arrow_schema_ref(&self) -> ArrowSchemaRef {
-        self.arrow_schema.clone()
+        self.arrowSchema.clone()
     }
 }
 
@@ -499,33 +490,33 @@ impl TryFrom<ArrowSchemaRef> for RecordSchema {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RecordSchemaWithKey {
-    record_schema: RecordSchema,
-    primary_key_indexes: Vec<usize>,
+    pub recordSchema: RecordSchema,
+    primaryKeyIndexVec: Vec<usize>,
 }
 
 impl RecordSchemaWithKey {
     pub fn num_columns(&self) -> usize {
-        self.record_schema.num_columns()
+        self.recordSchema.num_columns()
     }
 
     pub fn compare_row<LR: RowView, RR: RowView>(&self, lhs: &LR, rhs: &RR) -> Ordering {
-        compare_row(&self.primary_key_indexes, lhs, rhs)
+        compare_row(&self.primaryKeyIndexVec, lhs, rhs)
     }
 
     pub fn primary_key_idx(&self) -> &[usize] {
-        &self.primary_key_indexes
+        &self.primaryKeyIndexVec
     }
 
     pub fn is_primary_key_index(&self, idx: usize) -> bool {
-        self.primary_key_indexes.contains(&idx)
+        self.primaryKeyIndexVec.contains(&idx)
     }
 
     pub fn index_of(&self, name: &str) -> Option<usize> {
-        self.record_schema.index_of(name)
+        self.recordSchema.index_of(name)
     }
 
     pub fn columns(&self) -> &[ColumnSchema] {
-        self.record_schema.columns()
+        self.recordSchema.columns()
     }
 
     /// Returns an immutable reference of the key column vector.
@@ -534,7 +525,7 @@ impl RecordSchemaWithKey {
             .iter()
             .enumerate()
             .filter_map(|(idx, col)| {
-                if self.primary_key_indexes.contains(&idx) {
+                if self.primaryKeyIndexVec.contains(&idx) {
                     Some(col.clone())
                 } else {
                     None
@@ -543,11 +534,11 @@ impl RecordSchemaWithKey {
     }
 
     pub(crate) fn into_record_schema(self) -> RecordSchema {
-        self.record_schema
+        self.recordSchema
     }
 
     pub fn to_arrow_schema_ref(&self) -> ArrowSchemaRef {
-        self.record_schema.to_arrow_schema_ref()
+        self.recordSchema.to_arrow_schema_ref()
     }
 }
 
@@ -598,7 +589,7 @@ pub struct Schema {
     /// Column schemas, only holds arc pointer so the Schema can be cloned without much overhead.
     column_schemas: Arc<ColumnSchemas>,
     /// Version of the schema, schemas with same version should be identical.
-    version: Version,
+    pub version: u32,
 }
 
 impl fmt::Debug for Schema {
@@ -676,7 +667,7 @@ impl Schema {
     /// Returns tsid column index and immutable reference of tsid column
     pub fn tsid_column(&self) -> Option<&ColumnSchema> {
         if let Some(idx) = self.index_of_tsid() {
-            Some(&self.column_schemas.columnSchemas[idx])
+            Some(&self.column_schemas.columnSchemaVec[idx])
         } else {
             None
         }
@@ -696,7 +687,7 @@ impl Schema {
     /// name.
     pub fn column_with_name(&self, name: &str) -> Option<&ColumnSchema> {
         let index = self.column_schemas.columnName_columnIndex.get(name)?;
-        Some(&self.column_schemas.columnSchemas[*index])
+        Some(&self.column_schemas.columnSchemaVec[*index])
     }
 
     /// Returns an immutable reference of a specific [ColumnSchema] selected
@@ -841,15 +832,15 @@ impl Schema {
 
     pub fn to_record_schema(&self) -> RecordSchema {
         RecordSchema {
-            arrow_schema: self.arrow_schema.clone(),
-            column_schemas: self.column_schemas.clone(),
+            arrowSchema: self.arrow_schema.clone(),
+            columnSchemas: self.column_schemas.clone(),
         }
     }
 
     pub fn to_record_schema_with_key(&self) -> RecordSchemaWithKey {
         RecordSchemaWithKey {
-            record_schema: self.to_record_schema(),
-            primary_key_indexes: self.primary_key_indexes.clone(),
+            recordSchema: self.to_record_schema(),
+            primaryKeyIndexVec: self.primary_key_indexes.clone(),
         }
     }
 
@@ -894,8 +885,8 @@ impl Schema {
             RecordSchema::from_column_schemas(ColumnSchemas::new(columns), &self.arrow_schema);
 
         RecordSchemaWithKey {
-            record_schema,
-            primary_key_indexes,
+            recordSchema: record_schema,
+            primaryKeyIndexVec: primary_key_indexes,
         }
     }
 
