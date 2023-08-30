@@ -456,12 +456,12 @@ impl ParquetEncoder {
     }
 
     /// encode the record batch with [ArrowWriter] and the encoded contents is written to the buffer.
-    pub async fn encode(&mut self, arrow_record_batches: Vec<ArrowRecordBatch>) -> Result<usize> {
-        if arrow_record_batches.is_empty() {
+    pub async fn encode(&mut self, arrowRecordBatchVec: Vec<ArrowRecordBatch>) -> Result<usize> {
+        if arrowRecordBatchVec.is_empty() {
             return Ok(0);
         }
 
-        self.recordEncoder.encode(arrow_record_batches).await
+        self.recordEncoder.encode(arrowRecordBatchVec).await
     }
 
     pub fn set_meta_data(&mut self, meta_data: ParquetMetaData) -> Result<()> {
