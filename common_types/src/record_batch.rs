@@ -257,14 +257,14 @@ impl RecordBatch {
 impl TryFrom<ArrowRecordBatch> for RecordBatch {
     type Error = Error;
 
-    fn try_from(arrow_record_batch: ArrowRecordBatch) -> Result<Self> {
+    fn try_from(arrowRecordBatch: ArrowRecordBatch) -> Result<Self> {
         let record_schema =
-            RecordSchema::try_from(arrow_record_batch.schema()).context(ConvertArrowSchema)?;
+            RecordSchema::try_from(arrowRecordBatch.schema()).context(ConvertArrowSchema)?;
 
         let column_blocks =
-            build_column_blocks_from_arrow_record_batch(&arrow_record_batch, &record_schema)?;
+            build_column_blocks_from_arrow_record_batch(&arrowRecordBatch, &record_schema)?;
 
-        let arrow_record_batch = cast_arrow_record_batch(arrow_record_batch)?;
+        let arrow_record_batch = cast_arrow_record_batch(arrowRecordBatch)?;
         Ok(Self {
             recordSchema: record_schema,
             recordBatchData: RecordBatchData {

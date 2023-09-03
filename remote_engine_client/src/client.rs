@@ -67,7 +67,7 @@ impl Client {
 
         // Read from remote.
         let table_ident = request.table.clone();
-        let projected_schema = request.read_request.projected_schema.clone();
+        let projected_schema = request.read_request.projectedSchema.clone();
         let mut rpc_client = RemoteEngineServiceClient::<Channel>::new(route_context.channel);
         let request_pb = ceresdbproto::remote_engine::ReadRequest::try_from(request)
             .box_err()

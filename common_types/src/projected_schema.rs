@@ -190,7 +190,7 @@ struct ProjectedSchemaInner {
     projection: Option<Vec<usize>>,
 
     /// The record schema from `self.schema` with key columns after projection.
-    schema_with_key: RecordSchemaWithKey,
+    pub schema_with_key: RecordSchemaWithKey,
     /// The record schema from `self.schema` after projection.
     record_schema: RecordSchema,
 }

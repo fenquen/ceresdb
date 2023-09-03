@@ -218,8 +218,7 @@ struct ObjectStoreMultiUploadAbortor<'a> {
 }
 
 impl<'a> ObjectStoreMultiUploadAbortor<'a> {
-    async fn initialize(objectStore: &'a Arc<dyn ObjectStore>,
-                        location: &'a Path) -> Result<(ObjectStoreMultiUploadAbortor<'a>, Box<dyn AsyncWrite + Unpin + Send>, )> {
+    async fn initialize(objectStore: &'a Arc<dyn ObjectStore>, location: &'a Path) -> Result<(ObjectStoreMultiUploadAbortor<'a>, Box<dyn AsyncWrite + Unpin + Send>, )> {
         let (sessionId, writer) = objectStore.put_multipart(location).await.context(Storage)?;
 
         let aborter = Self {

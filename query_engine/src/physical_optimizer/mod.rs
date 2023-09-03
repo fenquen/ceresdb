@@ -39,11 +39,9 @@ pub enum Error {
 
 define_result!(Error);
 
-/// Physical query optimizer that converts a logical plan to a
-/// physical plan suitable for execution
+/// physical query optimizer that converts a logical plan to a physical plan
 #[async_trait]
 pub trait PhysicalOptimizer {
-    /// Create a physical plan from a logical plan
     async fn optimize(&mut self, logical_plan: LogicalPlan) -> Result<PhysicalPlanPtr>;
 }
 
@@ -60,13 +58,8 @@ impl PhysicalOptimizerImpl {
 #[async_trait]
 impl PhysicalOptimizer for PhysicalOptimizerImpl {
     async fn optimize(&mut self, dataFusionLogicalPlan: LogicalPlan) -> Result<PhysicalPlanPtr> {
-        let exec_plan = self
-            .ctx
-            .state()
-            .create_physical_plan(&dataFusionLogicalPlan)
-            .await
-            .context(DataFusionOptimize)?;
-        let physical_plan = PhysicalPlanImpl::with_plan(self.ctx.clone(), exec_plan);
+        let exec_plan = self.ctx.state().create_physical_plan(&dataFusionLogicalPlan).await.context(DataFusionOptimize)?;
+        let physical_plan = PhysicalPlanImpl::new(self.ctx.clone(), exec_plan);
 
         Ok(Box::new(physical_plan))
     }

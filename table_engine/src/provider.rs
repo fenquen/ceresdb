@@ -106,9 +106,7 @@ impl ExtensionOptions for CeresdbOptions {
 #[derive(Debug)]
 pub struct TableProviderImpl {
     table: TableRef,
-    /// The schema of the table when this adapter is created, used as schema
-    /// snapshot for read to avoid the reader sees different schema during
-    /// query
+    /// The schema of the table when this adapter is created, used as schema snapshot for read to avoid the reader sees different schema during query
     read_schema: Schema,
 }
 
@@ -116,7 +114,6 @@ impl TableProviderImpl {
     pub fn new(table: TableRef) -> Self {
         // Take a snapshot of the schema
         let read_schema = table.schema();
-
         Self { table, read_schema }
     }
 
@@ -125,21 +122,21 @@ impl TableProviderImpl {
     }
 
     pub async fn scanTable(&self,
-                           dataFusionSessionState: &SessionState,
+                           dfSessionState: &SessionState,
                            projection: Option<&Vec<usize>>,
                            filters: &[Expr], // 下落到tablescan的where
                            limit: Option<usize>) -> Result<Arc<dyn ExecutionPlan>> {
-        let ceresdbOptions = dataFusionSessionState.config_options().extensions.get::<CeresdbOptions>().unwrap();
+        let ceresdbOptions = dfSessionState.config_options().extensions.get::<CeresdbOptions>().unwrap();
         let request_id = RequestId::from(ceresdbOptions.request_id);
         let deadline = ceresdbOptions.request_timeout.map(|n| Instant::now() + Duration::from_millis(n));
-        let read_parallelism = dataFusionSessionState.config().target_partitions();
+        let read_parallelism = dfSessionState.config().target_partitions();
 
         debug!("scan table, table:{}, request_id:{}, projection:{:?}, filters:{:?}, limit:{:?}, deadline:{:?}, parallelism:{}",
             self.table.name(),request_id,projection,filters,limit,deadline,read_parallelism,);
 
         let predicate = self.buildPredicate(filters);
 
-        let mut scan_table = ScanTable {
+        let mut scanTable = ScanTable {
             projected_schema: ProjectedSchema::new(self.read_schema.clone(), projection.cloned()).map_err(|e| { DataFusionError::Internal(format!("invalid projection, plan:{self:?}, projection:{projection:?}, err:{e:?}")) })?,
             table: self.table.clone(),
             request_id,
@@ -150,9 +147,9 @@ impl TableProviderImpl {
             metrics_collector: MetricsCollector::new(SCAN_TABLE_METRICS_COLLECTOR_NAME.to_string()),
         };
 
-        scan_table.initStream(dataFusionSessionState).await?;
+        scanTable.initStream(dfSessionState).await?;
 
-        Ok(Arc::new(scan_table))
+        Ok(Arc::new(scanTable))
     }
 
     fn buildPredicate(&self, filters: &[Expr]) -> Arc<Predicate> {
@@ -202,7 +199,7 @@ impl TableProvider for TableProviderImpl {
 
     async fn scan(&self,
                   dataFusionSessionState: &SessionState,
-                  projection: Option<&Vec<usize>>,
+                  projection: Option<&Vec<usize>>,// // 投影的index -> index
                   filters: &[Expr],
                   limit: Option<usize>) -> Result<Arc<dyn ExecutionPlan>> {
         self.scanTable(dataFusionSessionState, projection, filters, limit).await
@@ -228,8 +225,7 @@ impl TableSource for TableProviderImpl {
         TableType::Base
     }
 
-    /// Tests whether the table provider can make use of a filter expression
-    /// to optimize data retrieval.
+    /// Tests whether the table provider can make use of a filter expression to optimize data retrieval.
     fn supports_filter_pushdown(&self, _filter: &Expr) -> Result<TableProviderFilterPushDown> {
         Ok(TableProviderFilterPushDown::Inexact)
     }
@@ -245,27 +241,23 @@ struct ScanStreamState {
 impl ScanStreamState {
     fn take_stream(&mut self, index: usize) -> Result<SendableRecordBatchStream> {
         if let Some(e) = &self.err {
-            return Err(DataFusionError::Execution(format!(
-                "Failed to read table, partition:{index}, err:{e}"
-            )));
+            return Err(DataFusionError::Execution(format!("failed to read table, partition:{index}, err:{e}")));
         }
 
         // TODO(yingwen): Return an empty stream if index is out of bound.
         self.streams[index].take().ok_or_else(|| {
-            DataFusionError::Execution(format!(
-                "Read partition multiple times is not supported, partition:{index}"
-            ))
+            DataFusionError::Execution(format!("read partition multiple times is not supported, partition:{index}"))
         })
     }
 }
 
-/// Physical plan of scanning table.
+/// dataFusion 的 ExecutionPlan 的自实现类用来 scan table
 struct ScanTable {
     projected_schema: ProjectedSchema,
     table: TableRef,
     request_id: RequestId,
     read_parallelism: usize,
-    predicate: PredicateRef,
+    predicate: Arc<Predicate>,
     deadline: Option<Instant>,
     metrics_collector: MetricsCollector,
 
@@ -273,34 +265,35 @@ struct ScanTable {
 }
 
 impl ScanTable {
-    async fn initStream(&mut self, state: &SessionState) -> Result<()> {
+    async fn initStream(&mut self, dfSessionState: &SessionState) -> Result<()> {
         let readRequest = ReadRequest {
             request_id: self.request_id,
             readOptions: ReadOptions {
-                batch_size: state.config_options().execution.batch_size,
+                batch_size: dfSessionState.config_options().execution.batch_size,
                 read_parallelism: self.read_parallelism,
                 deadline: self.deadline,
             },
-            projected_schema: self.projected_schema.clone(),
+            projectedSchema: self.projected_schema.clone(),
             predicate: self.predicate.clone(),
             metrics_collector: self.metrics_collector.clone(),
         };
 
         let read_res = self.table.partitionedRead(readRequest).await;
 
-        let mut stream_state = self.stream_state.lock().unwrap();
-        if stream_state.inited {
+        let mut scanStreamState = self.stream_state.lock().unwrap();
+        if scanStreamState.inited {
             return Ok(());
         }
 
         match read_res {
             Ok(partitioned_streams) => {
                 self.read_parallelism = partitioned_streams.streams.len();
-                stream_state.streams = partitioned_streams.streams.into_iter().map(Some).collect();
+                scanStreamState.streams = partitioned_streams.streams.into_iter().map(Some).collect();
             }
-            Err(e) => stream_state.err = Some(e),
+            Err(e) => scanStreamState.err = Some(e),
         }
-        stream_state.inited = true;
+
+        scanStreamState.inited = true;
 
         Ok(())
     }
@@ -332,9 +325,7 @@ impl ExecutionPlan for ScanTable {
         Err(DataFusionError::Internal(format!("Children cannot be replaced in {self:?}")))
     }
 
-    fn execute(&self,
-               partition: usize,
-               _context: Arc<TaskContext>) -> Result<DfSendableRecordBatchStream> {
+    fn execute(&self, partition: usize, _context: Arc<TaskContext>) -> Result<DfSendableRecordBatchStream> {
         let stream = self.stream_state.lock().unwrap().take_stream(partition)?;
         Ok(Box::pin(ToDfStream(stream)))
     }
@@ -363,12 +354,7 @@ impl ExecutionPlan for ScanTable {
 
 impl DisplayAs for ScanTable {
     fn fmt_as(&self, _t: DisplayFormatType, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "ScanTable: table={}, parallelism={}",
-            self.table.name(),
-            self.read_parallelism,
-        )
+        write!(f, "scanTable: table={}, parallelism={}", self.table.name(), self.read_parallelism)
     }
 }
 
@@ -378,7 +364,6 @@ impl fmt::Debug for ScanTable {
             .field("projected_schema", &self.projected_schema)
             .field("table", &self.table.name())
             .field("read_parallelism", &self.read_parallelism)
-            .field("predicate", &self.predicate)
-            .finish()
+            .field("predicate", &self.predicate).finish()
     }
 }

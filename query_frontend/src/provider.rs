@@ -191,13 +191,13 @@ impl<'a> MetaProvider for CatalogMetaProvider<'a> {
 
 /// 实现了metaProvider 和 contextProvider 其中前者的功能是通过代理实现的 fenquen
 /// 它不 thread safe 
-pub struct MetaAndContextProvider<'a, metaProviderType> {
+pub struct MetaAndContextProvider<'a, MetaProviderType> {
     /// Local cache for TableProvider to avoid create multiple adapter for the
     /// same table, also save all the table needed during planning
     tableContainer: RefCell<TableContainer>,
     /// Store the first error MetaProvider returns
     err: RefCell<Option<Error>>,
-    metaProvider: &'a metaProviderType,
+    metaProvider: &'a MetaProviderType,
     /// Read config for each table.
     config: ConfigOptions,
 }
@@ -424,23 +424,15 @@ impl CatalogProvider for CatalogProviderImpl {
     }
 
     fn schema(&self, name: &str) -> Option<Arc<dyn SchemaProvider>> {
-        self.schemaName_schemaProvider
-            .get(name)
-            .cloned()
-            .map(|v| v as Arc<dyn SchemaProvider>)
+        self.schemaName_schemaProvider.get(name).cloned().map(|v| v as Arc<dyn SchemaProvider>)
     }
 }
 
-/// Provide the description string for [`TableReference`] which hasn't derive
-/// [`Debug`] or implement [`std::fmt::Display`].
+/// Provide the description string for [`TableReference`] which hasn't derive [`Debug`] or implement [`std::fmt::Display`].
 fn format_table_reference(table_ref: TableReference) -> String {
     match table_ref {
         TableReference::Bare { table } => format!("table:{table}"),
         TableReference::Partial { schema, table } => format!("schema:{schema}, table:{table}"),
-        TableReference::Full {
-            catalog,
-            schema,
-            table,
-        } => format!("catalog:{catalog}, schema:{schema}, table:{table}"),
+        TableReference::Full { catalog, schema, table } => format!("catalog:{catalog}, schema:{schema}, table:{table}"),
     }
 }

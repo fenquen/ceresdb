@@ -57,7 +57,7 @@ impl From<AddFile> for manifest_pb::AddFileMeta {
         manifest_pb::AddFileMeta {
             level: v.level.as_u32(),
             file_id: v.file.id,
-            time_range: Some(v.file.time_range.into()),
+            time_range: Some(v.file.timeRange.into()),
             max_seq: v.file.max_seq,
             size: v.file.size,
             row_num: v.file.row_num,
@@ -82,7 +82,7 @@ impl TryFrom<manifest_pb::AddFileMeta> for AddFile {
                 id: src.file_id,
                 size: src.size,
                 row_num: src.row_num,
-                time_range,
+                timeRange: time_range,
                 max_seq: src.max_seq,
                 storage_format: StorageFormat::from(storage_format),
             },

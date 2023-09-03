@@ -408,11 +408,6 @@ impl<'a> Reader<'a> {
 
         Ok(meta_data)
     }
-
-    pub(crate) async fn row_groups(&mut self) -> Vec<parquet::file::metadata::RowGroupMetaData> {
-        let meta_data = self.read_sst_meta().await.unwrap();
-        meta_data.parquet().row_groups().to_vec()
-    }
 }
 
 impl<'a> Drop for Reader<'a> {

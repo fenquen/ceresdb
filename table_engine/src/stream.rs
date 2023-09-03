@@ -75,19 +75,15 @@ impl DfRecordBatchStream for ToDfStream {
 
 pub struct FromDfStream {
     schema: RecordSchema,
-    df_stream: DfSendableRecordBatchStream,
+    dfStream: DfSendableRecordBatchStream,
 }
 
 impl FromDfStream {
-    pub fn new(df_stream: DfSendableRecordBatchStream) -> Result<Self> {
-        let df_schema = df_stream.schema();
-        let schema = RecordSchema::try_from(df_schema)
-            .box_err()
-            .context(ErrWithSource {
-                msg: "convert record schema",
-            })?;
+    pub fn new(dfStream: DfSendableRecordBatchStream) -> Result<Self> {
+        let arrowSchema = dfStream.schema();
+        let schema = RecordSchema::try_from(arrowSchema).box_err().context(ErrWithSource { msg: "convert record schema"})?;
 
-        Ok(Self { schema, df_stream })
+        Ok(Self { schema, dfStream })
     }
 }
 
@@ -95,15 +91,8 @@ impl Stream for FromDfStream {
     type Item = Result<RecordBatch>;
 
     fn poll_next(mut self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        match self.df_stream.as_mut().poll_next(ctx) {
-            Poll::Ready(Some(record_batch_res)) => Poll::Ready(Some(
-                record_batch_res
-                    .box_err()
-                    .and_then(|batch| RecordBatch::try_from(batch).box_err())
-                    .context(ErrWithSource {
-                        msg: "convert from arrow record batch",
-                    }),
-            )),
+        match self.dfStream.as_mut().poll_next(ctx) {
+            Poll::Ready(Some(arrowRecordBatchVec)) => Poll::Ready(Some(arrowRecordBatchVec.box_err().and_then(|arrowRecordBatch| RecordBatch::try_from(arrowRecordBatch).box_err()).context(ErrWithSource { msg: "convert from arrow record batch"}), )),
             Poll::Ready(None) => Poll::Ready(None),
             Poll::Pending => Poll::Pending,
         }

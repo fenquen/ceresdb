@@ -118,7 +118,7 @@ impl Table for MemoryTable {
     // batch_size is ignored now
     async fn read(&self, request: ReadRequest) -> Result<SendableRecordBatchStream> {
         let scan = MemoryScan {
-            schema: request.projected_schema.to_record_schema(),
+            schema: request.projectedSchema.to_record_schema(),
             row_groups: self.row_groups.clone(),
             index: 0,
         };

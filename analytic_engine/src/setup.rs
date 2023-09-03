@@ -243,12 +243,7 @@ impl WalsOpener for MemWalsOpener {
                        engine_runtimes: Arc<EngineRuntimes>) -> Result<OpenedWals> {
         let obkv_wal_config = match config {
             _ => {
-                return InvalidWalConfig {
-                    msg: format!(
-                        "invalid wal storage config while opening memory wal, config:{config:?}"
-                    ),
-                }
-                    .fail();
+                return InvalidWalConfig { msg: format!("invalid wal storage config while opening memory wal, config:{config:?}")}.fail();
             }
         };
     }

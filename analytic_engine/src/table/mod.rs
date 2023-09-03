@@ -436,8 +436,7 @@ impl Table for TableImpl {
         readRequest.readOptions.read_parallelism = 1;
 
         let mut partitionedStreams =
-            self.tableEngineInstance.partitionedRead(&self.tableData, readRequest)
-                .await.box_err().context(Scan { table: self.name() })?;
+            self.tableEngineInstance.partitionedRead(&self.tableData, readRequest).await.box_err().context(Scan { table: self.name() })?;
 
         assert_eq!(partitionedStreams.streams.len(), 1);
 
@@ -478,7 +477,7 @@ impl Table for TableImpl {
         let read_request = ReadRequest {
             request_id: request.request_id,
             readOptions: ReadOptions::default(),
-            projected_schema: request.projected_schema,
+            projectedSchema: request.projected_schema,
             predicate,
             metrics_collector: MetricsCollector::new(GET_METRICS_COLLECTOR_NAME.to_string()),
         };
@@ -521,59 +520,38 @@ impl Table for TableImpl {
     }
 
     async fn partitionedRead(&self, readRequest: ReadRequest) -> Result<PartitionedStreams> {
-        let streams =
-            self.tableEngineInstance.partitionedRead(&self.tableData, readRequest).await.box_err().context(Scan { table: self.name() })?;
-
+        let streams = self.tableEngineInstance.partitionedRead(&self.tableData, readRequest).await.box_err().context(Scan { table: self.name() })?;
         Ok(streams)
     }
 
     async fn alter_schema(&self, request: AlterSchemaRequest) -> Result<usize> {
         let mut serial_exec = self.tableData.tableOpSerialExecutor.lock().await;
-        let mut alterer = Alterer::new(
-            self.tableData.clone(),
-            &mut serial_exec,
-            self.tableEngineInstance.clone(),
-        ).await;
+        let mut alterer =
+            Alterer::new(self.tableData.clone(),
+                         &mut serial_exec,
+                         self.tableEngineInstance.clone()).await;
 
-        alterer
-            .alter_schema_of_table(request)
-            .await
-            .box_err()
-            .context(AlterSchema { table: self.name() })?;
+        alterer.alter_schema_of_table(request).await.box_err().context(AlterSchema { table: self.name() })?;
         Ok(0)
     }
 
     async fn alter_options(&self, options: HashMap<String, String>) -> Result<usize> {
         let mut serial_exec = self.tableData.tableOpSerialExecutor.lock().await;
-        let alterer = Alterer::new(
-            self.tableData.clone(),
-            &mut serial_exec,
-            self.tableEngineInstance.clone(),
-        )
-            .await;
+        let alterer =
+            Alterer::new(self.tableData.clone(),
+                         &mut serial_exec,
+                         self.tableEngineInstance.clone()).await;
 
-        alterer
-            .alter_options_of_table(options)
-            .await
-            .box_err()
-            .context(AlterOptions { table: self.name() })?;
+        alterer.alter_options_of_table(options).await.box_err().context(AlterOptions { table: self.name() })?;
         Ok(0)
     }
 
     async fn flush(&self, request: FlushRequest) -> Result<()> {
-        self.tableEngineInstance
-            .manual_flush_table(&self.tableData, request)
-            .await
-            .box_err()
-            .context(Flush { table: self.name() })
+        self.tableEngineInstance.manual_flush_table(&self.tableData, request).await.box_err().context(Flush { table: self.name() })
     }
 
     async fn compact(&self) -> Result<()> {
-        self.tableEngineInstance
-            .manual_compact_table(&self.tableData)
-            .await
-            .box_err()
-            .context(Compact { table: self.name() })?;
+        self.tableEngineInstance.manual_compact_table(&self.tableData).await.box_err().context(Compact { table: self.name() })?;
         Ok(())
     }
 }

@@ -280,23 +280,14 @@ async fn build_without_meta<Executor: QueryExecutor + 'static, T: WalsOpener>(co
         .local_tables_recoverer(local_tables_recoverer)
 }
 
-async fn create_static_topology_schema(
-    catalog_mgr: ManagerRef,
-    static_topology_config: StaticTopologyConfig,
-) {
-    let default_catalog = catalog_mgr
-        .catalog_by_name(catalog_mgr.default_catalog_name())
-        .expect("Fail to retrieve default catalog")
-        .expect("Default catalog doesn't exist");
+async fn create_static_topology_schema(catalog_mgr: ManagerRef,
+                                       static_topology_config: StaticTopologyConfig) {
+    let default_catalog =
+        catalog_mgr.catalog_by_name(catalog_mgr.default_catalog_name())
+        .expect("fail to retrieve default catalog").expect("Default catalog doesn't exist");
+
     for schema_shard_view in static_topology_config.schema_shards {
-        default_catalog
-            .create_schema(&schema_shard_view.schema)
-            .await
-            .unwrap_or_else(|_| panic!("Fail to create schema:{}", schema_shard_view.schema));
-        info!(
-            "Create static topology in default catalog:{}, schema:{}",
-            catalog_mgr.default_catalog_name(),
-            &schema_shard_view.schema
-        );
+        default_catalog.create_schema(&schema_shard_view.schema).await.unwrap_or_else(|_| panic!("Fail to create schema:{}", schema_shard_view.schema));
+        info!("create static topology in default catalog:{}, schema:{}",catalog_mgr.default_catalog_name(),&schema_shard_view.schema);
     }
 }

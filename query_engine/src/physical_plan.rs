@@ -46,13 +46,13 @@ pub trait PhysicalPlan: Debug {
 pub type PhysicalPlanPtr = Box<dyn PhysicalPlan + Send + Sync>;
 
 pub struct PhysicalPlanImpl {
-    dataFusionSessionContext: SessionContext,
+    dfSessionContext: SessionContext,
     dataFusionExecutionPlan: Arc<dyn ExecutionPlan>,
 }
 
 impl PhysicalPlanImpl {
-    pub fn with_plan(dataFusionSessionContext: SessionContext, dataFusionExecutionPlan: Arc<dyn ExecutionPlan>) -> Self {
-        Self { dataFusionSessionContext, dataFusionExecutionPlan }
+    pub fn new(dfSessionContext: SessionContext, dataFusionExecutionPlan: Arc<dyn ExecutionPlan>) -> Self {
+        Self { dfSessionContext, dataFusionExecutionPlan }
     }
 }
 
@@ -65,20 +65,21 @@ impl Debug for PhysicalPlanImpl {
 #[async_trait]
 impl PhysicalPlan for PhysicalPlanImpl {
     fn execute(&self) -> Result<SendableRecordBatchStream> {
-        let task_context = Arc::new(TaskContext::from(&self.dataFusionSessionContext));
-        let partition_count = self.dataFusionExecutionPlan.output_partitioning().partition_count();
+        let dfTaskContext = Arc::new(TaskContext::from(&self.dfSessionContext));
 
-        let df_stream = if partition_count <= 1 {
-            self.dataFusionExecutionPlan.execute(0, task_context).context(DataFusionExec { partition_count })?
+        let partitionCount = self.dataFusionExecutionPlan.output_partitioning().partition_count();
+
+        let dfStream = if partitionCount <= 1 {
+            self.dataFusionExecutionPlan.execute(0, dfTaskContext).context(DataFusionExec { partition_count: partitionCount })?
         } else {
             // merge into a single partition
             let plan = CoalescePartitionsExec::new(self.dataFusionExecutionPlan.clone());
-            // MergeExec must produce a single partition
+            // mergeExec must produce a single partition
             assert_eq!(1, plan.output_partitioning().partition_count());
-            plan.execute(0, task_context).context(DataFusionExec { partition_count })?
+            plan.execute(0, dfTaskContext).context(DataFusionExec { partition_count: partitionCount })?
         };
 
-        let stream = FromDfStream::new(df_stream).context(ConvertStream)?;
+        let stream = FromDfStream::new(dfStream).context(ConvertStream)?;
 
         Ok(Box::pin(stream))
     }

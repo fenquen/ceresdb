@@ -196,8 +196,7 @@ fn compute_mutable_limit(write_buffer_size: u32,
 impl TableData {
     /// Create a new TableData
     ///
-    /// This function should only be called when a new table is creating and
-    /// there is no existing data of the table
+    /// This function should only be called when a new table is creating and there is no existing data of the table
     #[allow(clippy::too_many_arguments)]
     pub fn new(space_id: SpaceId,
                table_id: TableId,
@@ -394,8 +393,7 @@ impl TableData {
 
         match tableOptions.segment_duration() {
             Some(segment_duration) => {
-                let time_range = TimeRange::bucket_of(timestamp, segment_duration)
-                    .context(TimestampOverflow { timestamp, duration: segment_duration })?;
+                let time_range = TimeRange::bucket_of(timestamp, segment_duration).context(TimestampOverflow { timestamp, duration: segment_duration })?;
 
                 let memTableState = MemTableState {
                     memTable,

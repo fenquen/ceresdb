@@ -88,7 +88,7 @@ impl fmt::Display for Level {
 pub struct LevelHandler {
     pub level: Level,
     /// All files in current level.
-    fileHandleSet: FileHandleSet,
+    pub fileHandleSet: FileHandleSet,
 }
 
 impl LevelHandler {
@@ -108,8 +108,8 @@ impl LevelHandler {
         self.fileHandleSet.latest()
     }
 
-    pub fn pick_ssts(&self, timeRange: TimeRange) -> Vec<FileHandle> {
-        self.fileHandleSet.files_by_time_range(timeRange)
+    pub fn pickSsts(&self, timeRange: TimeRange) -> Vec<FileHandle> {
+        self.fileHandleSet.getFileHandlesByTimeRange(timeRange)
     }
 
     #[inline]
@@ -118,16 +118,14 @@ impl LevelHandler {
     }
 
     pub fn iter_ssts(&self) -> Iter {
-        let iter = self.fileHandleSet.file_map.values();
+        let iter = self.fileHandleSet.fileOrderKey_fileHandle.values();
         Iter(iter)
     }
 
     #[inline]
-    pub fn collect_expired(
-        &self,
-        expire_time: Option<Timestamp>,
-        expired_files: &mut Vec<FileHandle>,
-    ) {
+    pub fn collect_expired(&self,
+                           expire_time: Option<Timestamp>,
+                           expired_files: &mut Vec<FileHandle>) {
         self.fileHandleSet.collect_expired(expire_time, expired_files);
     }
 
@@ -149,7 +147,7 @@ impl<'a> Iterator for Iter<'a> {
 
 #[derive(Clone)]
 pub struct FileHandle {
-    fileHandleInner: Arc<FileHandleInner>,
+    pub fileHandleInner: Arc<FileHandleInner>,
 }
 
 impl PartialEq for FileHandle {
@@ -199,18 +197,18 @@ impl FileHandle {
     }
 
     #[inline]
-    pub fn intersect_with_time_range(&self, time_range: TimeRange) -> bool {
-        self.fileHandleInner.meta.intersect_with_time_range(time_range)
+    pub fn intersectWith(&self, timeRange: TimeRange) -> bool {
+        self.fileHandleInner.meta.timeRange.intersectWith(timeRange)
     }
 
     #[inline]
     pub fn time_range(&self) -> TimeRange {
-        self.fileHandleInner.meta.time_range
+        self.fileHandleInner.meta.timeRange
     }
 
     #[inline]
     pub fn time_range_ref(&self) -> &TimeRange {
-        &self.fileHandleInner.meta.time_range
+        &self.fileHandleInner.meta.timeRange
     }
 
     #[inline]
@@ -267,7 +265,7 @@ impl Default for SstMetrics {
     }
 }
 
-impl fmt::Debug for SstMetrics {
+impl Debug for SstMetrics {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SstMetrics")
             .field("read_meter", &self.read_meter.h2_rate())
@@ -276,8 +274,8 @@ impl fmt::Debug for SstMetrics {
     }
 }
 
-struct FileHandleInner {
-    meta: FileMeta,
+pub struct FileHandleInner {
+    pub meta: FileMeta,
     purge_queue: FilePurgeQueue,
     compacting: AtomicBool,
     metrics: SstMetrics,
@@ -285,14 +283,14 @@ struct FileHandleInner {
 
 impl Drop for FileHandleInner {
     fn drop(&mut self) {
-        info!("FileHandle is dropped, meta:{:?}", self.meta);
+        info!("fileHandle is dropped, meta:{:?}", self.meta);
 
         // Push file cannot block or be async because we are in drop().
         self.purge_queue.push_file(self.meta.id);
     }
 }
 
-/// Used to order [FileHandle] by (end_time, start_time, file_id)
+/// Used to order [FileHandle] by (end_time, start_time, file_id) 注意字段的顺序不能动
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
 struct FileOrdKey {
     exclusive_end: Timestamp,
@@ -309,7 +307,7 @@ impl FileOrdKey {
         }
     }
 
-    fn key_of(file: &FileHandle) -> Self {
+    fn buildByFileHandle(file: &FileHandle) -> Self {
         Self {
             exclusive_end: file.time_range().exclusive_end,
             inclusive_start: file.time_range().inclusive_start,
@@ -343,26 +341,26 @@ impl Borrow<FileId> for FileHandleHash {
 }
 
 #[derive(Default)]
-struct FileHandleSet {
-    /// Files ordered by time range and id.
-    file_map: BTreeMap<FileOrdKey, FileHandle>,
-    /// Files indexed by file id, used to speed up removal.
+pub struct FileHandleSet {
+    /// files ordered by time range and id.
+    fileOrderKey_fileHandle: BTreeMap<FileOrdKey, FileHandle>,
+    /// files indexed by file id, used to speed up removal.
     id_to_files: HashSet<FileHandleHash>,
 }
 
 impl FileHandleSet {
     fn latest(&self) -> Option<FileHandle> {
-        if let Some(file) = self.file_map.values().rev().next() {
+        if let Some(file) = self.fileOrderKey_fileHandle.values().rev().next() {
             return Some(file.clone());
         }
         None
     }
 
-    fn files_by_time_range(&self, timeRange: TimeRange) -> Vec<FileHandle> {
-        // Seek to first sst whose end time >= time_range.inclusive_start().
-        let seek_key = FileOrdKey::for_seek(timeRange.inclusive_start());
-        self.file_map.range(seek_key..).filter_map(|(_key, fileHandle)| {
-            if fileHandle.intersect_with_time_range(timeRange) {
+    pub fn getFileHandlesByTimeRange(&self, timeRange: TimeRange) -> Vec<FileHandle> {
+        // 和之前搜索memTable时候的套路相同 seek to first sst whose end time >= time_range.inclusive_start().
+        let seek_key = FileOrdKey::for_seek(timeRange.inclusive_start);
+        self.fileOrderKey_fileHandle.range(seek_key..).filter_map(|(_key, fileHandle)| {
+            if fileHandle.intersectWith(timeRange) {
                 Some(fileHandle.clone())
             } else {
                 None
@@ -371,27 +369,26 @@ impl FileHandleSet {
     }
 
     fn insert(&mut self, file: FileHandle) {
-        self.file_map.insert(FileOrdKey::key_of(&file), file.clone());
+        self.fileOrderKey_fileHandle.insert(FileOrdKey::buildByFileHandle(&file), file.clone());
         self.id_to_files.insert(FileHandleHash(file));
     }
 
     fn remove_by_ids(&mut self, file_ids: &[FileId]) {
         for file_id in file_ids {
             if let Some(file) = self.id_to_files.take(file_id) {
-                let key = FileOrdKey::key_of(&file.0);
-                self.file_map.remove(&key);
+                let key = FileOrdKey::buildByFileHandle(&file.0);
+                self.fileOrderKey_fileHandle.remove(&key);
             }
         }
     }
 
     /// Collect ssts with time range is expired.
     fn collect_expired(&self, expire_time: Option<Timestamp>, expired_files: &mut Vec<FileHandle>) {
-        for file in self.file_map.values() {
+        for file in self.fileOrderKey_fileHandle.values() {
             if file.time_range().is_expired(expire_time) {
                 expired_files.push(file.clone());
             } else {
-                // Files are sorted by end time first, so there is no more file whose end time
-                // is less than `expire_time`.
+                // Files are sorted by end time first, so there is no more file whose end time is less than `expire_time`.
                 break;
             }
         }
@@ -399,7 +396,7 @@ impl FileHandleSet {
 
     fn has_expired_sst(&self, expire_time: Option<Timestamp>) -> bool {
         // Files are sorted by end time first, so check first file is enough.
-        if let Some(file) = self.file_map.values().next() {
+        if let Some(file) = self.fileOrderKey_fileHandle.values().next() {
             return file.time_range().is_expired(expire_time);
         }
 
@@ -417,17 +414,11 @@ pub struct FileMeta {
     /// Total row number
     pub row_num: u64,
     /// The time range of the file.
-    pub time_range: TimeRange,
+    pub timeRange: TimeRange,
     /// The max sequence number of the file.
     pub max_seq: u64,
     /// The format of the file.
     pub storage_format: StorageFormat,
-}
-
-impl FileMeta {
-    pub fn intersect_with_time_range(&self, time_range: TimeRange) -> bool {
-        self.time_range.intersect_with(time_range)
-    }
 }
 
 // Queue to store files to be deleted for a table.
@@ -562,5 +553,3 @@ impl FilePurger {
         info!("file purger exit");
     }
 }
-
-pub type FilePurgerRef = Arc<FilePurger>;

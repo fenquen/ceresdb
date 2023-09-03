@@ -125,11 +125,9 @@ impl<I: RecordBatchWithKeyIterator> DedupIterator<I> {
     }
 
     /// Filter batch by `selected_rows`.
-    fn filter_batch(
-        &mut self,
-        record_batch: RecordBatchWithKey,
-        selected_num: usize,
-    ) -> Result<RecordBatchWithKey> {
+    fn filter_batch(&mut self,
+                    record_batch: RecordBatchWithKey,
+                    selected_num: usize) -> Result<RecordBatchWithKey> {
         self.total_selected_rows += selected_num;
         self.total_duplications += record_batch.rowCount() - selected_num;
 
@@ -166,7 +164,6 @@ impl<I: RecordBatchWithKeyIterator> RecordBatchWithKeyIterator for DedupIterator
         match self.iter.next_batch().await.box_err().context(ReadFromSubIter)? {
             Some(record_batch) => {
                 trace!("dedupIterator received next record batch, request_id:{}, batch:{:?}",self.request_id,record_batch);
-
                 self.dedup_batch(record_batch).map(Some)
             }
             None => {

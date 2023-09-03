@@ -17,17 +17,16 @@ use async_trait::async_trait;
 
 pub struct QueryPlannerImpl;
 
+/// data fusion的 queryPlanner 是用来生成物理计划的 1般是在内部通过physicalPlanner  fenquen
 #[async_trait]
 impl QueryPlanner for QueryPlannerImpl {
-    async fn create_physical_plan(&self,
-                                  logicalPlan: &LogicalPlan,
-                                  sessionState: &SessionState) -> datafusion::error::Result<Arc<dyn ExecutionPlan>> {
+    async fn create_physical_plan(&self, logicalPlan: &LogicalPlan, sessionState: &SessionState) -> datafusion::error::Result<Arc<dyn ExecutionPlan>> {
         let extension_planners: Vec<Arc<dyn ExtensionPlanner + Send + Sync>> = vec![
             Arc::new(prom_align::PromAlignPlanner),
             Arc::new(influxql_query::exec::context::IOxExtensionPlanner {}),
         ];
 
-        let physical_planner = DefaultPhysicalPlanner::with_extension_planners(extension_planners);
-        physical_planner.create_physical_plan(logicalPlan, sessionState).await
+        let physicalPlanner = DefaultPhysicalPlanner::with_extension_planners(extension_planners);
+        physicalPlanner.create_physical_plan(logicalPlan, sessionState).await
     }
 }

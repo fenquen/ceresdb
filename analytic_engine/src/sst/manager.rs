@@ -14,6 +14,7 @@ pub type FileId = u64;
 
 /// A table level manager that manages all the sst files of the table
 pub struct LevelsController {
+    /// 1个level对应个levelHandler
     levelHandlers: Vec<LevelHandler>,
     purge_queue: FilePurgeQueue,
 }
@@ -51,12 +52,11 @@ impl LevelsController {
     }
 
     /// pick the ssts and collect it by `append_sst`.
-    pub fn pick_ssts(&self,
-                     timeRange: TimeRange,
-                     mut append_sst: impl FnMut(Level, &[FileHandle])) {
+    pub fn pickSsts(&self, timeRange: TimeRange, mut collectSstFn: impl FnMut(Level, &[FileHandle])) {
         for levelHandler in self.levelHandlers.iter() {
-            let ssts = levelHandler.pick_ssts(timeRange);
-            append_sst(levelHandler.level, &ssts);
+            // 在某level得到满足timeRange的ssts
+            let ssts = levelHandler.fileHandleSet.getFileHandlesByTimeRange(timeRange);
+            collectSstFn(levelHandler.level, &ssts);
         }
     }
 
@@ -80,11 +80,7 @@ impl LevelsController {
         level_handler.iter_ssts()
     }
 
-    pub fn collect_expired_at_level(
-        &self,
-        level: Level,
-        expire_time: Option<Timestamp>,
-    ) -> Vec<FileHandle> {
+    pub fn collect_expired_at_level(&self, level: Level, expire_time: Option<Timestamp>) -> Vec<FileHandle> {
         let level_handler = &self.levelHandlers[level.as_usize()];
         let mut expired = Vec::new();
         level_handler.collect_expired(expire_time, &mut expired);

@@ -193,10 +193,7 @@ fn fill_default_values(table: TableRef,
     let mut cached_column_values: HashMap<usize, DfColumnarValue> = HashMap::new();
 
     let table_arrow_schema = table.schema().to_arrow_schema_ref();
-    let df_schema_ref = table_arrow_schema
-        .clone()
-        .to_dfschema_ref()
-        .context(DatafusionSchema)?;
+    let df_schema_ref = table_arrow_schema.clone().to_dfschema_ref().context(DatafusionSchema)?;
 
     for (column_idx, default_value_expr) in columnIndex_columnDefaultVal.iter() {
         let execution_props = ExecutionProps::default();
@@ -216,19 +213,10 @@ fn fill_default_values(table: TableRef,
         let required_column_idxes = find_columns_by_expr(&simplified_expr)
             .iter()
             .map(|column_name| {
-                table
-                    .schema()
-                    .index_of(column_name)
-                    .context(FindExpressionInput { column_name })
-            })
-            .collect::<Result<Vec<usize>>>()?;
-        let input_arrow_schema = table_arrow_schema
-            .project(&required_column_idxes)
-            .context(ArrowSchema)?;
-        let input_df_schema = input_arrow_schema
-            .clone()
-            .to_dfschema()
-            .context(DatafusionSchema)?;
+                table.schema().index_of(column_name).context(FindExpressionInput { column_name })
+            }).collect::<Result<Vec<usize>>>()?;
+        let input_arrow_schema = table_arrow_schema.project(&required_column_idxes).context(ArrowSchema)?;
+        let input_df_schema = input_arrow_schema.clone().to_dfschema().context(DatafusionSchema)?;
 
         // Create physical expr
         let physical_expr =

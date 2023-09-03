@@ -241,6 +241,7 @@ impl<W: AsyncWrite + Send + Unpin> ColumnarRecordEncoder<W> {
            num_rows_per_row_group: usize,
            max_buffer_size: usize,
            compression: Compression) -> Result<Self> {
+
         let parquetWriteProperties =
             WriterProperties::builder()
                 .set_max_row_group_size(num_rows_per_row_group)
@@ -278,10 +279,7 @@ impl<W: AsyncWrite + Send + Unpin> RecordEncoder for ColumnarRecordEncoder<W> {
 
     fn encodeParquetMetaData(&mut self, meta_data: ParquetMetaData) -> Result<()> {
         let key_value = encode_sst_meta_data(meta_data)?;
-        self.asyncArrowWriter
-            .as_mut()
-            .unwrap()
-            .append_key_value_metadata(key_value);
+        self.asyncArrowWriter.as_mut().unwrap().append_key_value_metadata(key_value);
 
         Ok(())
     }
@@ -290,11 +288,7 @@ impl<W: AsyncWrite + Send + Unpin> RecordEncoder for ColumnarRecordEncoder<W> {
         assert!(self.asyncArrowWriter.is_some());
 
         let arrow_writer = self.asyncArrowWriter.take().unwrap();
-        arrow_writer
-            .close()
-            .await
-            .box_err()
-            .context(EncodeRecordBatch)?;
+        arrow_writer.close().await.box_err().context(EncodeRecordBatch)?;
 
         Ok(())
     }

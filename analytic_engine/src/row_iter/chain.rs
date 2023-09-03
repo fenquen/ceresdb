@@ -4,6 +4,7 @@ use std::{
     fmt,
     time::{Duration, Instant},
 };
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use common_types::{
@@ -24,11 +25,12 @@ use crate::{
     },
     space::SpaceId,
     sst::{
-        factory::{FactoryRef as SstFactoryRef, ObjectStorePickerRef, SstReadOptions},
+        factory::SstReadOptions,
         file::FileHandle,
     },
     table::version::{MemTableVec, SamplingMemTable},
 };
+use crate::sst::factory::{ObjectStoreChooser, SstFactory};
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -64,9 +66,9 @@ pub struct ChainConfig<'a> {
 
     pub sst_read_options: SstReadOptions,
     /// Sst factory
-    pub sst_factory: &'a SstFactoryRef,
+    pub sst_factory: &'a Arc<dyn SstFactory>,
     /// Store picker for persisting sst.
-    pub store_picker: &'a ObjectStorePickerRef,
+    pub store_picker: &'a Arc<dyn ObjectStoreChooser>,
 }
 
 /// Builder for [ChainIterator].
@@ -115,7 +117,7 @@ impl<'a> Builder<'a> {
         let mut streams = Vec::with_capacity(total_streams);
 
         if let Some(v) = &self.sampling_mem {
-            let stream = record_batch_stream::filtered_stream_from_memtable(
+            let stream = record_batch_stream::filteredStreamFromMemTable(
                 self.config.projected_schema.clone(),
                 false,
                 &v.mem,
@@ -129,7 +131,7 @@ impl<'a> Builder<'a> {
         }
 
         for memtable in &self.memtables {
-            let stream = record_batch_stream::filtered_stream_from_memtable(
+            let stream = record_batch_stream::filteredStreamFromMemTable(
                 self.config.projected_schema.clone(),
                 false,
                 // chain iterator only handle the case reading in no order so just read in asc
@@ -146,7 +148,7 @@ impl<'a> Builder<'a> {
 
         for leveled_ssts in &self.ssts {
             for sst in leveled_ssts {
-                let stream = record_batch_stream::filtered_stream_from_sst_file(
+                let stream = record_batch_stream::filteredStreamFromSst(
                     self.config.space_id,
                     self.config.table_id,
                     sst,

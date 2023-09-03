@@ -36,7 +36,6 @@ use crate::{
     space::{SpaceRef, SpacesRef},
     sst::{
         factory::ScanOptions,
-        file::FilePurgerRef,
         meta_data::cache::MetaCacheRef,
     },
     table::data::{TableDataRef, TableShardInfo},
@@ -44,6 +43,7 @@ use crate::{
 };
 use crate::manifest::Manifest;
 use crate::sst::factory::{ObjectStoreChooser, SstFactory};
+use crate::sst::file::FilePurger;
 
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, Snafu)]
@@ -81,7 +81,7 @@ pub struct SpaceStore {
     /// Wal of all tables
     walManager: WalManagerRef,
     /// Object store picker for persisting data.
-    objectStorePicker: Arc<dyn ObjectStoreChooser>,
+    pub objectStorePicker: Arc<dyn ObjectStoreChooser>,
     /// Sst factory.
     sstFactory: Arc<dyn SstFactory>,
 
@@ -131,7 +131,7 @@ pub struct TableEngineInstance {
     table_opts: TableOptions,
 
     // End of write group options.
-    file_purger: FilePurgerRef,
+    file_purger: Arc<FilePurger>,
     compaction_scheduler: CompactionSchedulerRef,
 
     meta_cache: Option<MetaCacheRef>,

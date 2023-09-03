@@ -109,12 +109,10 @@ impl fmt::Debug for SamplingMemTable {
 /// Memtable with additional meta data
 #[derive(Clone)]
 pub struct MemTableState {
-    /// The mutable memtable
     pub memTable: MemTableRef,
-    /// The `time_range` is estimated via the time range of the first row group
-    /// write to this memtable and is aligned to segment size
+    /// The `time_range` is estimated via the time range of the first row group write to  memtable and is aligned to segment size
     pub timeRange: TimeRange,
-    /// Id of the memtable, newer memtable has greater id
+    /// newer memtable has greater id
     pub id: MemTableId,
 }
 
@@ -239,10 +237,10 @@ struct MemTableView {
     /// can not be moved into immutable memtable set.
     samplingMemTable: Option<SamplingMemTable>,
 
-    /// Mutable memtables arranged by its time range.
+    /// mutable memTables 使用endTime定位 fenquen
     mutableMemTableSet: MutableMemTableSet,
 
-    /// Immutable memtables set, lookup by memtable id is fast.
+    /// immutable memTables 使用 memTableId定位 fenquen
     immutableMemTableSet: ImmutableMemTableSet,
 }
 
@@ -341,13 +339,13 @@ impl MemTableView {
         self.immutableMemTableSet.0.remove(&id);
     }
 
-    /// collect memtables itersect with `time_range`
-    fn memtables_for_read(&self,
-                          timeRange: TimeRange,
-                          mems: &mut Vec<MemTableState>,
-                          sampling_mem: &mut Option<SamplingMemTable>) {
-        self.mutableMemTableSet.memtables_for_read(timeRange, mems);
-        self.immutableMemTableSet.memtables_for_read(timeRange, mems);
+    /// 得到和指定的timeRange有交集的memtable
+    fn memTablesForRead(&self,
+                        timeRange: TimeRange,
+                        memTableStateVec: &mut Vec<MemTableState>,
+                        sampling_mem: &mut Option<SamplingMemTable>) {
+        self.mutableMemTableSet.memTablesForRead(timeRange, memTableStateVec);
+        self.immutableMemTableSet.memTablesForRead(timeRange, memTableStateVec);
 
         *sampling_mem = self.samplingMemTable.clone();
     }
@@ -364,8 +362,8 @@ impl MemTableView {
 struct MutableMemTableSet(BTreeMap<Timestamp, MemTableState>);
 
 impl MutableMemTableSet {
-    fn new() -> Self {
-        Self(BTreeMap::new())
+    fn new() -> MutableMemTableSet {
+        MutableMemTableSet(BTreeMap::new())
     }
 
     /// Get memtale by timestamp for write
@@ -381,10 +379,10 @@ impl MutableMemTableSet {
     }
 
     /// insert memtable, the caller should guarantee the key of memtable is not present
-    fn insert(&mut self, memtable: MemTableState) -> Option<MemTableState> {
+    fn insert(&mut self, memTableState: MemTableState) -> Option<MemTableState> {
         // Use end time of time range as key
-        let end = memtable.timeRange.exclusive_end();
-        self.0.insert(end, memtable)
+        let end = memTableState.timeRange.exclusive_end();
+        self.0.insert(end, memTableState)
     }
 
     fn memory_usage(&self) -> usize {
@@ -404,13 +402,12 @@ impl MutableMemTableSet {
         lastSeq
     }
 
-    fn memtables_for_read(&self, timeRange: TimeRange, mems: &mut Vec<MemTableState>) {
+    fn memTablesForRead(&self, timeRange: TimeRange, memTableStateVec: &mut Vec<MemTableState>) {
         // seek to first memtable whose end time (exclusive) > time_range.start
-        let iter = self.0.range((Bound::Excluded(timeRange.inclusive_start), Bound::Unbounded));
-        for (_endTs, memTableState) in iter {
+        for (_endTs, memTableState) in self.0.range((Bound::Excluded(timeRange.inclusive_start), Bound::Unbounded)) {
             // we need to iterate all candidate memtables as their start time is unspecific
-            if memTableState.timeRange.intersect_with(timeRange) {
-                mems.push(memTableState.clone());
+            if memTableState.timeRange.intersectWith(timeRange) {
+                memTableStateVec.push(memTableState.clone());
             }
         }
     }
@@ -430,10 +427,10 @@ impl ImmutableMemTableSet {
         self.0.values().map(|m| m.memTable.approximate_memory_usage()).sum()
     }
 
-    fn memtables_for_read(&self, time_range: TimeRange, mems: &mut MemTableVec) {
+    fn memTablesForRead(&self, timeRange: TimeRange, memTableStateVec: &mut MemTableVec) {
         for mem in self.0.values() {
-            if mem.timeRange.intersect_with(time_range) {
-                mems.push(mem.clone());
+            if mem.timeRange.intersectWith(timeRange) {
+                memTableStateVec.push(mem.clone());
             }
         }
     }
@@ -448,7 +445,7 @@ pub type LeveledFiles = Vec<Vec<FileHandle>>;
 /// Memtable/sst to read for given time range.
 pub struct ReadView {
     pub sampling_mem: Option<SamplingMemTable>,
-    pub memtables: Vec<MemTableState>,
+    pub memTableStateVec: Vec<MemTableState>,
     /// ssts to read in each level,MUST ensure the length of `leveled_ssts` >= MAX_LEVEL.
     pub allLeveSatisfiedSsts: Vec<Vec<FileHandle>>,
 }
@@ -457,7 +454,7 @@ impl Default for ReadView {
     fn default() -> Self {
         Self {
             sampling_mem: None,
-            memtables: Vec::new(),
+            memTableStateVec: Vec::new(),
             allLeveSatisfiedSsts: vec![Vec::new(); SST_LEVEL_NUM],
         }
     }
@@ -592,10 +589,7 @@ impl TableVersion {
     pub fn insertMutableMemTable(&self, memTableState: MemTableState) {
         let mut inner = self.tableVersionInner.write().unwrap();
         let old = inner.memTableView.mutableMemTableSet.insert(memTableState.clone());
-        assert!(old.is_none(),
-                "find a duplicate memtable, new_memtable:{:?}, old_memtable:{:?}, memtable_view:{:#?}",
-                memTableState, old, inner.memTableView
-        );
+        assert!(old.is_none(), "find a duplicate memtable, new_memtable:{:?}, old_memtable:{:?}, memtable_view:{:#?}", memTableState, old, inner.memTableView);
     }
 
     /// Set sampling memtable.
@@ -652,23 +646,24 @@ impl TableVersion {
     /// 得到对应的timeRange的memTable和sst
     pub fn pickReadView(&self, timeRange: TimeRange) -> ReadView {
         let mut sampling_mem = None;
-        let mut memtables = Vec::new();
+        let mut memTableStateVec = Vec::new();
+
         let mut allLeveSatisfiedSsts = vec![Vec::new(); SST_LEVEL_NUM];
 
         {
             // 得到 memtables for read.
             let tableVersionInner = self.tableVersionInner.read().unwrap();
-            tableVersionInner.memTableView.memtables_for_read(timeRange, &mut memtables, &mut sampling_mem);
+            tableVersionInner.memTableView.memTablesForRead(timeRange, &mut memTableStateVec, &mut sampling_mem);
 
             // 得到 ssts for read.
-            tableVersionInner.levelsController.pick_ssts(timeRange, |level, satisfiedSstsInOneLevel| {
+            tableVersionInner.levelsController.pickSsts(timeRange, |level, satisfiedSstsInOneLevel| {
                 allLeveSatisfiedSsts[level.as_usize()].extend_from_slice(satisfiedSstsInOneLevel)
             });
         }
 
         ReadView {
             sampling_mem,
-            memtables,
+            memTableStateVec,
             allLeveSatisfiedSsts,
         }
     }

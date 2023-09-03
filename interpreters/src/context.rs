@@ -6,7 +6,7 @@ use std::{sync::Arc, time::Instant};
 
 use common_types::request_id::RequestId;
 use macros::define_result;
-use query_engine::context::{Context as QueryContext, Context, ContextRef as QueryContextRef};
+use query_engine::context::QueryContext;
 use snafu::Snafu;
 
 #[derive(Debug, Snafu)]
@@ -38,7 +38,7 @@ impl InterpreterContext {
     }
 
     /// Create a new context of query executor 毫无意义的平移转换
-    pub fn new_query_context(&self) -> Result<Arc<Context>> {
+    pub fn new_query_context(&self) -> Result<Arc<QueryContext>> {
         let ctx = QueryContext {
             request_id: self.request_id,
             deadline: self.deadline,

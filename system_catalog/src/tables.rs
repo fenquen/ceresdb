@@ -140,11 +140,11 @@ impl SystemTable for Tables {
             .all_catalogs()
             .box_err()
             .context(table_engine::table::Scan { table: self.name() })?;
-        let projected_record_schema = request.projected_schema.to_record_schema_with_key();
+        let projected_record_schema = request.projectedSchema.to_record_schema_with_key();
         let mut builder = RecordBatchWithKeyBuilder::new(projected_record_schema);
 
         let projector = request
-            .projected_schema
+            .projectedSchema
             .tryProjectWithKey(&self.schema)
             .expect("Should succeed to try_project_key of sys_tables");
         for catalog in &catalogs {

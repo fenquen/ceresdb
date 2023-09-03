@@ -337,7 +337,7 @@ pub struct ReadRequest {
     pub request_id: RequestId,
     pub readOptions: ReadOptions,
     /// The schema and projection for read, the output data should match this schema
-    pub projected_schema: ProjectedSchema,
+    pub projectedSchema: ProjectedSchema,
     /// Predicate of the query.
     pub predicate: PredicateRef,
     /// Collector for metrics of this read request.
@@ -348,23 +348,12 @@ impl TryFrom<ReadRequest> for ceresdbproto::remote_engine::TableReadRequest {
     type Error = Error;
 
     fn try_from(request: ReadRequest) -> std::result::Result<Self, Error> {
-        let predicate_pb =
-            request
-                .predicate
-                .as_ref()
-                .try_into()
-                .box_err()
-                .context(ReadRequestToPb {
-                    msg: format!(
-                        "convert predicate failed, predicate:{:?}",
-                        request.predicate
-                    ),
-                })?;
+        let predicate_pb = request.predicate.as_ref().try_into().box_err().context(ReadRequestToPb { msg: format!("convert predicate failed, predicate:{:?}", request.predicate), })?;
 
         Ok(Self {
             request_id: request.request_id.as_u64(),
             opts: Some(request.readOptions.into()),
-            projected_schema: Some(request.projected_schema.into()),
+            projected_schema: Some(request.projectedSchema.into()),
             predicate: Some(predicate_pb),
             order: 0,
         })
@@ -392,7 +381,7 @@ impl TryFrom<ceresdbproto::remote_engine::TableReadRequest> for ReadRequest {
         Ok(Self {
             request_id: RequestId::next_id(),
             readOptions: opts,
-            projected_schema,
+            projectedSchema: projected_schema,
             predicate,
             metrics_collector: MetricsCollector::default(),
         })

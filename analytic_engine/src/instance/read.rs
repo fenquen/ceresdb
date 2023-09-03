@@ -78,33 +78,28 @@ impl TableEngineInstance {
     pub async fn partitionedRead(&self,
                                  tableData: &TableData,
                                  readRequest: ReadRequest) -> Result<PartitionedStreams> {
-        debug!("instance read from table, space_id:{}, table:{}, table_id:{:?}, request:{:?}",
-            tableData.space_id, tableData.name, tableData.id, readRequest);
+        debug!("instance read from table, space_id:{}, table:{}, table_id:{:?}, request:{:?}",tableData.space_id, tableData.name, tableData.id, readRequest);
 
-        let table_options = tableData.table_options();
+        let tableOptions = tableData.table_options();
 
         tableData.metrics.on_read_request_begin();
 
-        let needMergeSort = table_options.needDeDuplicate();
+        let needMergeSort = tableOptions.needDeDuplicate();
 
-        readRequest.metrics_collector.collect(Metric::boolean(
-            MERGE_SORT_METRIC_NAME.to_string(),
-            needMergeSort,
-            None,
-        ));
+        readRequest.metrics_collector.collect(Metric::boolean(MERGE_SORT_METRIC_NAME.to_string(), needMergeSort, None));
 
         if needMergeSort {
-            let merge_iters = self.buildMergeIters(tableData, &readRequest, &table_options).await?;
-            self.build_partitioned_streams(&readRequest, merge_iters)
+            let merge_iters = self.buildMergeIters(tableData, &readRequest, &tableOptions).await?;
+            self.buildPartitionedStreams(&readRequest, merge_iters)
         } else {
-            let chain_iters = self.build_chain_iters(tableData, &readRequest, &table_options).await?;
-            self.build_partitioned_streams(&readRequest, chain_iters)
+            let chain_iters = self.build_chain_iters(tableData, &readRequest, &tableOptions).await?;
+            self.buildPartitionedStreams(&readRequest, chain_iters)
         }
     }
 
-    fn build_partitioned_streams(&self,
-                                 request: &ReadRequest,
-                                 partitioned_iters: Vec<impl RecordBatchWithKeyIterator + 'static>) -> Result<PartitionedStreams> {
+    fn buildPartitionedStreams(&self,
+                               request: &ReadRequest,
+                               partitioned_iters: Vec<impl RecordBatchWithKeyIterator + 'static>) -> Result<PartitionedStreams> {
 
         // 生成 Vec<Vec<>> 最外的元素数量有read_parallelism
         let mut iterVecVec: Vec<_> = std::iter::repeat_with(Vec::new).take(request.readOptions.read_parallelism).collect();
@@ -115,7 +110,7 @@ impl TableEngineInstance {
 
         let mut streams = Vec::with_capacity(request.readOptions.read_parallelism);
         for iterVec in iterVecVec {
-            let stream = iters_to_stream(iterVec, request.projected_schema.clone());
+            let stream = iters_to_stream(iterVec, request.projectedSchema.clone());
             streams.push(stream);
         }
 
@@ -130,8 +125,8 @@ impl TableEngineInstance {
                              tableOptions: &TableOptions) -> Result<Vec<DedupIterator<MergeIterator>>> {
         // current visible sequence
         let sequence = tableData.last_sequence();
-        let projected_schema = readRequest.projected_schema.clone();
-        let sst_read_options = SstReadOptions {
+        let projected_schema = readRequest.projectedSchema.clone();
+        let sstReadOptions = SstReadOptions {
             frequency: ReadFrequency::Frequent,
             projected_schema: projected_schema.clone(),
             predicate: readRequest.predicate.clone(),
@@ -143,13 +138,16 @@ impl TableEngineInstance {
 
         let timeRange = readRequest.predicate.time_range();
         let tableVersion = tableData.currentTableVersion();
-        let readViews = self.partition_ssts_and_memtables(timeRange, tableVersion, tableOptions);
+        // 得到以segmentDuration分组的memTable和sst 1组memTable和sst都包含在单个read view
+        let readViewVec = self.partitionSstsAndMemtables(timeRange, tableVersion, tableOptions);
 
-        let iter_options = self.make_iter_options(tableOptions.num_rows_per_row_group);
+        let iter_options = self.iter_options.clone().unwrap_or(IterOptions { batch_size: tableOptions.num_rows_per_row_group});
 
-        let mut iters = Vec::with_capacity(readViews.len());
-        for (idx, readView) in readViews.into_iter().enumerate() {
+        let mut iters = Vec::with_capacity(readViewVec.len());
+
+        for (idx, readView) in readViewVec.into_iter().enumerate() {
             let metrics_collector = readRequest.metrics_collector.span(format!("{}_{}", MERGE_ITER_METRICS_COLLECTOR_NAME_PREFIX, idx));
+
             let merge_config = MergeConfig {
                 request_id: readRequest.request_id,
                 metrics_collector: Some(metrics_collector),
@@ -160,7 +158,7 @@ impl TableEngineInstance {
                 projected_schema: projected_schema.clone(),
                 predicate: readRequest.predicate.clone(),
                 sst_factory: &self.spaceStore.sstFactory,
-                sst_read_options: sst_read_options.clone(),
+                sst_read_options: sstReadOptions.clone(),
                 store_picker: self.spaceStore.objectStorePicker(),
                 merge_iter_options: iter_options.clone(),
                 need_dedup: tableOptions.needDeDuplicate(),
@@ -170,21 +168,16 @@ impl TableEngineInstance {
             let merge_iter =
                 MergeBuilder::new(merge_config)
                     .sampling_mem(readView.sampling_mem)
-                    .memtables(readView.memtables)
+                    .memtables(readView.memTableStateVec)
                     .ssts_of_level(readView.allLeveSatisfiedSsts)
                     .build().await.context(BuildMergeIterator { table: &tableData.name })?;
 
-            let dedup_iter =
-                DedupIterator::new(readRequest.request_id, merge_iter, iter_options.clone());
+            let dedup_iter = DedupIterator::new(readRequest.request_id, merge_iter, iter_options.clone());
 
             iters.push(dedup_iter);
         }
 
-        readRequest.metrics_collector.collect(Metric::number(
-            ITER_NUM_METRIC_NAME.to_string(),
-            iters.len(),
-            None,
-        ));
+        readRequest.metrics_collector.collect(Metric::number(ITER_NUM_METRIC_NAME.to_string(), iters.len(), None));
 
         Ok(iters)
     }
@@ -193,7 +186,7 @@ impl TableEngineInstance {
                                table_data: &TableData,
                                request: &ReadRequest,
                                table_options: &TableOptions) -> Result<Vec<ChainIterator>> {
-        let projected_schema = request.projected_schema.clone();
+        let projected_schema = request.projectedSchema.clone();
 
         let sst_read_options = SstReadOptions {
             frequency: ReadFrequency::Frequent,
@@ -207,7 +200,7 @@ impl TableEngineInstance {
 
         let time_range = request.predicate.time_range();
         let version = table_data.currentTableVersion();
-        let read_views = self.partition_ssts_and_memtables(time_range, version, table_options);
+        let read_views = self.partitionSstsAndMemtables(time_range, version, table_options);
 
         let mut iters = Vec::with_capacity(read_views.len());
         for (idx, read_view) in read_views.into_iter().enumerate() {
@@ -223,20 +216,15 @@ impl TableEngineInstance {
                 predicate: request.predicate.clone(),
                 sst_read_options: sst_read_options.clone(),
                 sst_factory: &self.spaceStore.sstFactory,
-                store_picker: self.spaceStore.objectStorePicker(),
+                store_picker: &self.spaceStore.objectStorePicker,
             };
 
             let builder = chain::Builder::new(chain_config);
 
-            let chain_iter = builder
-                .sampling_mem(read_view.sampling_mem)
-                .memtables(read_view.memtables)
-                .ssts(read_view.allLeveSatisfiedSsts)
-                .build()
-                .await
-                .context(BuildChainIterator {
-                    table: &table_data.name,
-                })?;
+            let chain_iter =
+                builder.sampling_mem(read_view.sampling_mem)
+                    .memtables(read_view.memTableStateVec)
+                    .ssts(read_view.allLeveSatisfiedSsts).build().await.context(BuildChainIterator { table: &table_data.name })?;
 
             iters.push(chain_iter);
         }
@@ -244,17 +232,17 @@ impl TableEngineInstance {
         Ok(iters)
     }
 
-    fn partition_ssts_and_memtables(&self,
-                                    timeRange: TimeRange,
-                                    tableVersion: &TableVersion,
-                                    tableOptions: &TableOptions) -> Vec<ReadView> {
-        // 得到对应的timeRange的memTable和sst
+    fn partitionSstsAndMemtables(&self,
+                                 timeRange: TimeRange,
+                                 tableVersion: &TableVersion,
+                                 tableOptions: &TableOptions) -> Vec<ReadView> {
+        // 得到了满足timeRange的多个memTable和sst 它们1概包含在readview
         let readView = tableVersion.pickReadView(timeRange);
 
-        let segmentDuration = match tableOptions.segment_duration {
+        let segmentDuration = match tableOptions.segmentDuration {
             Some(v) => v.0,
             None => {
-                // Segment duration is unknown, the table maybe still in sampling phase
+                // segment duration is unknown, the table maybe still in sampling phase
                 // or the segment duration is still not applied to the table options, just return one partition.
                 return vec![readView];
             }
@@ -265,33 +253,32 @@ impl TableEngineInstance {
             return vec![readView];
         }
 
-        // Collect the aligned ssts and memtables into the map.
-        // {aligned timestamp} => {read view}
+        // 把上边拿到的memTables和ssts以segmentDuration分组
+        // collect the aligned ssts and memtables into the map.
         let mut alignedTs_readView = BTreeMap::new();
+
         for (level, sstsInOneLevel) in readView.allLeveSatisfiedSsts.into_iter().enumerate() {
             for fileHandle in sstsInOneLevel {
-                let aligned_ts = fileHandle.time_range().inclusive_start.truncate_by(segmentDuration);
+                let alignedTs = fileHandle.fileHandleInner.meta.timeRange.inclusive_start.truncate_by(segmentDuration);
 
-                let entry = alignedTs_readView.entry(aligned_ts).or_insert_with(ReadView::default);
+                let entry = alignedTs_readView.entry(alignedTs).or_insert_with(ReadView::default);
 
                 entry.allLeveSatisfiedSsts[level].push(fileHandle);
             }
         }
 
-        for memtable in readView.memtables {
-            let aligned_ts = memtable.timeRange.inclusive_start().truncate_by(segmentDuration);
+        for memTableState in readView.memTableStateVec {
+            let alignedTs = memTableState.timeRange.inclusive_start.truncate_by(segmentDuration);
 
-            let entry = alignedTs_readView.entry(aligned_ts).or_insert_with(ReadView::default);
-            entry.memtables.push(memtable);
+            let entry = alignedTs_readView.entry(alignedTs).or_insert_with(ReadView::default);
+            entry.memTableStateVec.push(memTableState);
         }
 
         alignedTs_readView.into_values().collect()
     }
 
     fn make_iter_options(&self, num_rows_per_row_group: usize) -> IterOptions {
-        self.iter_options.clone().unwrap_or(IterOptions {
-            batch_size: num_rows_per_row_group,
-        })
+        self.iter_options.clone().unwrap_or(IterOptions { batch_size: num_rows_per_row_group})
     }
 }
 

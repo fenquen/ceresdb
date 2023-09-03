@@ -60,8 +60,7 @@ impl Timestamp {
         self.0
     }
 
-    /// Truncate the value of this timestamp by given duration, return that
-    /// value and keeps current timestamp unchanged.
+    /// Truncate the value of this timestamp by given duration, return that value and keeps current timestamp unchanged.
     ///
     /// This function won't do overflow check.
     #[must_use]
@@ -244,26 +243,22 @@ impl TimeRange {
     }
 
     /// Returns true if this time range intersect with `other`
-    pub fn intersect_with(&self, other: TimeRange) -> bool {
-        !self.not_intersecting(other)
+    pub fn intersectWith(&self, other: TimeRange) -> bool {
+        !self.notIntersectWith(other)
     }
 
-    /// Return true if the time range is expired (`exclusive_end_time` <
-    /// `expire_time`).
+    /// Return true if the time range is expired (`exclusive_end_time` < `expire_time`).
     pub fn is_expired(&self, expire_time: Option<Timestamp>) -> bool {
         expire_time.is_some() && self.exclusive_end() <= expire_time.unwrap()
     }
 
     #[inline]
-    fn not_intersecting(&self, other: TimeRange) -> bool {
+    fn notIntersectWith(&self, other: TimeRange) -> bool {
         other.exclusive_end <= self.inclusive_start || other.inclusive_start >= self.exclusive_end
     }
 
     pub fn intersected_range(&self, other: TimeRange) -> Option<TimeRange> {
-        TimeRange::new(
-            self.inclusive_start.max(other.inclusive_start),
-            self.exclusive_end.min(other.exclusive_end),
-        )
+        TimeRange::new(self.inclusive_start.max(other.inclusive_start), self.exclusive_end.min(other.exclusive_end))
     }
 }
 

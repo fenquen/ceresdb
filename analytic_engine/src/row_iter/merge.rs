@@ -8,6 +8,7 @@ use std::{
     ops::{Deref, DerefMut},
     time::{Duration, Instant},
 };
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use common_types::{
@@ -24,6 +25,7 @@ use log::{debug, trace};
 use macros::define_result;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
 use table_engine::{predicate::PredicateRef, table::TableId};
+use table_engine::predicate::Predicate;
 use trace_metric::{MetricsCollector, TraceMetricWhenDrop};
 
 use crate::{
@@ -42,12 +44,7 @@ use crate::{
 
 #[derive(Debug, Snafu)]
 pub enum Error {
-    #[snafu(display(
-    "Expect the same schema, expect:{:?}, given:{:?}.\nBacktrace:\n{}",
-    expect,
-    given,
-    backtrace
-    ))]
+    #[snafu(display("expect the same schema, expect:{:?}, given:{:?}.\nBacktrace:\n{}", expect, given, backtrace))]
     MismatchedSchema {
         expect: RecordSchemaWithKey,
         given: RecordSchemaWithKey,
@@ -94,7 +91,7 @@ pub struct MergeConfig<'a> {
     /// The projected schema to read.
     pub projected_schema: ProjectedSchema,
     /// The predicate of the query.
-    pub predicate: PredicateRef,
+    pub predicate: Arc<Predicate>,
 
     pub sst_read_options: SstReadOptions,
     /// Sst factory
@@ -158,62 +155,56 @@ impl<'a> MergeBuilder<'a> {
     }
 
     pub async fn build(self) -> Result<MergeIterator> {
-        let sst_streams_num: usize = self
-            .ssts
-            .iter()
-            .map(|leveled_ssts| leveled_ssts.len())
-            .sum();
-        let mut streams_num = sst_streams_num + self.memtables.len();
+        let sstStreamNum: usize = self.ssts.iter().map(|leveled_ssts| leveled_ssts.len()).sum();
+
+        let mut totalStreamNum = sstStreamNum + self.memtables.len();
+
         if self.sampling_mem.is_some() {
-            streams_num += 1;
+            totalStreamNum += 1;
         }
-        let mut streams = Vec::with_capacity(streams_num);
+
+        let mut streamVec = Vec::with_capacity(totalStreamNum);
 
         debug!("build merge iterator, table_id:{:?}, request_id:{}, sampling_mem:{:?}, memtables:{:?}, ssts:{:?}",
             self.config.table_id,self.config.request_id,self.sampling_mem,self.memtables,self.ssts);
 
         if let Some(v) = &self.sampling_mem {
-            let stream = record_batch_stream::filtered_stream_from_memtable(
-                self.config.projected_schema.clone(),
-                self.config.need_dedup,
-                &v.mem,
-                self.config.reverse,
-                self.config.predicate.as_ref(),
-                self.config.deadline,
-                self.config.metrics_collector.clone(),
-            ).context(BuildStreamFromMemtable)?;
-            streams.push(stream);
+            let stream =
+                record_batch_stream::filteredStreamFromMemTable(self.config.projected_schema.clone(),
+                                                                self.config.need_dedup,
+                                                                &v.mem,
+                                                                self.config.reverse,
+                                                                self.config.predicate.as_ref(),
+                                                                self.config.deadline,
+                                                                self.config.metrics_collector.clone()).context(BuildStreamFromMemtable)?;
+
+            streamVec.push(stream);
         }
 
         for memtable in &self.memtables {
-            let stream = record_batch_stream::filtered_stream_from_memtable(
-                self.config.projected_schema.clone(),
-                self.config.need_dedup,
-                &memtable.memTable,
-                self.config.reverse,
-                self.config.predicate.as_ref(),
-                self.config.deadline,
-                self.config.metrics_collector.clone(),
-            )
-                .context(BuildStreamFromMemtable)?;
-            streams.push(stream);
+            let stream =
+                record_batch_stream::filteredStreamFromMemTable(self.config.projected_schema.clone(),
+                                                                self.config.need_dedup,
+                                                                &memtable.memTable,
+                                                                self.config.reverse,
+                                                                self.config.predicate.as_ref(),
+                                                                self.config.deadline,
+                                                                self.config.metrics_collector.clone()).context(BuildStreamFromMemtable)?;
+            streamVec.push(stream);
         }
 
         let mut sst_ids = Vec::with_capacity(self.ssts.len());
         for leveled_ssts in &self.ssts {
             for f in leveled_ssts {
-                let stream = record_batch_stream::filtered_stream_from_sst_file(
-                    self.config.space_id,
-                    self.config.table_id,
-                    f,
-                    self.config.sst_factory,
-                    &self.config.sst_read_options,
-                    self.config.store_picker,
-                    self.config.metrics_collector.clone(),
-                )
-                    .await
-                    .context(BuildStreamFromSst)?;
-                streams.push(stream);
+                let stream =
+                    record_batch_stream::filteredStreamFromSst(self.config.space_id,
+                                                               self.config.table_id,
+                                                               f,
+                                                               self.config.sst_factory,
+                                                               &self.config.sst_read_options,
+                                                               self.config.store_picker,
+                                                               self.config.metrics_collector.clone()).await.context(BuildStreamFromSst)?;
+                streamVec.push(stream);
                 sst_ids.push(f.id());
             }
         }
@@ -223,13 +214,13 @@ impl<'a> MergeBuilder<'a> {
             self.config.request_id,
             // Use the schema after projection as the schema of the merge iterator.
             self.config.projected_schema.to_record_schema_with_key(),
-            streams,
+            streamVec,
             self.ssts,
             self.config.merge_iter_options,
             self.config.reverse,
             Metrics::new(
                 self.memtables.len(),
-                sst_streams_num,
+                sstStreamNum,
                 self.config.metrics_collector,
             ),
         ))
@@ -521,9 +512,7 @@ impl DerefMut for HeapBufferedStream {
 
 impl PartialEq for HeapBufferedStream {
     fn eq(&self, other: &Self) -> bool {
-        let ordering = self
-            .schema
-            .compare_row(&self.first_row_in_buffer(), &other.first_row_in_buffer());
+        let ordering = self.schema.compare_row(&self.first_row_in_buffer(), &other.first_row_in_buffer());
         if let Ordering::Equal = ordering {
             self.sequence_in_buffer() == other.sequence_in_buffer()
         } else {
@@ -626,22 +615,36 @@ pub struct MergeIterator {
     metrics: Metrics,
 }
 
+#[async_trait]
+impl RecordBatchWithKeyIterator for MergeIterator {
+    type Error = Error;
+
+    fn schema(&self) -> &RecordSchemaWithKey {
+        &self.schema
+    }
+
+    async fn next_batch(&mut self) -> Result<Option<RecordBatchWithKey>> {
+        let record_batch = self.fetch_next_batch().await?;
+
+        trace!("MergeIterator send next record batch:{:?}", record_batch);
+
+        Ok(record_batch)
+    }
+}
+
 impl MergeIterator {
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        table_id: TableId,
-        request_id: RequestId,
-        schema: RecordSchemaWithKey,
-        streams: Vec<BoxedPrefetchableRecordBatchStream>,
-        ssts: Vec<Vec<FileHandle>>,
-        iter_options: IterOptions,
-        reverse: bool,
-        metrics: Metrics,
-    ) -> Self {
+    pub fn new(table_id: TableId,
+               request_id: RequestId,
+               schema: RecordSchemaWithKey,
+               streams: Vec<BoxedPrefetchableRecordBatchStream>,
+               ssts: Vec<Vec<FileHandle>>,
+               iter_options: IterOptions,
+               reverse: bool,
+               metrics: Metrics) -> MergeIterator {
         let heap_cap = streams.len();
-        let record_batch_builder =
-            RecordBatchWithKeyBuilder::newWithCapacity(schema.clone(), iter_options.batch_size);
-        Self {
+        let record_batch_builder = RecordBatchWithKeyBuilder::newWithCapacity(schema.clone(), iter_options.batch_size);
+        MergeIterator {
             table_id,
             request_id,
             inited: false,
@@ -666,10 +669,7 @@ impl MergeIterator {
             return Ok(());
         }
 
-        debug!(
-            "Merge iterator init, table_id:{:?}, request_id:{}, schema:{:?}",
-            self.table_id, self.request_id, self.schema
-        );
+        debug!("merge iterator init, table_id:{:?}, request_id:{}, schema:{:?}",self.table_id, self.request_id, self.schema);
         let init_start = Instant::now();
 
         // Initialize buffered streams concurrently.
@@ -728,9 +728,7 @@ impl MergeIterator {
 
     /// Pull the next batch Rearrange the heap
     async fn reheap(&mut self, mut buffered_stream: HeapBufferedStream) -> Result<()> {
-        let pulled_new_batch = buffered_stream
-            .pull_next_batch_if_necessary(&mut self.metrics)
-            .await?;
+        let pulled_new_batch = buffered_stream.pull_next_batch_if_necessary(&mut self.metrics).await?;
 
         if buffered_stream.is_exhausted() {
             self.refill_hot();
@@ -833,22 +831,5 @@ impl MergeIterator {
             let record_batch = self.record_batch_builder.build().context(BuildRecordBatch)?;
             Ok(Some(record_batch))
         }
-    }
-}
-
-#[async_trait]
-impl RecordBatchWithKeyIterator for MergeIterator {
-    type Error = Error;
-
-    fn schema(&self) -> &RecordSchemaWithKey {
-        &self.schema
-    }
-
-    async fn next_batch(&mut self) -> Result<Option<RecordBatchWithKey>> {
-        let record_batch = self.fetch_next_batch().await?;
-
-        trace!("MergeIterator send next record batch:{:?}", record_batch);
-
-        Ok(record_batch)
     }
 }

@@ -140,8 +140,8 @@ pub struct NoopPrefetcher<T>(pub BoxedStream<T>);
 impl<T> PrefetchableStream for NoopPrefetcher<T> {
     type Item = T;
 
+    // It's just a noop operation.
     async fn start_prefetch(&mut self) {
-        // It's just a noop operation.
     }
 
     async fn fetch_next(&mut self) -> Option<T> {

@@ -167,7 +167,7 @@ impl<Q: QueryExecutor + 'static> RemoteEngineServiceImpl<Q> {
         let request_key = StreamReadReqKey::new(
             table.table,
             read_request.predicate.clone(),
-            read_request.projected_schema.projection(),
+            read_request.projectedSchema.projection(),
         );
 
         let mut guard = match request_notifiers.insert_notifier(request_key.clone(), tx) {

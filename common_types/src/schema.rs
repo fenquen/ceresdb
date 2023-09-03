@@ -469,14 +469,14 @@ impl RecordSchema {
 impl TryFrom<ArrowSchemaRef> for RecordSchema {
     type Error = Error;
 
-    fn try_from(arrow_schema: ArrowSchemaRef) -> Result<Self> {
-        let fields = arrow_schema.fields();
+    fn try_from(arrowSchema: ArrowSchemaRef) -> Result<Self> {
+        let fields = arrowSchema.fields();
         let mut columns = Vec::with_capacity(fields.len());
 
         for field in fields {
             let column_schema =
                 ColumnSchema::try_from(field).with_context(|| InvalidArrowField {
-                    arrow_schema: arrow_schema.clone(),
+                    arrow_schema: arrowSchema.clone(),
                     field_name: field.name(),
                 })?;
             columns.push(column_schema);
@@ -484,7 +484,7 @@ impl TryFrom<ArrowSchemaRef> for RecordSchema {
 
         let column_schemas = ColumnSchemas::new(columns);
 
-        Ok(Self::from_column_schemas(column_schemas, &arrow_schema))
+        Ok(Self::from_column_schemas(column_schemas, &arrowSchema))
     }
 }
 
@@ -533,12 +533,8 @@ impl RecordSchemaWithKey {
             }).collect::<Vec<_>>()
     }
 
-    pub(crate) fn into_record_schema(self) -> RecordSchema {
-        self.recordSchema
-    }
-
     pub fn to_arrow_schema_ref(&self) -> ArrowSchemaRef {
-        self.recordSchema.to_arrow_schema_ref()
+        self.recordSchema.arrowSchema.clone()
     }
 }
 

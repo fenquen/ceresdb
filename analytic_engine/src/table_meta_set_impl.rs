@@ -23,18 +23,18 @@ use crate::{
         meta_snapshot::MetaSnapshot,
     },
     space::{SpaceId, SpaceRef, SpacesRef},
-    sst::file::FilePurgerRef,
     table::{
         data::{TableData, TableDataRef, TableShardInfo, DEFAULT_ALLOC_STEP},
         version::{TableVersionMeta, TableVersionSnapshot},
         version_edit::VersionEdit,
     },
 };
+use crate::sst::file::FilePurger;
 
 #[derive(Clone)]
 pub(crate) struct TableMetaSetImpl {
     pub(crate) spaces: SpacesRef,
-    pub(crate) file_purger: FilePurgerRef,
+    pub(crate) file_purger: Arc<FilePurger>,
     // TODO: maybe not suitable to place this parameter here?
     pub(crate) preflush_write_buffer_size_ratio: f32,
     pub(crate) manifest_snapshot_every_n_updates: NonZeroUsize,

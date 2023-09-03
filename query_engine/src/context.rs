@@ -31,21 +31,19 @@ use crate::{
     logical_optimizer::type_conversion::TypeConversion, physical_optimizer,
 };
 
-pub type ContextRef = Arc<Context>;
-
-/// Query context
-pub struct Context {
+pub struct QueryContext {
     pub request_id: RequestId,
     pub deadline: Option<Instant>,
     pub default_catalog: String,
     pub default_schema: String,
 }
 
-impl Context {
-    pub fn buildDataFusionSessionContext(&self,
-                                         config: &Config,
-                                         request_id: RequestId,
-                                         deadline: Option<Instant>) -> SessionContext {
+impl QueryContext {
+    /// dfSessionContext 包含 dfSessionState,dfSessionState 包含 queryPlanner 用来生成物理的计划 fenquen
+    pub fn buildDfSessionContext(&self,
+                                 config: &Config,
+                                 request_id: RequestId,
+                                 deadline: Option<Instant>) -> SessionContext {
         let timeout = deadline.map(|deadline| deadline.duration_since(Instant::now()).as_millis() as u64);
 
         let ceresDbOptions = CeresdbOptions {
@@ -53,11 +51,9 @@ impl Context {
             request_timeout: timeout,
         };
 
-        let mut dataFusionSessionConfig = SessionConfig::new()
-            .with_default_catalog_and_schema(
-                self.default_catalog.clone(),
-                self.default_schema.clone(),
-            ).with_target_partitions(config.read_parallelism);
+        let mut dataFusionSessionConfig =
+            SessionConfig::new().with_default_catalog_and_schema(self.default_catalog.clone(),
+                                                                 self.default_schema.clone()).with_target_partitions(config.read_parallelism);
 
         dataFusionSessionConfig.options_mut().extensions.insert(ceresDbOptions);
 
@@ -65,7 +61,7 @@ impl Context {
             SessionState::with_config_rt(dataFusionSessionConfig, Arc::new(RuntimeEnv::default()))
                 .with_query_planner(Arc::new(QueryPlannerImpl))
                 .with_analyzer_rules(Self::analyzer_rules())
-                .with_optimizer_rules(Self::logical_optimize_rules());
+                .with_optimizer_rules(Self::logicalOptimizeRules());
 
         //let state = influxql_query::logical_optimizer::register_iox_logical_optimizers(state);
 
@@ -84,9 +80,9 @@ impl Context {
         new_rules
     }
 
-    fn logical_optimize_rules() -> Vec<Arc<dyn OptimizerRule + Send + Sync>> {
+    fn logicalOptimizeRules() -> Vec<Arc<dyn OptimizerRule + Send + Sync>> {
+        // these rules are the default settings of the datafusion.
         vec![
-            // These rules are the default settings of the datafusion.
             Arc::new(SimplifyExpressions::new()),
             Arc::new(CommonSubexprEliminate::new()),
             Arc::new(EliminateLimit::new()),

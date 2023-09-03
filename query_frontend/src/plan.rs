@@ -89,15 +89,7 @@ impl Debug for CreateTablePlan {
             .field("if_not_exists", &self.if_not_exists)
             .field("table", &self.tableName)
             .field("table_schema", &self.table_schema)
-            .field(
-                "options",
-                &self
-                    .options
-                    .iter()
-                    .map(|(k, v)| (k.clone(), v.clone()))
-                    .collect::<BTreeMap<String, String>>(),
-            )
-            .finish()
+            .field("options", &self.options.iter().map(|(k, v)| (k.clone(), v.clone())).collect::<BTreeMap<String, String>>()).finish()
     }
 }
 

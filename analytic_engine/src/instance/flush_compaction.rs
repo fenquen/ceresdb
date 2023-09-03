@@ -261,7 +261,7 @@ impl FlushTask {
             assert!(!suggest_segment_duration.is_zero());
 
             let mut new_table_opts = (*tableData.table_options()).clone();
-            new_table_opts.segment_duration = Some(ReadableDuration(suggest_segment_duration));
+            new_table_opts.segmentDuration = Some(ReadableDuration(suggest_segment_duration));
 
             let edit_req = {
                 let meta_update = MetaUpdate::AlterOptions(AlterOptionsMeta {
@@ -501,7 +501,7 @@ impl FlushTask {
                     id: file_ids[idx],
                     size: sst_info.file_size as u64,
                     row_num: sst_info.row_num as u64,
-                    time_range: sst_meta.time_range,
+                    timeRange: sst_meta.time_range,
                     max_seq: sst_meta.maxSeq,
                     storage_format: sst_info.storage_format,
                 },
@@ -560,7 +560,7 @@ impl FlushTask {
             id: sstFileId,
             row_num: sstInfo.row_num as u64,
             size: sstInfo.file_size as u64,
-            time_range: memTableState.timeRange,
+            timeRange: memTableState.timeRange,
             max_seq: memTableState.lastSequence(),
             storage_format: sstInfo.storage_format,
         }))
@@ -815,7 +815,7 @@ impl SpaceStore {
                 size: sst_file_size,
                 row_num: sst_row_num,
                 max_seq: sst_meta.maxSeq,
-                time_range: sst_meta.time_range,
+                timeRange: sst_meta.time_range,
                 storage_format: sst_info.storage_format,
             },
         });

@@ -222,14 +222,11 @@ pub enum StorageFormat {
     Columnar,
 
     /// Design for time-series data
-    /// Collapsible Columns within same primary key are collapsed
-    /// into list, other columns are the same format with columnar's.
+    /// Collapsible Columns within same primary key are collapsed into list, other columns are the same format with columnar's.
     ///
-    /// Whether a column is collapsible is decided by
-    /// `Schema::is_collapsible_column`
+    /// Whether a column is collapsible is decided by `Schema::is_collapsible_column`
     ///
-    /// Note: minTime/maxTime is optional and not implemented yet, mainly used
-    /// for time-range pushdown filter
+    /// Note: minTime/maxTime is optional and not implemented yet, mainly used for time-range pushdown filter
     ///
     ///```plaintext
     /// | Device ID | Timestamp           | Status Code | Tag 1 | Tag 2 | minTime | maxTime |
@@ -354,7 +351,7 @@ pub struct TableOptions {
     /// Segment duration of the table. 默认 DEFAULT_SEGMENT_DURATION 7200s
     ///
     /// `None` means the table is doing the segment duration sampling and the actual duration is still unknown.
-    pub segment_duration: Option<ReadableDuration>,
+    pub segmentDuration: Option<ReadableDuration>,
 
     /// updateMode默认是override需要去重的 fenquen
     pub update_mode: UpdateMode,
@@ -383,7 +380,7 @@ pub struct TableOptions {
 impl TableOptions {
     #[inline]
     pub fn segment_duration(&self) -> Option<Duration> {
-        self.segment_duration.map(|v| v.0)
+        self.segmentDuration.map(|v| v.0)
     }
 
     #[inline]
@@ -398,7 +395,7 @@ impl TableOptions {
     // for show create table
     pub fn to_raw_map(&self) -> HashMap<String, String> {
         let mut m = [
-            (SEGMENT_DURATION.to_string(), self.segment_duration.map(|v| v.to_string()).unwrap_or_else(String::new), ),
+            (SEGMENT_DURATION.to_string(), self.segmentDuration.map(|v| v.to_string()).unwrap_or_else(String::new), ),
             (UPDATE_MODE.to_string(), self.update_mode.to_string()),
             (ENABLE_TTL.to_string(), self.enable_ttl.to_string()),
             (TTL.to_string(), format!("{}", self.ttl)),
@@ -417,12 +414,12 @@ impl TableOptions {
     pub fn sanitize(&mut self) {
         let one_day_secs = BUCKET_DURATION_1D.as_secs();
 
-        if let Some(segment_duration) = self.segment_duration {
+        if let Some(segment_duration) = self.segmentDuration {
             let mut segment_duration_secs = segment_duration.as_secs();
             if segment_duration_secs == 0 {
                 segment_duration_secs = DEFAULT_SEGMENT_DURATION.as_secs()
             };
-            self.segment_duration = Some(ReadableDuration::secs(segment_duration_secs));
+            self.segmentDuration = Some(ReadableDuration::secs(segment_duration_secs));
         }
 
         let ttl_secs = self.ttl.as_secs();
@@ -513,10 +510,10 @@ impl From<manifest_pb::CompactionOptions> for TimeWindowCompactionOptions {
 impl From<TableOptions> for manifest_pb::TableOptions {
     fn from(opts: TableOptions) -> Self {
         let segment_duration = opts
-            .segment_duration
+            .segmentDuration
             .map(|v| v.0.as_millis_u64())
             .unwrap_or(0);
-        let sampling_segment_duration = opts.segment_duration.is_none();
+        let sampling_segment_duration = opts.segmentDuration.is_none();
 
         let (compaction_strategy, compaction_options) = match opts.compaction_strategy {
             CompactionStrategy::Default => (manifest_pb::CompactionStrategy::Default, None),
@@ -606,7 +603,7 @@ impl TryFrom<manifest_pb::TableOptions> for TableOptions {
 
         let storage_format_hint = opts.storage_format_hint.context(MissingStorageFormatHint)?;
         let table_opts = Self {
-            segment_duration,
+            segmentDuration: segment_duration,
             enable_ttl: opts.enable_ttl,
             ttl: Duration::from_millis(opts.ttl).into(),
             arena_block_size: opts.arena_block_size,
@@ -625,7 +622,7 @@ impl TryFrom<manifest_pb::TableOptions> for TableOptions {
 impl Default for TableOptions {
     fn default() -> Self {
         Self {
-            segment_duration: None,
+            segmentDuration: None,
             enable_ttl: true,
             ttl: DEFAULT_TTL.into(),
             arena_block_size: DEFAULT_ARENA_BLOCK_SIZE,
@@ -656,7 +653,7 @@ fn merge_table_options(options: &HashMap<String, String>,
     let mut table_opts = table_old_opts.clone();
     if is_create {
         if let Some(v) = options.get(SEGMENT_DURATION) {
-            table_opts.segment_duration = Some(parse_duration(v).context(ParseDuration)?);
+            table_opts.segmentDuration = Some(parse_duration(v).context(ParseDuration)?);
         }
         if let Some(v) = options.get(UPDATE_MODE) {
             table_opts.update_mode = UpdateMode::parse_from(v)?;

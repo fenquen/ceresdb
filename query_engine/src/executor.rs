@@ -7,7 +7,6 @@ use std::{sync::Arc, time::Instant};
 use async_trait::async_trait;
 use datafusion::error::DataFusionError;
 use common_types::record_batch::RecordBatch;
-use datafusion::prelude::SessionContext;
 use futures::TryStreamExt;
 use log::{debug, info};
 use macros::define_result;
@@ -17,10 +16,10 @@ use time_ext::InstantExt;
 
 use crate::{
     config::Config,
-    context::{Context, ContextRef},
     physical_optimizer::PhysicalOptimizer,
     physical_plan::PhysicalPlanPtr,
 };
+use crate::context::QueryContext;
 use crate::physical_plan::PhysicalPlanImpl;
 
 #[derive(Debug, Snafu)]
@@ -74,7 +73,7 @@ pub trait QueryExecutor: Clone + Send + Sync {
     /// Execute the query, returning the query results as RecordBatchVec
     ///
     /// REQUIRE: The meta data of tables in query should be found from ContextRef
-    async fn executeLogicalPlan(&self, ctx: ContextRef, queryPlan: QueryPlan) -> Result<Vec<RecordBatch>>;
+    async fn executeLogicalPlan(&self, ctx: Arc<QueryContext>, queryPlan: QueryPlan) -> Result<Vec<RecordBatch>>;
 }
 
 #[derive(Clone, Default)]
@@ -90,26 +89,26 @@ impl QueryExecutorImpl {
 
 #[async_trait]
 impl QueryExecutor for QueryExecutorImpl {
-    async fn executeLogicalPlan(&self, ctx: ContextRef, queryPlan: QueryPlan) -> Result<Vec<RecordBatch>> {
+    async fn executeLogicalPlan(&self, queryContext: Arc<QueryContext>, queryPlan: QueryPlan) -> Result<Vec<RecordBatch>> {
         // register catalogs to datafusion execution context.
         let catalogName_catalogProvider = CatalogProviderImpl::new_adapters(queryPlan.tableContainer.clone());
-        let dataFusionSessionContext = ctx.buildDataFusionSessionContext(&self.config, ctx.request_id, ctx.deadline);
+        let dfSessionContext = queryContext.buildDfSessionContext(&self.config, queryContext.request_id, queryContext.deadline);
 
         for (catalogName, catalogProvider) in catalogName_catalogProvider {
-            dataFusionSessionContext.register_catalog(&catalogName, Arc::new(catalogProvider));
+            dfSessionContext.register_catalog(&catalogName, Arc::new(catalogProvider));
         }
 
         let beginTime = Instant::now();
 
         // dataFusionLogicalPlan优化 dataFusion包办
-        let dataFusionLogicalPlan = dataFusionSessionContext.state().optimize(&queryPlan.dataFusionLogicalPlan).context(LogicalOptimize)?;
-        debug!("executor logical optimization finished, request_id:{}, plan: {:#?}",ctx.request_id, dataFusionLogicalPlan);
+        let dataFusionLogicalPlan = dfSessionContext.state().optimize(&queryPlan.dataFusionLogicalPlan).context(LogicalOptimize)?;
+        debug!("executor logical optimization finished, request_id:{}, plan: {:#?}",queryContext.request_id, dataFusionLogicalPlan);
 
         // dataFusionLogicalPlan变为物理 dataFusion包办
-        let dataFusionExecutionPlan = dataFusionSessionContext.state().create_physical_plan(&dataFusionLogicalPlan).await.context(PhysicalOptimize)?;
-        let physicalPlan = PhysicalPlanImpl::with_plan(dataFusionSessionContext, dataFusionExecutionPlan);
+        let dataFusionExecutionPlan = dfSessionContext.state().create_physical_plan(&dataFusionLogicalPlan).await.context(PhysicalOptimize)?;
+        let physicalPlan = PhysicalPlanImpl::new(dfSessionContext, dataFusionExecutionPlan);
         let physicalPlan:PhysicalPlanPtr = Box::new(physicalPlan);
-        debug!("executor physical optimization finished, request_id:{}, physical_plan: {:?}",ctx.request_id, physicalPlan);
+        debug!("executor physical optimization finished, request_id:{}, physical_plan: {:?}",queryContext.request_id, physicalPlan);
 
         let stream = physicalPlan.execute().context(ExecutePhysical)?;
 
@@ -117,7 +116,7 @@ impl QueryExecutor for QueryExecutorImpl {
         let recordBatchVec = stream.try_collect().await.context(Collect)?;
 
         info!("executor executed plan, request_id:{}, cost:{}ms, plan_and_metrics: {}",
-            ctx.request_id,beginTime.saturating_elapsed().as_millis(),physicalPlan.metrics_to_string());
+            queryContext.request_id,beginTime.saturating_elapsed().as_millis(),physicalPlan.metrics_to_string());
 
         Ok(recordBatchVec)
     }

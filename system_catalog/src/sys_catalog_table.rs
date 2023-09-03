@@ -490,7 +490,7 @@ impl SysCatalogTable {
             request_id: RequestId::next_id(),
             readOptions: opts,
             // The schema of sys catalog table is never changed
-            projected_schema: ProjectedSchema::no_projection(self.table.schema()),
+            projectedSchema: ProjectedSchema::no_projection(self.table.schema()),
             predicate: PredicateBuilder::default().build(),
             metrics_collector: MetricsCollector::default(),
         };

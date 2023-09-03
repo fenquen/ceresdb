@@ -1,6 +1,5 @@
 // Copyright 2022-2023 CeresDB Project Authors. Licensed under Apache-2.0.
 
-//! The main entry point to start the server
 
 #![allow(non_snake_case)]
 
@@ -17,8 +16,8 @@ use log::info;
 /// By this environment variable, the address of current node can be overridden.
 /// And it could be domain name or ip address, but no port follows it.
 const NODE_ADDR: &str = "CERESDB_SERVER_ADDR";
-/// By this environment variable, the cluster name of current node can be
-/// overridden.
+
+/// By this environment variable, the cluster name of current node can be overridden.
 const CLUSTER_NAME: &str = "CLUSTER_NAME";
 
 /// Default value for version information is not found from environment
@@ -41,29 +40,23 @@ fn fetch_version() -> String {
         ("Rustc version", rustc_version),
         ("Target", target),
         ("Build date", build_time),
-    ]
-        .iter()
-        .map(|(label, value)| format!("{label}: {value}"))
-        .collect::<Vec<_>>()
-        .join("\n")
+    ].iter().map(|(label, value)| format!("{label}: {value}")).collect::<Vec<_>>().join("\n")
 }
 
 const DATA_DIR_PATH: &str = concat!(env!("HOME"), "/ceresdb_data");
 const WAL_DIR_PATH: &str = concat!(env!("HOME"), "/ceresdb_wal_rocksdb");
 
 fn main() {
-    _ = fs::remove_dir_all(Path::new(DATA_DIR_PATH));
-    _ = fs::remove_dir_all(Path::new(WAL_DIR_PATH));
+    // _ = fs::remove_dir_all(Path::new(DATA_DIR_PATH));
+    // _ = fs::remove_dir_all(Path::new(WAL_DIR_PATH));
 
     let version = fetch_version();
-    let matches = App::new("CeresDB Server")
-        .version(version.as_str())
-        .arg(Arg::with_name("config")
-                .short('c')
-                .long("config")
-                .required(false)
-                .takes_value(true)
-                .help("Set configuration file, eg: \"/path/server.toml\""), ).get_matches();
+    let matches = App::new("CeresDB Server").version(version.as_str()).arg(Arg::with_name("config")
+                                                                               .short('c')
+                                                                               .long("config")
+                                                                               .required(false)
+                                                                               .takes_value(true)
+                                                                               .help("Set configuration file, eg: \"/path/server.toml\""), ).get_matches();
 
     let mut config = match matches.value_of("config") {
         Some(path) => {
@@ -76,18 +69,17 @@ fn main() {
     if let Ok(node_addr) = env::var(NODE_ADDR) {
         config.node.addr = node_addr;
     }
+
     if let Ok(cluster) = env::var(CLUSTER_NAME) {
         if let Some(ClusterDeployment::WithMeta(v)) = &mut config.cluster_deployment {
             v.meta_client.cluster_name = cluster;
         }
     }
 
-    println!("CeresDB server tries starting with config:{config:?}");
+    println!("ceresDB server tries starting with config:{:?}", config);
 
-    // Setup log.
     let logLevel = setup::setup_logger(&config);
 
-    // Setup tracing.
     let _writer_guard = setup::setup_tracing(&config);
 
     panic_ext::set_panic_hook(false);
