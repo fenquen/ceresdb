@@ -30,7 +30,7 @@ use log::debug;
 use trace_metric::{collector::FormatCollectorVisitor, MetricsCollector};
 
 use crate::{
-    predicate::{PredicateBuilder, PredicateRef},
+    predicate::PredicateBuilder,
     stream::{SendableRecordBatchStream, ToDfStream},
     table::{self, ReadOptions, ReadRequest, TableRef},
 };

@@ -156,9 +156,8 @@ impl<'a> Builder<'a> {
                     &self.config.sst_read_options,
                     self.config.store_picker,
                     self.config.metrics_collector.clone(),
-                )
-                .await
-                .context(BuildStreamFromSst)?;
+                ).await.context(BuildStreamFromSst)?;
+
                 streams.push(stream);
             }
         }
@@ -314,7 +313,7 @@ impl ChainIterator {
                     self.metrics.total_batch_fetched += 1;
 
                     if v.num_rows() > 0 {
-                        return Ok(Some(v.record_batch));
+                        return Ok(Some(v.recordBatchWithKey));
                     }
                 }
                 // Fetch next stream only if the current sequence_record_batch is None.

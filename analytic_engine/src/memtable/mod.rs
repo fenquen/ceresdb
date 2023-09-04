@@ -23,7 +23,7 @@ use trace_metric::MetricsCollector;
 
 use crate::memtable::key::KeySequence;
 
-const DEFAULT_SCAN_BATCH_SIZE: usize = 500;
+pub const DEFAULT_SCAN_BATCH_SIZE: usize = 500;
 
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub (crate)))]
@@ -38,24 +38,16 @@ pub enum Error {
     DecodeRow { source: codec::row::Error },
 
     #[snafu(display("failed to append row to batch builder, err:{}", source))]
-    AppendRow {
-        source: common_types::record_batch::Error,
-    },
+    AppendRow { source: common_types::record_batch::Error },
 
     #[snafu(display("failed to build record batch, err:{}", source, ))]
-    BuildRecordBatch {
-        source: common_types::record_batch::Error,
-    },
+    BuildRecordBatch { source: common_types::record_batch::Error },
 
     #[snafu(display("failed to decode continuous row, err:{}", source))]
-    DecodeContinuousRow {
-        source: common_types::row::contiguous::Error,
-    },
+    DecodeContinuousRow { source: common_types::row::contiguous::Error },
 
     #[snafu(display("failed to project memtable schema, err:{}", source))]
-    ProjectSchema {
-        source: common_types::projected_schema::Error,
-    },
+    ProjectSchema { source: common_types::projected_schema::Error },
 
     #[snafu(display("invalid sequence number to put, given:{}, last:{}.\nBacktrace:\n{}", given, last, backtrace))]
     InvalidPutSequence {
@@ -96,23 +88,6 @@ impl PutContext {
     }
 }
 
-/// Options for scan and context for tracing
-#[derive(Debug, Clone)]
-pub struct ScanContext {
-    /// Suggested row number per batch
-    pub batch_size: usize,
-    pub deadline: Option<Instant>,
-}
-
-impl Default for ScanContext {
-    fn default() -> Self {
-        Self {
-            batch_size: DEFAULT_SCAN_BATCH_SIZE,
-            deadline: None,
-        }
-    }
-}
-
 /// now we only support forward scan.
 #[derive(Debug, Clone)]
 pub struct ScanRequest {
@@ -128,6 +103,8 @@ pub struct ScanRequest {
     pub reverse: bool,
     /// Collector for scan metrics.
     pub metrics_collector: Option<MetricsCollector>,
+    pub batchSize: usize,
+    pub deadline: Option<Instant>,
 }
 
 /// In memory storage for table's data.
@@ -136,7 +113,7 @@ pub struct ScanRequest {
 /// The memtable is designed for single-writer and multiple-reader usage, so
 /// not all function supports concurrent writer, the caller should guarantee not
 /// writing to the memtable concurrently.
-// All operation is done in memory, no need to use async trait
+/// All operation is done in memory, no need to use async trait
 pub trait MemTable {
     /// Schema of this memtable
     ///
@@ -166,7 +143,7 @@ pub trait MemTable {
            schema: &Schema) -> Result<()>;
 
     /// return the data in columnar format. The returned rows is guaranteed to be ordered by the primary key.
-    fn scan(&self, ctx: ScanContext, scanRequest: ScanRequest) -> Result<ColumnarIter>;
+    fn scan(&self, scanRequest: ScanRequest) -> Result<ColumnarIter>;
 
     /// Returns an estimate of the number of bytes of data in used
     fn approximate_memory_usage(&self) -> usize;

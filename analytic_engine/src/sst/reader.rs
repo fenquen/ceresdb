@@ -15,7 +15,7 @@ pub mod error {
     #[derive(Debug, Snafu)]
     #[snafu(visibility(pub))]
     pub enum Error {
-        #[snafu(display("Try to read again, path:{path}.\nBacktrace:\n{backtrace}"))]
+        #[snafu(display("try to read again, path:{path}.\nBacktrace:\n{backtrace}"))]
         ReadAgain { backtrace: Backtrace, path: String },
 
         #[snafu(display("Fail to read persisted file, path:{path}, err:{source}"))]

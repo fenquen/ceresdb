@@ -534,7 +534,7 @@ impl FilePurger {
         while let Some(request) = receiver.recv().await {
             match request {
                 Request::Purge(purge_request) => {
-                    let sst_file_path = sst_util::new_sst_file_path(
+                    let sst_file_path = sst_util::buildSstFilePath(
                         purge_request.space_id,
                         purge_request.table_id,
                         purge_request.file_id,

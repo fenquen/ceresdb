@@ -32,7 +32,7 @@ use crate::{
     manifest::meta_edit::{
         AlterOptionsMeta, MetaEdit, MetaEditRequest, MetaUpdate, VersionEditMeta,
     },
-    memtable::{ColumnarIter, MemTableRef, ScanContext, ScanRequest},
+    memtable::{ColumnarIter, MemTableRef, ScanRequest},
     row_iter::{
         self,
         dedup::DedupIterator,
@@ -52,6 +52,7 @@ use crate::{
     },
     table_options::StorageFormatHint,
 };
+use crate::memtable;
 
 const DEFAULT_CHANNEL_SIZE: usize = 5;
 
@@ -891,7 +892,10 @@ fn buildMemTableIter(memTable: MemTableRef, tableData: &TableDataRef) -> Result<
         need_dedup: tableData.dedup(),
         reverse: false,
         metrics_collector: None,
+        batchSize: memtable::DEFAULT_SCAN_BATCH_SIZE,
+        deadline: None,
+
     };
 
-    memTable.scan(ScanContext::default(), scanRequest).box_err().context(InvalidMemIter)
+    memTable.scan(scanRequest).box_err().context(InvalidMemIter)
 }

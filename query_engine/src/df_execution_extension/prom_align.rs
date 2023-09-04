@@ -108,10 +108,7 @@ impl PhysicalExpr for ExtractTsidExpr {
     }
 
     fn evaluate(&self, batch: &RecordBatch) -> ArrowResult<ColumnarValue> {
-        let tsid_idx = batch
-            .schema()
-            .index_of(TSID_COLUMN)
-            .expect("checked in plan build");
+        let tsid_idx = batch.schema().index_of(TSID_COLUMN).expect("checked in plan build");
         Ok(ColumnarValue::Array(batch.column(tsid_idx).clone()))
     }
 
@@ -134,13 +131,11 @@ impl PhysicalExpr for ExtractTsidExpr {
 
 /// Note: caller should ensure data[tail_index] is valid
 pub(crate) trait AlignFunc: fmt::Debug {
-    fn call(
-        &self,
-        data: &VecDeque<Sample>,
-        tail_index: usize,
-        timestamp: Timestamp,
-        param: &AlignParameter,
-    ) -> Result<Option<Sample>>;
+    fn call(&self,
+            data: &VecDeque<Sample>,
+            tail_index: usize,
+            timestamp: Timestamp,
+            param: &AlignParameter) -> Result<Option<Sample>>;
 }
 
 /// PromAlignExec will group data by tsid and align sample based on align_param
@@ -166,7 +161,7 @@ impl PromAlignExec {
                 input,
                 Partitioning::Hash(vec![extract_tsid], read_parallelism),
             )
-            .context(Internal)?,
+                .context(Internal)?,
         ) as Arc<dyn ExecutionPlan>;
         let align_func: Arc<dyn AlignFunc + Send + Sync> = match func {
             PromFunc::Instant => Arc::new(InstantFunc {}),
@@ -474,15 +469,8 @@ impl PromAlignReader {
             arrays[field_idx] = Arc::new(Float64Array::from(fields));
 
             for tag_key in &self.column_name.tag_keys {
-                let tag_idx = schema
-                    .index_of(tag_key.as_str())
-                    .expect("checked in plan build");
-                arrays[tag_idx] = Arc::new(StringArray::from(vec![
-                    tags.get(tag_key)
-                        .expect("tag_key are ensured in accmulate_record_batch")
-                        .to_string();
-                    record_batch_len
-                ]));
+                let tag_idx = schema.index_of(tag_key.as_str()).expect("checked in plan build");
+                arrays[tag_idx] = Arc::new(StringArray::from(vec![tags.get(tag_key).expect("tag_key are ensured in accmulate_record_batch").to_string(); record_batch_len]));
             }
             batches.push(RecordBatch::try_new(schema.clone(), arrays)?);
         }
@@ -767,7 +755,7 @@ fn extrapolate_fn_helper(
     let data_duration = (last_timestamp
         .checked_sub(first_timestamp)
         .context(TimestampOutOfRange {})?)
-    .as_i64() as f64;
+        .as_i64() as f64;
     let average_duration_between_data = data_duration / tail_index as f64;
 
     let range_start = timestamp
@@ -777,11 +765,11 @@ fn extrapolate_fn_helper(
     let mut range_to_start = (first_timestamp
         .checked_sub(range_start)
         .context(TimestampOutOfRange)?)
-    .as_i64() as f64;
+        .as_i64() as f64;
     let mut range_to_end = (range_end
         .checked_sub(last_timestamp)
         .context(TimestampOutOfRange {})?)
-    .as_i64() as f64;
+        .as_i64() as f64;
 
     // Prometheus shorten forward-extrapolation to zero point.
     if is_counter && difference > 0.0 && first_data >= 0.0 {

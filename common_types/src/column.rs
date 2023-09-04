@@ -814,9 +814,7 @@ pub fn cast_nanosecond_to_mills(array: &ArrayRef) -> Result<Arc<dyn Array>> {
         &DataType::Timestamp(TimeUnit::Millisecond, None),
         // It will use the default option internally when found None.
         None,
-    ).with_context(|| CastTimestamp {
-        data_type: DataType::Timestamp(TimeUnit::Millisecond, None),
-    })?;
+    ).with_context(|| CastTimestamp { data_type: DataType::Timestamp(TimeUnit::Millisecond, None)})?;
 
     match mills_column {
         ColumnarValue::Array(array) => Ok(array),
@@ -881,7 +879,6 @@ macro_rules! append_block {
         }
     };
 }
-
 
 pub enum ColumnBlockBuilder {
     Null { rows: usize },

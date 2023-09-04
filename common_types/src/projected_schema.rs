@@ -46,7 +46,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, Clone)]
 pub struct RowProjector {
-    schema_with_key: RecordSchemaWithKey,
+    recordSchemaWithKey: RecordSchemaWithKey,
     sourceSchema: Schema,
     /// column在投影中的index -> column在table中的index的 fenquen
     /// The Vec stores the column index in source, and `None` means this column is not in source but required by reader, and need to filled by null.
@@ -66,14 +66,14 @@ impl RowProjector {
     }
 
     pub fn schema_with_key(&self) -> &RecordSchemaWithKey {
-        &self.schema_with_key
+        &self.recordSchemaWithKey
     }
 
     /// REQUIRE: The schema of row is the same as source schema.
     pub fn project_row(&self, row: &Row, mut datums: Vec<Datum>) -> Row {
         assert_eq!(self.sourceSchema.num_columns(), row.num_columns());
 
-        datums.reserve(self.schema_with_key.num_columns());
+        datums.reserve(self.recordSchemaWithKey.num_columns());
 
         for p in &self.sourceProjection {
             let datum = match p {
@@ -96,7 +96,7 @@ impl RowProjector {
 }
 
 #[derive(Clone)]
-pub struct ProjectedSchema(Arc<ProjectedSchemaInner>);
+pub struct ProjectedSchema(pub Arc<ProjectedSchemaInner>);
 
 impl fmt::Debug for ProjectedSchema {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -136,11 +136,11 @@ impl ProjectedSchema {
 
     // Returns the record schema after projection with key.
     pub fn to_record_schema_with_key(&self) -> RecordSchemaWithKey {
-        self.0.schema_with_key.clone()
+        self.0.recordSchemaWithKey.clone()
     }
 
     pub fn as_record_schema_with_key(&self) -> &RecordSchemaWithKey {
-        &self.0.schema_with_key
+        &self.0.recordSchemaWithKey
     }
 
     // Returns the record schema after projection.
@@ -181,7 +181,7 @@ impl TryFrom<ceresdbproto::schema::ProjectedSchema> for ProjectedSchema {
 }
 
 /// Schema with projection informations
-struct ProjectedSchemaInner {
+pub struct ProjectedSchemaInner {
     /// The schema before projection that the reader intended to read, may
     /// differ from current schema of the table.
     originalSchema: Schema,
@@ -190,7 +190,7 @@ struct ProjectedSchemaInner {
     projection: Option<Vec<usize>>,
 
     /// The record schema from `self.schema` with key columns after projection.
-    pub schema_with_key: RecordSchemaWithKey,
+    pub recordSchemaWithKey: RecordSchemaWithKey,
     /// The record schema from `self.schema` after projection.
     record_schema: RecordSchema,
 }
@@ -203,7 +203,7 @@ impl ProjectedSchemaInner {
         Self {
             originalSchema: schema,
             projection: None,
-            schema_with_key,
+            recordSchemaWithKey: schema_with_key,
             record_schema,
         }
     }
@@ -222,7 +222,7 @@ impl ProjectedSchemaInner {
             Ok(Self {
                 originalSchema: schema,
                 projection,
-                schema_with_key,
+                recordSchemaWithKey: schema_with_key,
                 record_schema,
             })
         } else {
@@ -241,7 +241,7 @@ impl ProjectedSchemaInner {
 
     // TODO(yingwen): We can fill missing not null column with default value instead of returning error.
     fn try_project_with_key(&self, source_schema: &Schema) -> Result<RowProjector> {
-        debug_assert_eq!(self.schema_with_key.key_columns(), source_schema.key_columns());
+        debug_assert_eq!(self.recordSchemaWithKey.key_columns(), source_schema.key_columns());
 
         // We consider the two schema is equal if they have same version.
         if self.originalSchema.version() == source_schema.version() {
@@ -249,17 +249,17 @@ impl ProjectedSchemaInner {
         }
 
         //  这样的表(`name` string TAG, `value` double  NULL, `t` timestamp NOT NULL, TIMESTAMP KEY(t))的column实际的排列是 tsid,t,name,value fenquen
-        let mut sourceProjection = Vec::with_capacity(self.schema_with_key.num_columns());
+        let mut sourceProjection = Vec::with_capacity(self.recordSchemaWithKey.num_columns());
 
         // for each column in `schema_with_key`
         // 即使只select 1个的column 投影的schema中也会是 tsid,t,目标的column fenquen
-        for columnSchema in self.schema_with_key.columns() {
+        for columnSchema in self.recordSchemaWithKey.columns() {
             println!("{}", columnSchema.name);
             self.try_project_column(columnSchema, source_schema, &mut sourceProjection)?;
         }
 
         Ok(RowProjector {
-            schema_with_key: self.schema_with_key.clone(),
+            recordSchemaWithKey: self.recordSchemaWithKey.clone(),
             sourceSchema: source_schema.clone(),
             sourceProjection,
         })

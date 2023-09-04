@@ -24,7 +24,7 @@ use generic_error::GenericError;
 use log::{debug, trace};
 use macros::define_result;
 use snafu::{ensure, Backtrace, ResultExt, Snafu};
-use table_engine::{predicate::PredicateRef, table::TableId};
+use table_engine::table::TableId;
 use table_engine::predicate::Predicate;
 use trace_metric::{MetricsCollector, TraceMetricWhenDrop};
 
@@ -41,6 +41,7 @@ use crate::{
     },
     table::version::{MemTableVec, SamplingMemTable},
 };
+use crate::sst::factory::{ObjectStoreChooser, SstFactory};
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -95,15 +96,14 @@ pub struct MergeConfig<'a> {
 
     pub sst_read_options: SstReadOptions,
     /// Sst factory
-    pub sst_factory: &'a SstFactoryRef,
+    pub sst_factory: &'a Arc<dyn SstFactory>,
     /// Store picker for persisting sst.
-    pub store_picker: &'a ObjectStorePickerRef,
+    pub store_picker: &'a Arc<dyn ObjectStoreChooser>,
 
     pub merge_iter_options: IterOptions,
 
     pub need_dedup: bool,
-    // TODO: Currently, the read the sst in a reverse order is not supported yet, that is to say,
-    // the output won't be expected if it is set.
+    // TODO: Currently, the read the sst in a reverse order is not supported yet, that is to say,the output won't be expected if it is set.
     pub reverse: bool,
 }
 
@@ -193,7 +193,7 @@ impl<'a> MergeBuilder<'a> {
             streamVec.push(stream);
         }
 
-        let mut sst_ids = Vec::with_capacity(self.ssts.len());
+       // let mut sst_ids = Vec::with_capacity(self.ssts.len());
         for leveled_ssts in &self.ssts {
             for f in leveled_ssts {
                 let stream =
@@ -205,7 +205,7 @@ impl<'a> MergeBuilder<'a> {
                                                                self.config.store_picker,
                                                                self.config.metrics_collector.clone()).await.context(BuildStreamFromSst)?;
                 streamVec.push(stream);
-                sst_ids.push(f.id());
+               // sst_ids.push(f.id());
             }
         }
 
@@ -261,7 +261,7 @@ impl BufferedStreamState {
         assert!(self.is_valid());
 
         RowViewOnBatch {
-            record_batch: &self.buffered_record_batch.record_batch,
+            record_batch: &self.buffered_record_batch.recordBatchWithKey,
             row_idx: self.cursor,
         }
     }
@@ -271,7 +271,7 @@ impl BufferedStreamState {
         assert!(self.is_valid());
 
         RowViewOnBatch {
-            record_batch: &self.buffered_record_batch.record_batch,
+            record_batch: &self.buffered_record_batch.recordBatchWithKey,
             row_idx: self.buffered_record_batch.num_rows() - 1,
         }
     }
@@ -281,7 +281,7 @@ impl BufferedStreamState {
     fn next_row(&mut self) -> Option<RowViewOnBatch<'_>> {
         if self.cursor < self.buffered_record_batch.num_rows() {
             let row_view = RowViewOnBatch {
-                record_batch: &self.buffered_record_batch.record_batch,
+                record_batch: &self.buffered_record_batch.recordBatchWithKey,
                 row_idx: self.cursor,
             };
             self.cursor += 1;
@@ -300,7 +300,7 @@ impl BufferedStreamState {
         len: usize,
     ) -> Result<usize> {
         let added = builder
-            .append_batch_range(&self.buffered_record_batch.record_batch, self.cursor, len)
+            .append_batch_range(&self.buffered_record_batch.recordBatchWithKey, self.cursor, len)
             .context(AppendRow)?;
         self.cursor += added;
         Ok(added)
@@ -309,9 +309,9 @@ impl BufferedStreamState {
     /// Take record batch slice with at most `len` rows from cursor and advance
     /// the cursor.
     fn take_record_batch_slice(&mut self, len: usize) -> RecordBatchWithKey {
-        let len_to_fetch = cmp::min(self.buffered_record_batch.record_batch.rowCount() - self.cursor, len);
+        let len_to_fetch = cmp::min(self.buffered_record_batch.recordBatchWithKey.rowCount() - self.cursor, len);
 
-        let record_batch = self.buffered_record_batch.record_batch.slice(self.cursor, len_to_fetch);
+        let record_batch = self.buffered_record_batch.recordBatchWithKey.slice(self.cursor, len_to_fetch);
 
         self.cursor += record_batch.rowCount();
 
@@ -386,21 +386,11 @@ impl BufferedStream {
     /// Pull the next non empty record batch.
     ///
     /// The returned record batch is ensured `num_rows() > 0`.
-    async fn pull_next_non_empty_batch(
-        stream: &mut BoxedPrefetchableRecordBatchStream,
-    ) -> Result<Option<SequencedRecordBatch>> {
+    async fn pull_next_non_empty_batch(stream: &mut BoxedPrefetchableRecordBatchStream) -> Result<Option<SequencedRecordBatch>> {
         loop {
-            match stream
-                .fetch_next()
-                .await
-                .transpose()
-                .context(PullRecordBatch)?
-            {
+            match stream.fetch_next().await.transpose().context(PullRecordBatch)? {
                 Some(record_batch) => {
-                    trace!(
-                        "MergeIterator one record batch is fetched:{:?}",
-                        record_batch
-                    );
+                    trace!("mergeIterator one record batch is fetched:{:?}",record_batch);
 
                     if record_batch.num_rows() > 0 {
                         return Ok(Some(record_batch));
@@ -411,8 +401,7 @@ impl BufferedStream {
         }
     }
 
-    /// Pull the next batch if the stream is not exhausted and the inner state
-    /// is empty.
+    /// pull the next batch if the stream is not exhausted and the inner state is empty
     async fn pull_next_batch_if_necessary(&mut self, metrics: &mut Metrics) -> Result<bool> {
         let need_pull_new_batch = !self.is_exhausted() && self.state.as_ref().unwrap().is_empty();
         if !need_pull_new_batch {
@@ -596,6 +585,7 @@ impl Metrics {
     }
 }
 
+/// merge体现在它将各个memTable和sst全部iter化然后stream化然后统1收录
 pub struct MergeIterator {
     table_id: TableId,
     request_id: RequestId,

@@ -6,7 +6,7 @@ use async_stream::stream;
 use async_trait::async_trait;
 use futures::{Stream, StreamExt};
 
-pub type BoxedStream<T> = Box<dyn Stream<Item = T> + Send + Unpin>;
+pub type BoxedStream<T> = Box<dyn Stream<Item=T> + Send + Unpin>;
 
 #[async_trait]
 pub trait PrefetchableStream: Send {
@@ -24,11 +24,7 @@ pub trait PrefetchableStream: Send {
 }
 
 pub trait PrefetchableStreamExt: PrefetchableStream {
-    fn into_boxed_stream(mut self) -> BoxedStream<Self::Item>
-    where
-        Self: 'static + Sized,
-        Self::Item: Send,
-    {
+    fn into_boxed_stream(mut self) -> BoxedStream<Self::Item> where Self: 'static + Sized, Self::Item: Send {
         let stream = stream! {
             while let Some(v) = self.fetch_next().await {
                 yield v;
@@ -39,19 +35,11 @@ pub trait PrefetchableStreamExt: PrefetchableStream {
         Box::new(Box::pin(stream))
     }
 
-    fn filter_map<F, O>(self, f: F) -> FilterMap<Self, F>
-    where
-        F: FnMut(Self::Item) -> Option<O>,
-        Self: Sized,
-    {
+    fn filter_map<F, O>(self, f: F) -> FilterMap<Self, F> where F: FnMut(Self::Item) -> Option<O>, Self: Sized {
         FilterMap { stream: self, f }
     }
 
-    fn map<F, O>(self, f: F) -> Map<Self, F>
-    where
-        F: FnMut(Self::Item) -> O,
-        Self: Sized,
-    {
+    fn map<F, O>(self, f: F) -> Map<Self, F> where F: FnMut(Self::Item) -> O, Self: Sized {
         Map { stream: self, f }
     }
 }
@@ -59,7 +47,7 @@ pub trait PrefetchableStreamExt: PrefetchableStream {
 impl<T: ?Sized> PrefetchableStreamExt for T where T: PrefetchableStream {}
 
 #[async_trait]
-impl<T> PrefetchableStream for Box<dyn PrefetchableStream<Item = T>> {
+impl<T> PrefetchableStream for Box<dyn PrefetchableStream<Item=T>> {
     type Item = T;
 
     async fn start_prefetch(&mut self) {
@@ -78,12 +66,9 @@ pub struct FilterMap<St, F> {
 }
 
 #[async_trait]
-impl<St, F, O> PrefetchableStream for FilterMap<St, F>
-where
-    St: PrefetchableStream,
-    F: FnMut(St::Item) -> Option<O> + Send,
-    O: Send,
-{
+impl<St, F, O> PrefetchableStream for FilterMap<St, F> where St: PrefetchableStream,
+                                                             F: FnMut(St::Item) -> Option<O> + Send,
+                                                             O: Send {
     type Item = O;
 
     async fn start_prefetch(&mut self) {
@@ -114,12 +99,9 @@ pub struct Map<St, F> {
 }
 
 #[async_trait]
-impl<St, F, O> PrefetchableStream for Map<St, F>
-where
-    St: PrefetchableStream,
-    F: FnMut(St::Item) -> O + Send,
-    O: Send,
-{
+impl<St, F, O> PrefetchableStream for Map<St, F> where St: PrefetchableStream,
+                                                       F: FnMut(St::Item) -> O + Send,
+                                                       O: Send {
     type Item = O;
 
     async fn start_prefetch(&mut self) {
@@ -141,8 +123,7 @@ impl<T> PrefetchableStream for NoopPrefetcher<T> {
     type Item = T;
 
     // It's just a noop operation.
-    async fn start_prefetch(&mut self) {
-    }
+    async fn start_prefetch(&mut self) {}
 
     async fn fetch_next(&mut self) -> Option<T> {
         self.0.next().await

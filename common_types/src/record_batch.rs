@@ -33,33 +33,25 @@ pub enum Error {
     #[snafu(display("Failed to create column block, err:{}", source))]
     CreateColumnBlock { source: crate::column::Error },
 
-    #[snafu(display(
-    "Failed to create arrow record batch, err:{}.\nBacktrace:\n{}",
-    source,
-    backtrace
-    ))]
+    #[snafu(display("failed to create arrow record batch, err:{}.\nBacktrace:\n{}", source, backtrace))]
     CreateArrow {
         source: ArrowError,
         backtrace: Backtrace,
     },
 
-    #[snafu(display("Failed to iterate datum, err:{}", source))]
+    #[snafu(display("failed to iterate datum, err:{}", source))]
     IterateDatum { source: crate::row::Error },
 
-    #[snafu(display("Failed to append datum, err:{}", source))]
+    #[snafu(display("failed to append datum, err:{}", source))]
     AppendDatum { source: crate::column::Error },
 
-    #[snafu(display(
-    "Column not in schema with key, column_name:{}.\nBacktrace:\n{}",
-    name,
-    backtrace
-    ))]
+    #[snafu(display("column not in schema with key, column_name:{}.\nBacktrace:\n{}", name, backtrace))]
     ColumnNotInSchemaWithKey { name: String, backtrace: Backtrace },
 
-    #[snafu(display("Failed to convert arrow schema, err:{}", source))]
+    #[snafu(display("failed to convert arrow schema, err:{}", source))]
     ConvertArrowSchema { source: crate::schema::Error },
 
-    #[snafu(display("Mismatch record schema to build RecordBatch, column_name:{}, schema_type:{:?}, column_type:{:?}.\nBacktrace:\n{}", column_name, schema_type, column_type, backtrace))]
+    #[snafu(display("mismatch record schema to build RecordBatch, column_name:{}, schema_type:{:?}, column_type:{:?}.\nBacktrace:\n{}", column_name, schema_type, column_type, backtrace))]
     MismatchRecordSchema {
         column_name: String,
         schema_type: DatumKind,
@@ -67,33 +59,20 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
-    #[snafu(display(
-    "Projection is out of the index, source_projection:{:?}, arrow_schema:{}.\nBacktrace:\n{}",
-    source_projection,
-    arrow_schema,
-    backtrace
-    ))]
+    #[snafu(display("projection is out of the index, source_projection:{:?}, arrow_schema:{}.\nBacktrace:\n{}", source_projection, arrow_schema, backtrace))]
     OutOfIndexProjection {
         source_projection: Vec<Option<usize>>,
         arrow_schema: ArrowSchemaRef,
         backtrace: Backtrace,
     },
 
-    #[snafu(display(
-    "Failed to reverse record batch data, err:{:?}.\nBacktrace:\n{}",
-    source,
-    backtrace
-    ))]
+    #[snafu(display("failed to reverse record batch data, err:{:?}.\nBacktrace:\n{}", source, backtrace))]
     ReverseRecordBatchData {
         source: Box<dyn std::error::Error + Send + Sync + 'static>,
         backtrace: Backtrace,
     },
 
-    #[snafu(display(
-    "Failed to select record batch data, err:{:?}.\nBacktrace:\n{}",
-    source,
-    backtrace
-    ))]
+    #[snafu(display("failed to select record batch aata, err:{:?}.\nBacktrace:\n{}", source, backtrace))]
     SelectRecordBatchData {
         source: Box<dyn std::error::Error + Send + Sync + 'static>,
         backtrace: Backtrace,
@@ -130,11 +109,7 @@ impl RecordBatchData {
     ///
     /// Panics if offset with length is greater than column length.
     fn slice(&self, offset: usize, length: usize) -> Self {
-        let column_blocks = self
-            .columnBlockVec
-            .iter()
-            .map(|col| col.slice(offset, length))
-            .collect();
+        let column_blocks = self.columnBlockVec.iter().map(|col| col.slice(offset, length)).collect();
 
         Self {
             arrowRecordBatch: self.arrowRecordBatch.slice(offset, length),
@@ -143,35 +118,25 @@ impl RecordBatchData {
     }
 }
 
-fn build_column_blocks_from_arrow_record_batch(
-    arrow_record_batch: &ArrowRecordBatch,
-    record_schema: &RecordSchema,
-) -> Result<Vec<ColumnBlock>> {
-    let mut column_blocks = Vec::with_capacity(arrow_record_batch.num_columns());
-    for (column_schema, array) in record_schema
-        .columns()
-        .iter()
-        .zip(arrow_record_batch.columns())
-    {
-        let column = ColumnBlock::try_from_arrow_array_ref(&column_schema.datumKind, array)
-            .context(CreateColumnBlock)?;
-        column_blocks.push(column);
+fn buildColumnBlockVecFromArrowRecordBatch(arrowRecordBatch: &ArrowRecordBatch, recordSchema: &RecordSchema) -> Result<Vec<ColumnBlock>> {
+    let mut columnBlockVec = Vec::with_capacity(arrowRecordBatch.num_columns());
+    for (columnSchema, arrowArray) in recordSchema.columnSchemas.columns().iter().zip(arrowRecordBatch.columns()) {
+        let columnBlock = ColumnBlock::try_from_arrow_array_ref(&columnSchema.datumKind, arrowArray).context(CreateColumnBlock)?;
+        columnBlockVec.push(columnBlock);
     }
 
-    Ok(column_blocks)
+    Ok(columnBlockVec)
 }
 
 impl TryFrom<ArrowRecordBatch> for RecordBatchData {
     type Error = Error;
 
-    fn try_from(arrow_record_batch: ArrowRecordBatch) -> Result<Self> {
-        let record_schema =
-            RecordSchema::try_from(arrow_record_batch.schema()).context(ConvertArrowSchema)?;
-        let column_blocks =
-            build_column_blocks_from_arrow_record_batch(&arrow_record_batch, &record_schema)?;
-        Ok(Self {
-            arrowRecordBatch: arrow_record_batch,
-            columnBlockVec: column_blocks,
+    fn try_from(arrowRecordBatch: ArrowRecordBatch) -> Result<RecordBatchData> {
+        let recordSchema = RecordSchema::try_from(arrowRecordBatch.schema()).context(ConvertArrowSchema)?;
+        let columnBlockVec = buildColumnBlockVecFromArrowRecordBatch(&arrowRecordBatch, &recordSchema)?;
+        Ok(RecordBatchData {
+            arrowRecordBatch,
+            columnBlockVec,
         })
     }
 }
@@ -262,7 +227,7 @@ impl TryFrom<ArrowRecordBatch> for RecordBatch {
             RecordSchema::try_from(arrowRecordBatch.schema()).context(ConvertArrowSchema)?;
 
         let column_blocks =
-            build_column_blocks_from_arrow_record_batch(&arrowRecordBatch, &record_schema)?;
+            buildColumnBlockVecFromArrowRecordBatch(&arrowRecordBatch, &record_schema)?;
 
         let arrow_record_batch = cast_arrow_record_batch(arrowRecordBatch)?;
         Ok(Self {
@@ -437,7 +402,7 @@ impl RecordBatchWithKey {
 
     #[inline]
     pub fn is_empty(&self) -> bool {
-        self.rowCount() == 0
+        self.recordBatchData.num_rows() == 0
     }
 
     /// Returns a zero-copy slice of this array with the indicated offset and
@@ -453,16 +418,13 @@ impl RecordBatchWithKey {
     }
 
     /// Select the rows according to the `filter_array`.
-    pub fn select_data(&mut self, filter_array: &BooleanArray) -> Result<()> {
-        assert_eq!(self.rowCount(), filter_array.len());
-        let selected_record_batch =
-            compute::filter_record_batch(&self.recordBatchData.arrowRecordBatch, filter_array)
-                .map_err(|e| Box::new(e) as _)
-                .context(SelectRecordBatchData)?;
+    pub fn selectData(&mut self, selectedRows: &BooleanArray) -> Result<()> {
+        assert_eq!(self.rowCount(), selectedRows.len());
 
-        self.recordBatchData = RecordBatchData::try_from(selected_record_batch)
-            .map_err(|e| Box::new(e) as _)
-            .context(SelectRecordBatchData)?;
+        let selectedArrowRecordBatch =
+            compute::filter_record_batch(&self.recordBatchData.arrowRecordBatch, selectedRows).map_err(|e| Box::new(e) as _).context(SelectRecordBatchData)?;
+
+        self.recordBatchData = RecordBatchData::try_from(selectedArrowRecordBatch).map_err(|e| Box::new(e) as _).context(SelectRecordBatchData)?;
 
         Ok(())
     }
@@ -603,10 +565,7 @@ impl ArrowRecordBatchProjector {
     ///
     /// REQUIRE: Schema of the `arrow_record_batch` is the same as the
     /// projection of existing column in the source schema.
-    pub fn project_to_record_batch_with_key(
-        &self,
-        arrow_record_batch: ArrowRecordBatch,
-    ) -> Result<RecordBatchWithKey> {
+    pub fn project_to_record_batch_with_key(&self, arrow_record_batch: ArrowRecordBatch) -> Result<RecordBatchWithKey> {
         let schema_with_key = self.row_projector.schema_with_key().clone();
         let source_projection = self.row_projector.source_projection();
         let mut column_blocks = Vec::with_capacity(schema_with_key.num_columns());

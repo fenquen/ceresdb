@@ -491,7 +491,7 @@ impl TableData {
 
     /// spaceId/tableId/sstFileId.sst
     pub fn buildSstFilePath(&self, sstFileId: FileId) -> Path {
-        sst_util::new_sst_file_path(self.space_id, self.id, sstFileId)
+        sst_util::buildSstFilePath(self.space_id, self.id, sstFileId)
     }
 
     /// Allocate next memtable id

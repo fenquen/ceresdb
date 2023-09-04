@@ -410,11 +410,7 @@ impl<W: AsyncWrite + Unpin + Send> RecordEncoder for HybridRecordEncoder<W> {
         assert!(self.arrow_writer.is_some());
 
         let arrow_writer = self.arrow_writer.take().unwrap();
-        arrow_writer
-            .close()
-            .await
-            .box_err()
-            .context(EncodeRecordBatch)?;
+        arrow_writer.close().await.box_err().context(EncodeRecordBatch)?;
 
         Ok(())
     }

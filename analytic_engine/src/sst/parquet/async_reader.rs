@@ -678,9 +678,7 @@ impl<'a> SstReader for ThreadedReader<'a> {
         self.inner.meta_data().await
     }
 
-    async fn read(
-        &mut self,
-    ) -> Result<Box<dyn PrefetchableStream<Item=Result<RecordBatchWithKey>>>> {
+    async fn read(&mut self) -> Result<Box<dyn PrefetchableStream<Item=Result<RecordBatchWithKey>>>> {
         // Get underlying sst readers and channels.
         let sub_readers = self
             .inner

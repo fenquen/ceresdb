@@ -359,7 +359,7 @@ impl IndexInWriterSchema {
 
 // TODO(yingwen): No need to compare all elements in ColumnSchemas, Schema, RecordSchema, custom PartialEq for them.
 #[derive(PartialEq)]
-pub(crate) struct ColumnSchemas {
+pub struct ColumnSchemas {
     columnSchemaVec: Vec<ColumnSchema>,
     columnName_columnIndex: HashMap<String, usize>,
     /// byte offsets of each column in contiguous row.
@@ -424,7 +424,7 @@ impl fmt::Debug for ColumnSchemas {
 #[derive(Debug, Clone, PartialEq)]
 pub struct RecordSchema {
     pub arrowSchema: ArrowSchemaRef,
-    columnSchemas: Arc<ColumnSchemas>,
+    pub columnSchemas: Arc<ColumnSchemas>,
 }
 
 impl RecordSchema {

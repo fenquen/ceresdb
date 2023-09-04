@@ -28,7 +28,7 @@ use crate::memtable::{
     key::{ComparableInternalKey, KeySequence},
     skiplist::iter::{ColumnarIterImpl, ReversedColumnarIterator},
     ColumnarIter, EncodeInternalKey, InvalidPutSequence, InvalidRow, MemTable,
-    Metrics as MemtableMetrics, PutContext, Result, ScanContext, ScanRequest,
+    Metrics as MemtableMetrics, PutContext, Result, ScanRequest,
 };
 
 #[derive(Default, Debug)]
@@ -106,12 +106,12 @@ impl<A: Arena<Stats=BasicStats> + Clone + Sync + Send + 'static> MemTable for Sk
         Ok(())
     }
 
-    fn scan(&self, ctx: ScanContext, scanRequest: ScanRequest) -> Result<ColumnarIter> {
-        debug!("scan skiplist memtable, ctx:{:?}, request:{:?}",ctx, scanRequest);
+    fn scan(&self, scanRequest: ScanRequest) -> Result<ColumnarIter> {
+        debug!("scan skiplist memtable, request:{:?}", scanRequest);
 
         //  let num_rows = self.skiplist.len();
-        let (reverse, batch_size) = (scanRequest.reverse, ctx.batch_size);
-        let columnarIterImpl = ColumnarIterImpl::new(self, ctx, scanRequest)?;
+        let (reverse, batch_size) = (scanRequest.reverse, scanRequest.batchSize);
+        let columnarIterImpl = ColumnarIterImpl::new(self,  scanRequest)?;
         if reverse {
             Ok(Box::new(ReversedColumnarIterator::new(columnarIterImpl, self.skiplist.len(), batch_size)))
         } else {
@@ -150,10 +150,7 @@ impl<A: Arena<Stats=BasicStats> + Clone + Sync + Send + 'static> MemTable for Sk
 
     fn metrics(&self) -> MemtableMetrics {
         let row_raw_size = self.metrics.row_raw_size.load(atomic::Ordering::Relaxed);
-        let row_encoded_size = self
-            .metrics
-            .row_encoded_size
-            .load(atomic::Ordering::Relaxed);
+        let row_encoded_size = self.metrics.row_encoded_size.load(atomic::Ordering::Relaxed);
         let row_count = self.metrics.row_count.load(atomic::Ordering::Relaxed);
         MemtableMetrics {
             row_raw_size,

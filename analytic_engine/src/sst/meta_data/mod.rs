@@ -142,7 +142,7 @@ impl SstMetaReader {
     pub async fn fetch_metas(&self, files: &[FileHandle]) -> Result<Vec<SstMetaData>> {
         let mut sst_metas = Vec::with_capacity(files.len());
         for f in files {
-            let path = sst_util::new_sst_file_path(self.space_id, self.table_id, f.id());
+            let path = sst_util::buildSstFilePath(self.space_id, self.table_id, f.id());
             let read_hint = SstReadHint {
                 file_size: Some(f.size() as usize),
                 file_format: Some(f.storage_format()),

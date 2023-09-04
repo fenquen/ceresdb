@@ -22,7 +22,7 @@ use crate::memtable::{
     key::{self, KeySequence},
     skiplist::{BytewiseComparator, SkipListMemTable},
     AppendRow, BuildRecordBatch, DecodeContinuousRow, DecodeInternalKey, EncodeInternalKey,
-    IterReverse, IterTimeout, ProjectSchema, Result, ScanContext, ScanRequest,
+    IterReverse, IterTimeout, ProjectSchema, Result, ScanRequest,
 };
 
 #[derive(Debug, PartialEq)]
@@ -83,7 +83,7 @@ impl<A: Arena<Stats=BasicStats> + Clone + Sync + Send> Iterator for ColumnarIter
 }
 
 impl<A: Arena<Stats=BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
-    pub fn new(memtable: &SkipListMemTable<A>, ctx: ScanContext, request: ScanRequest) -> Result<Self> {
+    pub fn new(memtable: &SkipListMemTable<A>, request: ScanRequest) -> Result<Self> {
         // create projection for the memtable schema
         let projector = request.projected_schema.tryProjectWithKey(&memtable.schema).context(ProjectSchema)?;
 
@@ -95,8 +95,8 @@ impl<A: Arena<Stats=BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
                 memtable_schema: memtable.schema.clone(),
                 projectedSchema: request.projected_schema,
                 projector,
-                batchSize: ctx.batch_size,
-                deadline: ctx.deadline,
+                batchSize: request.batchSize,
+                deadline: request.deadline,
                 start_user_key: request.start_user_key,
                 end_user_key: request.end_user_key,
                 maxVisibleSeq: request.maxVisibleSeq,
@@ -152,6 +152,7 @@ impl<A: Arena<Stats=BasicStats> + Clone + Sync + Send> ColumnarIterImpl<A> {
 
         while self.skipListIter.valid() && rowNum < self.batchSize {
             if let Some(rowData) = self.fetchNextRow()? {
+                // ContiguousRowReader 包含了rowData外还包含 column的index和datum在rowData中的datum数据区的offset对应的关系 首个datum在rowData的offset
                 let rowReader = ContiguousRowReader::new(&rowData, &self.memtable_schema).context(DecodeContinuousRow)?;
                 let projectedRow = ProjectedContiguousRow::new(rowReader, &self.projector);
 
