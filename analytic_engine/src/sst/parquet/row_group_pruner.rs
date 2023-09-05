@@ -37,11 +37,9 @@ struct Metrics {
     collector: Option<MetricsCollector>,
 }
 
-/// RowGroupPruner is used to prune row groups according to the provided
-/// predicates and filters.
+/// RowGroupPruner is used to prune row groups according to the provided  predicates and filters.
 ///
-/// Currently, two kinds of filters will be applied to such filtering:
-/// min max & parquet_filter.
+/// Currently, two kinds of filters will be applied to such filtering: min max & parquet_filter.
 pub struct RowGroupPruner<'a> {
     schema: &'a SchemaRef,
     row_groups: &'a [RowGroupMetaData],
@@ -53,11 +51,11 @@ pub struct RowGroupPruner<'a> {
 impl<'a> RowGroupPruner<'a> {
     // TODO: DataFusion already change predicates to PhyscialExpr, we should keep up with upstream.
     // https://github.com/apache/arrow-datafusion/issues/4695
-    pub fn try_new(schema: &'a SchemaRef,
-                   row_groups: &'a [RowGroupMetaData],
-                   parquet_filter: Option<&'a ParquetFilter>,
-                   predicates: &'a [Expr],
-                   metrics_collector: Option<MetricsCollector>) -> Result<Self> {
+    pub fn new(schema: &'a SchemaRef,
+               row_groups: &'a [RowGroupMetaData],
+               parquet_filter: Option<&'a ParquetFilter>,
+               predicates: &'a [Expr],
+               metrics_collector: Option<MetricsCollector>) -> Result<Self> {
         if let Some(f) = parquet_filter {
             ensure!(f.len() == row_groups.len(), OtherNoCause {msg: format!("expect sst_filters.len() == row_groups.len(), num_sst_filters:{}, num_row_groups:{}", f.len(), row_groups.len()),});
         }
@@ -79,45 +77,32 @@ impl<'a> RowGroupPruner<'a> {
     }
 
     pub fn prune(&mut self) -> Vec<usize> {
-        debug!(
-            "Begin to prune row groups, total_row_groups:{}, parquet_filter:{}, predicates:{:?}",
-            self.row_groups.len(),
-            self.parquet_filter.is_some(),
-            self.predicates,
-        );
+        debug!("begin to prune row groups, total_row_groups:{}, parquet_filter:{}, predicates:{:?}",self.row_groups.len(),self.parquet_filter.is_some(),self.predicates);
 
         let pruned0 = self.prune_by_min_max();
         self.metrics.pruned_by_min_max = self.row_groups.len() - pruned0.len();
 
         let pruned = match self.parquet_filter {
             Some(v) => {
-                // TODO: We can do continuous prune based on the `pruned0` to reduce the
-                // filtering cost.
+                // TODO: We can do continuous prune based on the `pruned0` to reduce the filtering cost.
                 let pruned1 = self.prune_by_filters(v);
                 let pruned = Self::intersect_pruned_row_groups(&pruned0, &pruned1);
 
                 self.metrics.pruned_by_custom_filter = self.row_groups.len() - pruned1.len();
-                debug!(
-                    "Finish pruning row groups by parquet_filter and min_max, total_row_groups:{}, pruned_by_min_max:{}, pruned_by_blooms:{}, pruned_by_both:{}",
-                    self.row_groups.len(),
-                    pruned0.len(),
-                    pruned1.len(),
-                    pruned.len(),
-                );
+
+                debug!("finish pruning row groups by parquet_filter and min_max, total_row_groups:{}, pruned_by_min_max:{}, pruned_by_blooms:{}, pruned_by_both:{}",
+                    self.row_groups.len(),pruned0.len(),pruned1.len(),pruned.len());
 
                 pruned
             }
             None => {
-                debug!(
-                    "Finish pruning row groups by min_max, total_row_groups:{}, pruned_row_groups:{}",
-                    self.row_groups.len(),
-                    pruned0.len(),
-                );
+                debug!("finish pruning row groups by min_max, total_row_groups:{}, pruned_row_groups:{}",self.row_groups.len(),pruned0.len());
                 pruned0
             }
         };
 
         self.metrics.row_groups_after_prune = pruned.len();
+
         pruned
     }
 

@@ -9,4 +9,4 @@ pub mod meta_data;
 mod row_group_pruner;
 pub mod writer;
 
-pub use async_reader::{Reader as AsyncParquetReader, ThreadedReader};
+pub use async_reader::{AsyncParquetSstReader as AsyncParquetReader, ThreadedReader};

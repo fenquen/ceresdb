@@ -192,8 +192,8 @@ pub fn filteredStreamFromMemTable(projectedSchema: ProjectedSchema,
 pub async fn filteredStreamFromSst(space_id: SpaceId,
                                    table_id: TableId,
                                    fileHandle: &FileHandle,
-                                   sst_factory: &Arc<dyn SstFactory>,
-                                   sst_read_options: &SstReadOptions,
+                                   sstFactory: &Arc<dyn SstFactory>,
+                                   sstReadOptions: &SstReadOptions,
                                    store_picker: &Arc<dyn ObjectStoreChooser>,
                                    metrics_collector: Option<MetricsCollector>) -> Result<BoxedPrefetchableRecordBatchStream> {
     fileHandle.read_meter().mark();
@@ -207,25 +207,27 @@ pub async fn filteredStreamFromSst(space_id: SpaceId,
 
     let metrics_collector = metrics_collector.map(|v| v.span(format!("scan_sst_{}", fileHandle.id())));
 
-    let mut sst_reader =
-        sst_factory.createReader(&sstFilePath,
-                                 sst_read_options,
-                                 read_hint,
-                                 store_picker,
-                                 metrics_collector).await.context(CreateSstReader)?;
-    let meta = sst_reader.meta_data().await.context(ReadSstMeta)?;
-    let max_seq = meta.max_sequence();
-    let stream = sst_reader.read().await.context(ReadSstData)?;
+    let mut sstReader =
+        sstFactory.createReader(&sstFilePath,
+                                sstReadOptions,
+                                read_hint,
+                                store_picker,
+                                metrics_collector).await.context(CreateSstReader)?;
+
+    let sstMetaData = sstReader.meta_data().await.context(ReadSstMeta)?;
+
+    let stream = sstReader.read().await.context(ReadSstData)?;
+
     let stream = stream.map(move |v| {
-        v.map(|record_batch| SequencedRecordBatch {
-            recordBatchWithKey: record_batch,
-            sequence: max_seq,
+        v.map(|recordBatchWithKey| SequencedRecordBatch {
+            recordBatchWithKey,
+            sequence: sstMetaData.max_sequence(),
         }).box_err()
     });
 
     filterStream(Box::new(stream),
-                 sst_read_options.projected_schema.as_record_schema_with_key().to_arrow_schema_ref(),
-                 sst_read_options.predicate.as_ref())
+                 sstReadOptions.projected_schema.as_record_schema_with_key().to_arrow_schema_ref(),
+                 sstReadOptions.predicate.as_ref())
 }
 
 pub async fn stream_from_sst_file(space_id: SpaceId,

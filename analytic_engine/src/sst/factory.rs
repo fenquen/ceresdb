@@ -10,7 +10,7 @@ use macros::define_result;
 use object_store::{ObjectStore, ObjectStoreRef, Path};
 use runtime::Runtime;
 use snafu::{ResultExt, Snafu};
-use table_engine::predicate::PredicateRef;
+use table_engine::predicate::{Predicate, PredicateRef};
 use trace_metric::MetricsCollector;
 
 use crate::{
@@ -115,7 +115,7 @@ pub struct SstReadOptions {
     pub frequency: ReadFrequency,
     pub num_rows_per_row_group: usize,
     pub projected_schema: ProjectedSchema,
-    pub predicate: PredicateRef,
+    pub predicate: Arc<Predicate>,
     pub meta_cache: Option<MetaCacheRef>,
     pub scan_options: ScanOptions,
 
@@ -139,7 +139,7 @@ impl SstFactory for SstFactoryImpl {
                               path: &'a Path,
                               options: &SstReadOptions,
                               hint: SstReadHint,
-                              objectStoreChooser: &'a ObjectStorePickerRef,
+                              objectStoreChooser: &'a Arc<dyn ObjectStoreChooser>,
                               metrics_collector: Option<MetricsCollector>) -> Result<Box<dyn SstReader + Send + 'a>> {
         let storage_format = match hint.file_format {
             Some(v) => v,
@@ -151,20 +151,20 @@ impl SstFactory for SstFactoryImpl {
 
         match storage_format {
             StorageFormat::Columnar | StorageFormat::Hybrid => {
-                let reader = AsyncParquetReader::new(
-                    path,
-                    options,
-                    hint.file_size,
-                    objectStoreChooser,
-                    metrics_collector,
-                );
-                let reader = ThreadedReader::new(
-                    reader,
-                    options.runtime.clone(),
-                    options.scan_options.background_read_parallelism,
-                    options.scan_options.max_record_batches_in_flight,
-                );
-                Ok(Box::new(reader))
+                let asyncParquetReader =
+                    AsyncParquetReader::new(path,
+                                            options,
+                                            hint.file_size,
+                                            objectStoreChooser,
+                                            metrics_collector);
+
+                let threadedReader =
+                    ThreadedReader::new(asyncParquetReader,
+                                        options.runtime.clone(),
+                                        options.scan_options.background_read_parallelism,
+                                        options.scan_options.max_record_batches_in_flight);
+
+                Ok(Box::new(threadedReader))
             }
         }
     }

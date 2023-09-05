@@ -36,7 +36,7 @@ use crate::{
     },
     space::SpaceId,
     sst::{
-        factory::{FactoryRef as SstFactoryRef, ObjectStorePickerRef, SstReadOptions},
+        factory::SstReadOptions,
         file::{FileHandle, Level, SST_LEVEL_NUM},
     },
     table::version::{MemTableVec, SamplingMemTable},

@@ -170,8 +170,7 @@ pub fn encode_sst_meta_data(meta_data: ParquetMetaData) -> Result<KeyValue> {
     let meta_data_pb = sst_pb::ParquetMetaData::from(meta_data);
 
     let mut buf = BytesMut::with_capacity(meta_data_pb.encoded_len() + 1);
-    buf.try_put_u8(META_VALUE_HEADER)
-        .expect("Should write header into the buffer successfully");
+    buf.try_put_u8(META_VALUE_HEADER).expect("should write header into the buffer successfully");
 
     // encode the sst meta data into protobuf binary
     meta_data_pb.encode(&mut buf).context(EncodeIntoPb)?;

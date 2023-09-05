@@ -34,6 +34,7 @@ use crate::{
     predicate::PredicateRef,
     stream::{PartitionedStreams, SendableRecordBatchStream},
 };
+use crate::predicate::Predicate;
 
 /// Contains common error variant, implementation specific error should be cast into Box<dyn Error>
 #[derive(Debug, Snafu)]
@@ -339,7 +340,7 @@ pub struct ReadRequest {
     /// The schema and projection for read, the output data should match this schema
     pub projectedSchema: ProjectedSchema,
     /// Predicate of the query.
-    pub predicate: PredicateRef,
+    pub predicate: Arc<Predicate>,
     /// Collector for metrics of this read request.
     pub metrics_collector: MetricsCollector,
 }

@@ -6,24 +6,23 @@ use std::{
 };
 
 use lru::LruCache;
-use parquet::file::metadata::FileMetaData;
+use parquet::file::metadata::{FileMetaData, ParquetMetaData as OriginParquetMetaData};
 use snafu::{ensure, OptionExt, ResultExt};
 
 use crate::sst::{
-    meta_data::{DecodeCustomMetaData, KvMetaDataNotFound, ParquetMetaDataRef, Result},
+    meta_data::{DecodeCustomMetaData, KvMetaDataNotFound, Result},
     parquet::encoding,
 };
+use crate::sst::parquet::meta_data::ParquetMetaData;
 
 pub type MetaCacheRef = Arc<MetaCache>;
 
-/// The metadata of one sst file, including the original metadata of parquet and
-/// the custom metadata of ceresdb.
+/// The metadata of one sst file, including the original metadata of parquet and the custom metadata of ceresdb.
 #[derive(Debug, Clone)]
 pub struct MetaData {
-    /// The extended information in the parquet is removed for less memory
-    /// consumption.
-    parquet: parquet_ext::ParquetMetaDataRef,
-    custom: ParquetMetaDataRef,
+    /// The extended information in the parquet is removed for less memory consumption.
+    pub parquet:  Arc<OriginParquetMetaData>,
+    pub custom: Arc<ParquetMetaData>,
 }
 
 impl MetaData {
@@ -33,14 +32,9 @@ impl MetaData {
     /// contains no extended custom information.
     // TODO: remove it and use the suggested api.
     #[allow(deprecated)]
-    pub fn try_new(
-        parquet_meta_data: &parquet_ext::ParquetMetaData,
-        ignore_sst_filter: bool,
-    ) -> Result<Self> {
+    pub fn try_new(parquet_meta_data: &parquet_ext::ParquetMetaData, ignore_sst_filter: bool) -> Result<Self> {
         let file_meta_data = parquet_meta_data.file_metadata();
-        let kv_metas = file_meta_data
-            .key_value_metadata()
-            .context(KvMetaDataNotFound)?;
+        let kv_metas = file_meta_data.key_value_metadata().context(KvMetaDataNotFound)?;
 
         ensure!(!kv_metas.is_empty(), KvMetaDataNotFound);
         let mut other_kv_metas = Vec::with_capacity(kv_metas.len() - 1);
@@ -66,8 +60,7 @@ impl MetaData {
             Arc::new(sst_meta)
         };
 
-        // let's build a new parquet metadata without the extended key value
-        // metadata.
+        // let's build a new parquet metadata without the extended key value metadata.
         let other_kv_metas = if other_kv_metas.is_empty() {
             None
         } else {
@@ -101,7 +94,7 @@ impl MetaData {
     }
 
     #[inline]
-    pub fn custom(&self) -> &ParquetMetaDataRef {
+    pub fn custom(&self) -> &Arc<ParquetMetaData> {
         &self.custom
     }
 }

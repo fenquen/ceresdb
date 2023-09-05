@@ -237,31 +237,19 @@ impl Index<usize> for ParquetFilter {
 
 impl From<ParquetFilter> for sst_pb::ParquetFilter {
     fn from(parquet_filter: ParquetFilter) -> Self {
-        let row_group_filters = parquet_filter
-            .row_group_filters
-            .into_iter()
-            .map(|row_group_filter| {
-                let column_filters = row_group_filter
-                    .column_filters
-                    .into_iter()
-                    .map(|column_filter| match column_filter {
-                        Some(v) => {
-                            let encoded_filter = v.to_bytes();
-                            match v.r#type() {
-                                FilterType::Xor8 => sst_pb::ColumnFilter {
-                                    filter: Some(sst_pb::column_filter::Filter::Xor(
-                                        encoded_filter,
-                                    )),
-                                },
-                            }
-                        }
-                        None => sst_pb::ColumnFilter { filter: None },
-                    })
-                    .collect::<Vec<_>>();
+        let row_group_filters = parquet_filter.row_group_filters.into_iter().map(|row_group_filter| {
+            let column_filters = row_group_filter.column_filters.into_iter().map(|column_filter| match column_filter {
+                Some(v) => {
+                    let encoded_filter = v.to_bytes();
+                    match v.r#type() {
+                        FilterType::Xor8 => sst_pb::ColumnFilter { filter: Some(sst_pb::column_filter::Filter::Xor(encoded_filter)) },
+                    }
+                }
+                None => sst_pb::ColumnFilter { filter: None },
+            }).collect::<Vec<_>>();
 
-                sst_pb::RowGroupFilter { column_filters }
-            })
-            .collect::<Vec<_>>();
+            sst_pb::RowGroupFilter { column_filters }
+        }).collect::<Vec<_>>();
 
         sst_pb::ParquetFilter { row_group_filters }
     }
@@ -346,7 +334,7 @@ impl fmt::Debug for ParquetMetaData {
             .field("time_range", &self.time_range)
             .field("max_sequence", &self.max_sequence)
             .field("schema", &self.schema)
-            .field("filter_size", &self.parquet_filter.as_ref().map(|filter| filter.size()).unwrap_or(0), )
+            .field("filter_size", &self.parquet_filter.as_ref().map(|filter| filter.size()).unwrap_or(0))
             .field("collapsible_cols_idx", &self.collapsible_cols_idx)
             .finish()
     }
