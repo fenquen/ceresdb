@@ -10,7 +10,7 @@ use macros::define_result;
 use object_store::{ObjectStore, ObjectStoreRef, Path};
 use runtime::Runtime;
 use snafu::{ResultExt, Snafu};
-use table_engine::predicate::{Predicate, PredicateRef};
+use table_engine::predicate::Predicate;
 use trace_metric::MetricsCollector;
 
 use crate::{
@@ -19,7 +19,7 @@ use crate::{
         header,
         header::HeaderParser,
         meta_data::cache::MetaCacheRef,
-        parquet::{writer::ParquetSstWriter, AsyncParquetReader, ThreadedReader},
+        parquet::{writer::ParquetSstWriter, AsyncParquetSstReader, ThreadedReader},
         reader::SstReader,
         writer::SstWriter,
     },
@@ -151,15 +151,15 @@ impl SstFactory for SstFactoryImpl {
 
         match storage_format {
             StorageFormat::Columnar | StorageFormat::Hybrid => {
-                let asyncParquetReader =
-                    AsyncParquetReader::new(path,
-                                            options,
-                                            hint.file_size,
-                                            objectStoreChooser,
-                                            metrics_collector);
+                let asyncParquetSstReader =
+                    AsyncParquetSstReader::new(path,
+                                               options,
+                                               hint.file_size,
+                                               objectStoreChooser,
+                                               metrics_collector);
 
                 let threadedReader =
-                    ThreadedReader::new(asyncParquetReader,
+                    ThreadedReader::new(asyncParquetSstReader,
                                         options.runtime.clone(),
                                         options.scan_options.background_read_parallelism,
                                         options.scan_options.max_record_batches_in_flight);

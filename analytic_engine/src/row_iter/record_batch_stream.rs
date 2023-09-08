@@ -216,8 +216,10 @@ pub async fn filteredStreamFromSst(space_id: SpaceId,
 
     let sstMetaData = sstReader.meta_data().await.context(ReadSstMeta)?;
 
+    // recordBatchWithKey的stream
     let stream = sstReader.read().await.context(ReadSstData)?;
 
+    // mergeiterator -> sequencedRecordBatch的stream -> RecordBatchReceiver(也已实现stream 元素是recordBatchWithKey) -依赖--> RecordBatchProjector(stream化的RecordBatchWithKey) -依赖--> ArrowRecordBatchStream(外部实现)
     let stream = stream.map(move |v| {
         v.map(|recordBatchWithKey| SequencedRecordBatch {
             recordBatchWithKey,

@@ -46,8 +46,8 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, Clone)]
 pub struct RowProjector {
-    recordSchemaWithKey: RecordSchemaWithKey,
-    sourceSchema: Schema,
+    pub recordSchemaWithKey: RecordSchemaWithKey,
+    pub sourceSchema: Schema,
     /// column在投影中的index -> column在table中的index的 fenquen
     /// The Vec stores the column index in source, and `None` means this column is not in source but required by reader, and need to filled by null.
     /// The length of Vec is the same as the number of columns reader intended to read.
@@ -63,10 +63,6 @@ impl RowProjector {
     /// The projected indexes of all columns(existed and not exist) in the source schema.
     pub fn source_projection(&self) -> &[Option<usize>] {
         &self.sourceProjection
-    }
-
-    pub fn schema_with_key(&self) -> &RecordSchemaWithKey {
-        &self.recordSchemaWithKey
     }
 
     /// REQUIRE: The schema of row is the same as source schema.

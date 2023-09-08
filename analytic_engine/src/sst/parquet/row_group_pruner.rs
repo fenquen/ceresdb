@@ -41,16 +41,15 @@ struct Metrics {
 ///
 /// Currently, two kinds of filters will be applied to such filtering: min max & parquet_filter.
 pub struct RowGroupPruner<'a> {
-    schema: &'a SchemaRef,
-    row_groups: &'a [RowGroupMetaData],
-    parquet_filter: Option<&'a ParquetFilter>,
+    arrowSchema: &'a SchemaRef,
+    rowGroupMetaDatas: &'a [RowGroupMetaData],
+    parquetFilter: Option<&'a ParquetFilter>,
     predicates: &'a [Expr],
     metrics: Metrics,
 }
 
 impl<'a> RowGroupPruner<'a> {
-    // TODO: DataFusion already change predicates to PhyscialExpr, we should keep up with upstream.
-    // https://github.com/apache/arrow-datafusion/issues/4695
+    // TODO: DataFusion already change predicates to PhyscialExpr, we should keep up with upstream. https://github.com/apache/arrow-datafusion/issues/4695
     pub fn new(schema: &'a SchemaRef,
                row_groups: &'a [RowGroupMetaData],
                parquet_filter: Option<&'a ParquetFilter>,
@@ -68,35 +67,35 @@ impl<'a> RowGroupPruner<'a> {
         };
 
         Ok(Self {
-            schema,
-            row_groups,
-            parquet_filter,
+            arrowSchema: schema,
+            rowGroupMetaDatas: row_groups,
+            parquetFilter: parquet_filter,
             predicates,
             metrics,
         })
     }
 
     pub fn prune(&mut self) -> Vec<usize> {
-        debug!("begin to prune row groups, total_row_groups:{}, parquet_filter:{}, predicates:{:?}",self.row_groups.len(),self.parquet_filter.is_some(),self.predicates);
+        debug!("begin to prune row groups, total_row_groups:{}, parquet_filter:{}, predicates:{:?}",self.rowGroupMetaDatas.len(),self.parquetFilter.is_some(),self.predicates);
 
-        let pruned0 = self.prune_by_min_max();
-        self.metrics.pruned_by_min_max = self.row_groups.len() - pruned0.len();
+        let pruned0 = min_max::pruneRowGroups(self.arrowSchema.clone(), self.predicates, self.rowGroupMetaDatas);
+        self.metrics.pruned_by_min_max = self.rowGroupMetaDatas.len() - pruned0.len();
 
-        let pruned = match self.parquet_filter {
+        let pruned = match self.parquetFilter {
             Some(v) => {
                 // TODO: We can do continuous prune based on the `pruned0` to reduce the filtering cost.
                 let pruned1 = self.prune_by_filters(v);
                 let pruned = Self::intersect_pruned_row_groups(&pruned0, &pruned1);
 
-                self.metrics.pruned_by_custom_filter = self.row_groups.len() - pruned1.len();
+                self.metrics.pruned_by_custom_filter = self.rowGroupMetaDatas.len() - pruned1.len();
 
                 debug!("finish pruning row groups by parquet_filter and min_max, total_row_groups:{}, pruned_by_min_max:{}, pruned_by_blooms:{}, pruned_by_both:{}",
-                    self.row_groups.len(),pruned0.len(),pruned1.len(),pruned.len());
+                    self.rowGroupMetaDatas.len(),pruned0.len(),pruned1.len(),pruned.len());
 
                 pruned
             }
             None => {
-                debug!("finish pruning row groups by min_max, total_row_groups:{}, pruned_row_groups:{}",self.row_groups.len(),pruned0.len());
+                debug!("finish pruning row groups by min_max, total_row_groups:{}, pruned_row_groups:{}",self.rowGroupMetaDatas.len(),pruned0.len());
                 pruned0
             }
         };
@@ -104,10 +103,6 @@ impl<'a> RowGroupPruner<'a> {
         self.metrics.row_groups_after_prune = pruned.len();
 
         pruned
-    }
-
-    fn prune_by_min_max(&self) -> Vec<usize> {
-        min_max::prune_row_groups(self.schema.clone(), self.predicates, self.row_groups)
     }
 
     /// Prune row groups according to the filter.
@@ -128,15 +123,14 @@ impl<'a> RowGroupPruner<'a> {
             };
 
         equal::prune_row_groups(
-            self.schema.clone(),
+            self.arrowSchema.clone(),
             self.predicates,
-            self.row_groups.len(),
+            self.rowGroupMetaDatas.len(),
             is_equal,
         )
     }
 
-    /// Compute the intersection of the two row groups which are in increasing
-    /// order.
+    /// compute the intersection of the two row groups which are in increasing order.
     fn intersect_pruned_row_groups(row_groups0: &[usize], row_groups1: &[usize]) -> Vec<usize> {
         let mut intersect = Vec::with_capacity(row_groups0.len().min(row_groups1.len()));
 

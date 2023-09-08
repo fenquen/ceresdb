@@ -42,6 +42,7 @@ use crate::{
     table::version::{MemTableVec, SamplingMemTable},
 };
 use crate::sst::factory::{ObjectStoreChooser, SstFactory};
+use crate::table::version::MemTableState;
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -115,7 +116,7 @@ pub struct MergeBuilder<'a> {
     /// Sampling memtable to read.
     sampling_mem: Option<SamplingMemTable>,
     /// MemTables to read.
-    memtables: MemTableVec,
+    memtableStateVec: Vec<MemTableState>,
     /// Ssts to read of each level.
     ssts: Vec<Vec<FileHandle>>,
 }
@@ -125,7 +126,7 @@ impl<'a> MergeBuilder<'a> {
         Self {
             config,
             sampling_mem: None,
-            memtables: Vec::new(),
+            memtableStateVec: Vec::new(),
             ssts: vec![Vec::new(); SST_LEVEL_NUM],
         }
     }
@@ -136,7 +137,7 @@ impl<'a> MergeBuilder<'a> {
     }
 
     pub fn memtables(mut self, memtables: MemTableVec) -> Self {
-        self.memtables = memtables;
+        self.memtableStateVec = memtables;
         self
     }
 
@@ -146,7 +147,7 @@ impl<'a> MergeBuilder<'a> {
     }
 
     pub fn mut_memtables(&mut self) -> &mut MemTableVec {
-        &mut self.memtables
+        &mut self.memtableStateVec
     }
 
     /// Returns file handles in `level`, panic if level >= MAX_LEVEL
@@ -157,7 +158,7 @@ impl<'a> MergeBuilder<'a> {
     pub async fn build(self) -> Result<MergeIterator> {
         let sstStreamNum: usize = self.ssts.iter().map(|leveled_ssts| leveled_ssts.len()).sum();
 
-        let mut totalStreamNum = sstStreamNum + self.memtables.len();
+        let mut totalStreamNum = sstStreamNum + self.memtableStateVec.len();
 
         if self.sampling_mem.is_some() {
             totalStreamNum += 1;
@@ -166,7 +167,7 @@ impl<'a> MergeBuilder<'a> {
         let mut streamVec = Vec::with_capacity(totalStreamNum);
 
         debug!("build merge iterator, table_id:{:?}, request_id:{}, sampling_mem:{:?}, memtables:{:?}, ssts:{:?}",
-            self.config.table_id,self.config.request_id,self.sampling_mem,self.memtables,self.ssts);
+            self.config.table_id,self.config.request_id,self.sampling_mem,self.memtableStateVec,self.ssts);
 
         if let Some(v) = &self.sampling_mem {
             let stream =
@@ -181,7 +182,7 @@ impl<'a> MergeBuilder<'a> {
             streamVec.push(stream);
         }
 
-        for memtable in &self.memtables {
+        for memtable in &self.memtableStateVec {
             let stream =
                 record_batch_stream::filteredStreamFromMemTable(self.config.projected_schema.clone(),
                                                                 self.config.need_dedup,
@@ -219,7 +220,7 @@ impl<'a> MergeBuilder<'a> {
             self.config.merge_iter_options,
             self.config.reverse,
             Metrics::new(
-                self.memtables.len(),
+                self.memtableStateVec.len(),
                 sstStreamNum,
                 self.config.metrics_collector,
             ),
@@ -585,7 +586,7 @@ impl Metrics {
     }
 }
 
-/// merge体现在它将各个memTable和sst全部iter化然后stream化然后统1收录
+/// mergeiter体现在它将各个memTable和sst全部iter化然后stream化然后统1收录 fenquen
 pub struct MergeIterator {
     table_id: TableId,
     request_id: RequestId,
@@ -615,9 +616,6 @@ impl RecordBatchWithKeyIterator for MergeIterator {
 
     async fn next_batch(&mut self) -> Result<Option<RecordBatchWithKey>> {
         let record_batch = self.fetch_next_batch().await?;
-
-        trace!("MergeIterator send next record batch:{:?}", record_batch);
-
         Ok(record_batch)
     }
 }
@@ -675,6 +673,7 @@ impl MergeIterator {
 
         // Push streams to heap.
         let current_schema = &self.schema;
+
         while let Some(buffered_stream) = init_buffered_streams.next().await {
             let buffered_stream = buffered_stream?;
             let stream_schema = buffered_stream.schema();
@@ -690,6 +689,7 @@ impl MergeIterator {
                 self.cold.push(buffered_stream.into_heaped(self.reverse));
             }
         }
+
         self.refill_hot();
 
         self.inited = true;
@@ -748,8 +748,7 @@ impl MergeIterator {
         Ok(())
     }
 
-    /// Fetch at most `num_rows_to_fetch` rows from the hottest
-    /// `BufferedStream`.
+    /// Fetch at most `num_rows_to_fetch` rows from the hottest `BufferedStream`.
     ///
     /// If the inner builder is empty, returns a slice of the record batch in stream.
     async fn fetch_rows_from_one_stream(&mut self, num_rows_to_fetch: usize) -> Result<Option<RecordBatchWithKey>> {
@@ -792,9 +791,6 @@ impl MergeIterator {
         self.reheap(hottest).await
     }
 
-    /// Fetch the next batch from the streams.
-    ///
-    /// `init_if_necessary` should be finished before this method.
     async fn fetch_next_batch(&mut self) -> Result<Option<RecordBatchWithKey>> {
         self.init_if_necessary().await?;
 
@@ -809,7 +805,7 @@ impl MergeIterator {
                     // The builder is empty and we have fetch a record batch from this stream, just return that batch.
                     return Ok(Some(record_batch));
                 }
-                // Else, some rows may have been pushed into the builder.
+                // else, some rows may have been pushed into the builder.
             } else {
                 self.fetch_one_row_from_multiple_streams().await?;
             }

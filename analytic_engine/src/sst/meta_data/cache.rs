@@ -89,7 +89,7 @@ impl MetaData {
     }
 
     #[inline]
-    pub fn parquet(&self) -> &parquet_ext::ParquetMetaDataRef {
+    pub fn parquet(&self) -> &Arc<OriginParquetMetaData> {
         &self.parquet
     }
 

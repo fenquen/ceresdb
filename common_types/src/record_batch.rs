@@ -59,9 +59,9 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
-    #[snafu(display("projection is out of the index, source_projection:{:?}, arrow_schema:{}.\nBacktrace:\n{}", source_projection, arrow_schema, backtrace))]
+    #[snafu(display("projection is out of the index, source_projection:{:?}, arrow_schema:{}.\nBacktrace:\n{}", sourceProjection, arrow_schema, backtrace))]
     OutOfIndexProjection {
-        source_projection: Vec<Option<usize>>,
+        sourceProjection: Vec<Option<usize>>,
         arrow_schema: ArrowSchemaRef,
         backtrace: Backtrace,
     },
@@ -84,6 +84,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Debug, Clone)]
 pub struct RecordBatchData {
     pub arrowRecordBatch: ArrowRecordBatch,
+    /// 程序在内存要用到的数据形式
     columnBlockVec: Vec<ColumnBlock>,
 }
 
@@ -288,14 +289,14 @@ fn cast_arrow_record_batch(source: ArrowRecordBatch) -> Result<ArrowRecordBatch>
             };
             f.set_metadata(field.metadata().clone());
             f
-        })
-        .collect::<Vec<_>>();
+        }).collect::<Vec<_>>();
+
     let mills_schema = Schema {
         fields: mills_fileds.into(),
         metadata: schema.metadata().clone(),
     };
-    let result =
-        ArrowRecordBatch::try_new(Arc::new(mills_schema), casted_columns).context(CreateArrow)?;
+
+    let result = ArrowRecordBatch::try_new(Arc::new(mills_schema), casted_columns).context(CreateArrow)?;
     Ok(result)
 }
 
@@ -547,72 +548,55 @@ impl RecordBatchWithKeyBuilder {
 
 #[derive(Debug, Clone)]
 pub struct ArrowRecordBatchProjector {
-    row_projector: RowProjector,
+    rowProjector: RowProjector,
 }
 
 impl From<RowProjector> for ArrowRecordBatchProjector {
-    fn from(row_projector: RowProjector) -> Self {
-        Self { row_projector }
+    fn from(rowProjector: RowProjector) -> ArrowRecordBatchProjector {
+        ArrowRecordBatchProjector { rowProjector }
     }
 }
 
 impl ArrowRecordBatchProjector {
-    /// Project the [arrow::RecordBatch] to [RecordBatchWithKey] and these
-    /// things are to be done:
-    ///  - Insert the null column if the projected column does not appear in the
-    ///    source schema.
-    ///  - Convert the [arrow::RecordBatch] to [RecordBatchWithKey].
+    ///  - Insert the null column if the projected column does not appear in the source schema.
+    ///  - 把 ArrowRecordBatch 转换到 [RecordBatchWithKey].
     ///
-    /// REQUIRE: Schema of the `arrow_record_batch` is the same as the
-    /// projection of existing column in the source schema.
-    pub fn project_to_record_batch_with_key(&self, arrow_record_batch: ArrowRecordBatch) -> Result<RecordBatchWithKey> {
-        let schema_with_key = self.row_projector.schema_with_key().clone();
-        let source_projection = self.row_projector.source_projection();
-        let mut column_blocks = Vec::with_capacity(schema_with_key.num_columns());
+    /// REQUIRE: Schema of the `arrow_record_batch` is the same as the projection of existing column in the source schema.
+    pub fn project2RecordBatchWithKey(&self, arrowRecordBatch: ArrowRecordBatch) -> Result<RecordBatchWithKey> {
+        let recordSchemaWithKey = self.rowProjector.recordSchemaWithKey.clone();
+        let sourceProjection = &self.rowProjector.sourceProjection;
 
-        let num_rows = arrow_record_batch.num_rows();
+        let mut columnBlockVec = Vec::with_capacity(recordSchemaWithKey.num_columns());
+
         // ensure next_arrow_column_idx < num_columns
-        let mut next_arrow_column_idx = 0;
-        let num_columns = arrow_record_batch.num_columns();
+        let mut nextArrowColumnIndex = 0;
 
-        for (source_idx, column_schema) in source_projection.iter().zip(schema_with_key.columns()) {
-            match source_idx {
+        for (columnIndexInTable, column_schema) in sourceProjection.iter().zip(recordSchemaWithKey.columns()) {
+            match columnIndexInTable {
                 Some(_) => {
-                    ensure!(
-                        next_arrow_column_idx < num_columns,
-                        OutOfIndexProjection {
-                            source_projection,
-                            arrow_schema: arrow_record_batch.schema()
-                        }
-                    );
+                    //ensure!(nextArrowColumnIndex < arrowRecordBatch.num_columns(), OutOfIndexProjection {sourceProjection,arrow_schema: arrowRecordBatch.schema()});
 
-                    let array = arrow_record_batch.column(next_arrow_column_idx);
-                    next_arrow_column_idx += 1;
+                    let arrowArray = arrowRecordBatch.column(nextArrowColumnIndex);
 
-                    let column_block =
-                        ColumnBlock::try_from_arrow_array_ref(&column_schema.datumKind, array)
-                            .context(CreateColumnBlock)?;
+                    nextArrowColumnIndex += 1;
 
-                    column_blocks.push(column_block);
+                    let column_block = ColumnBlock::try_from_arrow_array_ref(&column_schema.datumKind, arrowArray).context(CreateColumnBlock)?;
+
+                    columnBlockVec.push(column_block);
                 }
                 None => {
                     // Need to push row with specific type.
-                    let null_block = ColumnBlock::new_null_with_type(
-                        &column_schema.datumKind,
-                        num_rows,
-                        column_schema.is_dictionary,
-                    )
-                        .context(CreateColumnBlock)?;
-                    column_blocks.push(null_block);
+                    let null_block =
+                        ColumnBlock::new_null_with_type(&column_schema.datumKind,
+                                                        arrowRecordBatch.num_rows(),
+                                                        column_schema.is_dictionary).context(CreateColumnBlock)?;
+                    columnBlockVec.push(null_block);
                 }
             }
         }
 
-        let data = RecordBatchData::new(schema_with_key.to_arrow_schema_ref(), column_blocks)?;
+        let recordBatchData = RecordBatchData::new(recordSchemaWithKey.to_arrow_schema_ref(), columnBlockVec)?;
 
-        Ok(RecordBatchWithKey {
-            recordSchemaWithKey: schema_with_key,
-            recordBatchData: data,
-        })
+        Ok(RecordBatchWithKey { recordSchemaWithKey, recordBatchData })
     }
 }

@@ -77,7 +77,7 @@ pub fn run_server(config: Config, logLevel: RuntimeLevel) {
     let engine_runtimes = runtimes.clone();
     let logLevel = Arc::new(logLevel);
 
-    info!("Server starts up, config:{:#?}", config);
+    info!("server start, config:{:#?}", config);
 
     runtimes.default_runtime.block_on(async {
         match config.analytic.walStorageConfig {
@@ -92,7 +92,7 @@ async fn run_server_with_runtimes<T>(config: Config,
                                      logLevel: Arc<RuntimeLevel>) where T: WalsOpener {
     // Init function registry.
     let mut function_registry = FunctionRegistryImpl::new();
-    function_registry.load_functions().expect("Failed to create function registry");
+    function_registry.load_functions().expect("failed to create function registry");
     let function_registry = Arc::new(function_registry);
 
     // Create query executor

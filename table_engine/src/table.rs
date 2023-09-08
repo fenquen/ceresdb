@@ -31,7 +31,6 @@ use trace_metric::MetricsCollector;
 use crate::{
     engine::TableState,
     partition::PartitionInfo,
-    predicate::PredicateRef,
     stream::{PartitionedStreams, SendableRecordBatchStream},
 };
 use crate::predicate::Predicate;

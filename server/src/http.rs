@@ -89,12 +89,7 @@ pub enum Error {
     #[snafu(display("Fail to join async task, err:{}.", source))]
     JoinAsyncTask { source: runtime::Error },
 
-    #[snafu(display(
-    "Failed to parse ip addr, ip:{}, err:{}.\nBacktrace:\n{}",
-    ip,
-    source,
-    backtrace
-    ))]
+    #[snafu(display("failed to parse ip addr, ip:{}, err:{}.\nBacktrace:\n{}", ip, source, backtrace))]
     ParseIpAddr {
         ip: String,
         source: std::net::AddrParseError,
@@ -210,6 +205,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
             .and(self.with_context())
             .and(web::warp::protobuf_body())
             .and_then(web::warp::write);
+
         let query_api = warp::path!("read")
             .and(web::warp::with_remote_storage(self.proxy.clone()))
             .and(self.with_context())

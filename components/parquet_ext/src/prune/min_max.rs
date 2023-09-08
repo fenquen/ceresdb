@@ -4,93 +4,61 @@ use std::sync::Arc;
 
 use arrow::{array::ArrayRef, datatypes::Schema as ArrowSchema};
 use datafusion::{
-    common::ToDFSchema,
-    error::Result as DataFusionResult,
-    physical_expr::{create_physical_expr, execution_props::ExecutionProps},
+    common::ToDFSchema, error::Result as DataFusionResult,
+    physical_expr::{execution_props::ExecutionProps}, physical_expr,
     physical_optimizer::pruning::{PruningPredicate, PruningStatistics},
-    physical_plan::PhysicalExpr,
-    prelude::{Column, Expr},
-    scalar::ScalarValue,
-};
+    physical_plan::PhysicalExpr, prelude::{Column, Expr}, scalar::ScalarValue};
 use log::{error, trace};
 use parquet::file::{metadata::RowGroupMetaData, statistics::Statistics as ParquetStatistics};
 
-/// Filters row groups according to the predicate function, and returns the
-/// indexes of the filtered row groups.
-pub fn prune_row_groups(
-    schema: Arc<ArrowSchema>,
-    exprs: &[Expr],
-    row_groups: &[RowGroupMetaData],
-) -> Vec<usize> {
-    let mut target_row_groups = Vec::with_capacity(row_groups.len());
-    let should_reads = filter_row_groups_inner(schema, exprs, row_groups);
-    for (i, should_read) in should_reads.iter().enumerate() {
+/// Filters row groups according to the predicate function,得到选中的 row group 的 index
+pub fn pruneRowGroups(arrowSchema: Arc<ArrowSchema>,
+                      exprs: &[Expr],
+                      rowGroupMetaDatas: &[RowGroupMetaData]) -> Vec<usize> {
+    let mut target_row_groups = Vec::with_capacity(rowGroupMetaDatas.len());
+
+    // 假设各个的group都是选中的
+    let mut should_reads = vec![true; rowGroupMetaDatas.len()];
+
+    for expr in exprs {
+        match logical2physical(expr, &arrowSchema).and_then(|physicalExpr| PruningPredicate::try_new(physicalExpr, arrowSchema.clone())) {
+            Ok(pruningPredicate) => {
+                trace!("pruning_predicate is:{:?}", pruningPredicate);
+
+                if let Ok(values) = build_row_group_predicate(&pruningPredicate, rowGroupMetaDatas) {
+                    for (curr_val, result_val) in values.into_iter().zip(should_reads.iter_mut()) {
+                        *result_val = curr_val && *result_val
+                    }
+                };
+                // if fail to build, just ignore this filter so that all the row groups should be read for this filter.
+            }
+            Err(e) => {
+                // for any error just ignore it and that is to say, for this filter all the row groups should be read.
+                error!("fail to build pruning predicate, err:{}", e);
+            }
+        }
+    }
+
+    for (rowGroupIndex, should_read) in should_reads.iter().enumerate() {
         if *should_read {
-            target_row_groups.push(i);
+            target_row_groups.push(rowGroupIndex);
         }
     }
 
     target_row_groups
 }
 
-/// Determine whether a row group should be read according to the meta data
-/// in the `row_groups`.
-///
-/// The boolean value in the returned vector denotes the corresponding row
-/// group in the `row_groups` whether should be read.
-fn filter_row_groups_inner(
-    schema: Arc<ArrowSchema>,
-    exprs: &[Expr],
-    row_groups: &[RowGroupMetaData],
-) -> Vec<bool> {
-    let mut results = vec![true; row_groups.len()];
-    for expr in exprs {
-        match logical2physical(expr, &schema)
-            .and_then(|physical_expr| PruningPredicate::try_new(physical_expr, schema.clone()))
-        {
-            Ok(pruning_predicate) => {
-                trace!("pruning_predicate is:{:?}", pruning_predicate);
-
-                if let Ok(values) = build_row_group_predicate(&pruning_predicate, row_groups) {
-                    for (curr_val, result_val) in values.into_iter().zip(results.iter_mut()) {
-                        *result_val = curr_val && *result_val
-                    }
-                };
-                // if fail to build, just ignore this filter so that all the
-                // row groups should be read for this
-                // filter.
-            }
-            Err(e) => {
-                // for any error just ignore it and that is to say, for this filter all the row
-                // groups should be read.
-                error!("fail to build pruning predicate, err:{}", e);
-            }
-        }
-    }
-
-    results
-}
-
-fn logical2physical(expr: &Expr, schema: &ArrowSchema) -> DataFusionResult<Arc<dyn PhysicalExpr>> {
-    schema.clone().to_dfschema().and_then(|df_schema| {
-        // TODO: props should be an argument
-        let execution_props = ExecutionProps::new();
-        create_physical_expr(expr, &df_schema, schema, &execution_props)
+fn logical2physical(expr: &Expr, arrowSchema: &ArrowSchema) -> DataFusionResult<Arc<dyn PhysicalExpr>> {
+    arrowSchema.clone().to_dfschema().and_then(|dfSchema| {
+        physical_expr::create_physical_expr(expr, &dfSchema, arrowSchema, &ExecutionProps::new())
     })
 }
 
-fn build_row_group_predicate(
-    predicate_builder: &PruningPredicate,
-    row_group_metadata: &[RowGroupMetaData],
-) -> datafusion::common::Result<Vec<bool>> {
-    let parquet_schema = predicate_builder.schema().as_ref();
+fn build_row_group_predicate(pruningPredicate: &PruningPredicate,
+                             rowGroupMetaDatas: &[RowGroupMetaData]) -> datafusion::common::Result<Vec<bool>> {
+    let arrowSchema = pruningPredicate.schema().as_ref();
 
-    let pruning_stats = RowGroupPruningStatistics {
-        row_group_metadata,
-        parquet_schema,
-    };
-
-    predicate_builder.prune(&pruning_stats)
+    pruningPredicate.prune(&RowGroupPruningStatistics { rowGroupMetaDatas, arrowSchema })
 }
 
 /// port from datafusion.
@@ -126,7 +94,7 @@ macro_rules! get_statistic {
 macro_rules! get_min_max_values {
     ($self:expr, $column:expr, $func:ident, $bytes_func:ident) => {{
         let (column_index, field) =
-            if let Some((v, f)) = $self.parquet_schema.column_with_name(&$column.name) {
+            if let Some((v, f)) = $self.arrowSchema.column_with_name(&$column.name) {
                 (v, f)
             } else {
                 // Named column was not present
@@ -136,13 +104,12 @@ macro_rules! get_min_max_values {
         let data_type = field.data_type();
         let null_scalar: ScalarValue = if let Ok(v) = data_type.try_into() {
             v
-        } else {
-            // DataFusion doesn't have support for ScalarValues of the column type
+        } else {  // DataFusion doesn't have support for ScalarValues of the column type
             return None;
         };
 
         let scalar_values: Vec<ScalarValue> = $self
-            .row_group_metadata
+            .rowGroupMetaDatas
             .iter()
             .flat_map(|meta| meta.column(column_index).statistics())
             .map(|stats| get_statistic!(stats, $func, $bytes_func))
@@ -157,11 +124,9 @@ macro_rules! get_min_max_values {
     }};
 }
 
-/// Wraps parquet statistics in a way
-/// that implements [`PruningStatistics`]
 struct RowGroupPruningStatistics<'a> {
-    row_group_metadata: &'a [RowGroupMetaData],
-    parquet_schema: &'a ArrowSchema,
+    rowGroupMetaDatas: &'a [RowGroupMetaData],
+    arrowSchema: &'a ArrowSchema,
 }
 
 impl<'a> PruningStatistics for RowGroupPruningStatistics<'a> {
@@ -174,7 +139,7 @@ impl<'a> PruningStatistics for RowGroupPruningStatistics<'a> {
     }
 
     fn num_containers(&self) -> usize {
-        self.row_group_metadata.len()
+        self.rowGroupMetaDatas.len()
     }
 
     // TODO: support this.

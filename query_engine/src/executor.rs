@@ -115,8 +115,7 @@ impl QueryExecutor for QueryExecutorImpl {
         // collect all records in the pool, as the stream may perform some costly calculation
         let recordBatchVec = stream.try_collect().await.context(Collect)?;
 
-        info!("executor executed plan, request_id:{}, cost:{}ms, plan_and_metrics: {}",
-            queryContext.request_id,beginTime.saturating_elapsed().as_millis(),physicalPlan.metrics_to_string());
+        info!("executor executed plan, request_id:{}, cost:{}ms, plan_and_metrics: {}", queryContext.request_id,beginTime.saturating_elapsed().as_millis(),physicalPlan.metrics_to_string());
 
         Ok(recordBatchVec)
     }

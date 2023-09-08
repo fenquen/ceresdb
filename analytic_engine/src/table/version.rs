@@ -233,8 +233,7 @@ pub type MemTableVec = Vec<MemTableState>;
 struct MemTableView {
     /// The memtable for sampling timestamp to suggest segment duration.
     ///
-    /// This memtable is special and may contains data in differnt segment, so
-    /// can not be moved into immutable memtable set.
+    /// This memtable is special and may contains data in differnt segment, so can not be moved into immutable memtable set.
     samplingMemTable: Option<SamplingMemTable>,
 
     /// mutable memTables 使用endTime定位 fenquen

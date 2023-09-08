@@ -17,16 +17,11 @@ use common_types::{
     projected_schema::{ProjectedSchema, RowProjector},
     record_batch::{ArrowRecordBatchProjector, RecordBatchWithKey},
 };
-use datafusion::{
-    common::ToDFSchema,
-    datasource::physical_plan::{parquet::page_filter::PagePruningPredicate, ParquetFileMetrics},
-    physical_expr::{create_physical_expr, execution_props::ExecutionProps},
-    physical_plan::metrics::ExecutionPlanMetricsSet,
-};
+use datafusion::{common::ToDFSchema, datasource::physical_plan::{parquet::page_filter::PagePruningPredicate, ParquetFileMetrics}, physical_expr::{execution_props::ExecutionProps}, physical_expr, physical_plan::metrics::ExecutionPlanMetricsSet};
 use futures::{Stream, StreamExt};
 use generic_error::{BoxError, GenericResult};
 use log::{debug, error};
-use object_store::{ObjectStoreRef, Path};
+use object_store::{ObjectStore, ObjectStoreRef, Path};
 use parquet::{
     arrow::{arrow_reader::RowSelection, ParquetRecordBatchStreamBuilder, ProjectionMask},
     file::metadata::RowGroupMetaData,
@@ -47,7 +42,7 @@ use crate::{
     sst::{
         factory::{ObjectStorePickerRef, ReadFrequency, SstReadOptions},
         meta_data::{
-            cache::{MetaCacheRef, MetaData},
+            cache:: MetaData,
             SstMetaData,
         },
         parquet::{
@@ -58,10 +53,13 @@ use crate::{
         reader::{error::*, Result, SstReader},
     },
 };
+use crate::sst::meta_data::cache::MetaCache;
+use crate::sst::parquet::encoding::{ArrowRecordBatchDecoder, ColumnarRecordDecoder, HybridRecordDecoder};
+use crate::sst::parquet::meta_data::ParquetMetaData;
 
 const PRUNE_ROW_GROUPS_METRICS_COLLECTOR_NAME: &str = "prune_row_groups";
 
-type SendableRecordBatchStream = Pin<Box<dyn Stream<Item=Result<ArrowRecordBatch>> + Send>>;
+type ArrowRecordBatchStream = Pin<Box<dyn Stream<Item=Result<ArrowRecordBatch>> + Send>>;
 type RecordBatchWithKeyStream = Box<dyn Stream<Item=Result<RecordBatchWithKey>> + Send + Unpin>;
 
 #[derive(Default, Debug, Clone, TraceMetricWhenDrop)]
@@ -113,27 +111,27 @@ pub(crate) struct ProjectorMetrics {
 }
 
 struct RecordBatchProjector {
-    stream: SendableRecordBatchStream,
-    row_projector: ArrowRecordBatchProjector,
+    stream: ArrowRecordBatchStream,
+    arrowRecordBatchProjector: ArrowRecordBatchProjector,
 
     metrics: ProjectorMetrics,
     start_time: Instant,
-    sst_meta: ParquetMetaDataRef,
+    sst_meta: Arc<ParquetMetaData>,
 }
 
 impl RecordBatchProjector {
-    fn new(stream: SendableRecordBatchStream,
-           row_projector: ArrowRecordBatchProjector,
+    fn new(stream: ArrowRecordBatchStream,
+           arrowRecordBatchProjector: ArrowRecordBatchProjector,
            sst_meta: ParquetMetaDataRef,
-           metrics_collector: Option<MetricsCollector>) -> Self {
+           metrics_collector: Option<MetricsCollector>) -> RecordBatchProjector {
         let metrics = ProjectorMetrics {
             metrics_collector,
             ..Default::default()
         };
 
-        Self {
+        RecordBatchProjector {
             stream,
-            row_projector,
+            arrowRecordBatchProjector,
             metrics,
             start_time: Instant::now(),
             sst_meta,
@@ -141,6 +139,7 @@ impl RecordBatchProjector {
     }
 }
 
+/// arrowRecordBatch 变成 recordBatch
 impl Stream for RecordBatchProjector {
     type Item = Result<RecordBatchWithKey>;
 
@@ -148,30 +147,30 @@ impl Stream for RecordBatchProjector {
         let projector = self.get_mut();
 
         match projector.stream.poll_next_unpin(cx) {
-            Poll::Ready(Some(record_batch)) => {
-                match record_batch.box_err().context(DecodeRecordBatch {}) {
-                    Err(e) => Poll::Ready(Some(Err(e))),
-                    Ok(record_batch) => {
-                        let parquet_decoder =
-                            ParquetDecoder::new(&projector.sst_meta.collapsible_cols_idx);
-                        let record_batch = parquet_decoder
-                            .decode_record_batch(record_batch)
-                            .box_err()
-                            .context(DecodeRecordBatch)?;
+            // 得到原始的 arrowRecordBatch
+            Poll::Ready(Some(arrowRecordBatch)) => {
+                match arrowRecordBatch.box_err().context(DecodeRecordBatch {}) {
+                    Ok(arrowRecordBatch) => {
+                        let arrowRecordBatchDecoder: Box<dyn ArrowRecordBatchDecoder> = if projector.sst_meta.collapsible_cols_idx.is_empty() {
+                            Box::new(ColumnarRecordDecoder {})
+                        } else {
+                            Box::new(HybridRecordDecoder { collapsible_cols_idx: projector.sst_meta.collapsible_cols_idx.to_vec() })
+                        };
+                        // ParquetDecoder::new(&projector.sst_meta.collapsible_cols_idx);
 
-                        for col in record_batch.columns() {
+                        let arrowRecordBatch = arrowRecordBatchDecoder.decode(arrowRecordBatch).box_err().context(DecodeRecordBatch)?;
+
+                        for col in arrowRecordBatch.columns() {
                             projector.metrics.row_mem += col.get_array_memory_size();
                         }
-                        projector.metrics.row_num += record_batch.num_rows();
+                        projector.metrics.row_num += arrowRecordBatch.num_rows();
 
-                        let projected_batch = projector
-                            .row_projector
-                            .project_to_record_batch_with_key(record_batch)
-                            .box_err()
-                            .context(DecodeRecordBatch {});
+                        let recordBatchWithKey =
+                            projector.arrowRecordBatchProjector.project2RecordBatchWithKey(arrowRecordBatch).box_err().context(DecodeRecordBatch {});
 
-                        Poll::Ready(Some(projected_batch))
+                        Poll::Ready(Some(recordBatchWithKey))
                     }
+                    Err(e) => Poll::Ready(Some(Err(e))),
                 }
             }
             Poll::Pending => Poll::Pending,
@@ -191,12 +190,12 @@ pub struct AsyncParquetSstReader<'a> {
     /// The path where the data is persisted.
     path: &'a Path,
     /// The storage where the data is persist.
-    store: &'a ObjectStoreRef,
+    objectStore: &'a Arc<dyn ObjectStore>,
     /// The hint for the sst file size.
     file_size_hint: Option<usize>,
     num_rows_per_row_group: usize,
     projected_schema: ProjectedSchema,
-    meta_cache: Option<MetaCacheRef>,
+    meta_cache: Option<Arc<MetaCache>>,
     predicate: Arc<Predicate>,
     /// Current frequency decides the cache policy.
     frequency: ReadFrequency,
@@ -212,13 +211,13 @@ pub struct AsyncParquetSstReader<'a> {
 #[async_trait]
 impl<'a> SstReader for AsyncParquetSstReader<'a> {
     async fn meta_data(&mut self) -> Result<SstMetaData> {
-        self.init_if_necessary().await?;
+        self.init().await?;
 
         Ok(SstMetaData::Parquet(self.meta_data.as_ref().unwrap().custom().clone()))
     }
 
     async fn read(&mut self) -> Result<Box<dyn PrefetchableStream<Item=Result<RecordBatchWithKey>>>> {
-        let mut streams = self.read_parallel(1).await?;
+        let mut streams = self.parallelRead(1).await?;
         assert_eq!(streams.len(), 1);
         let stream = streams.pop().expect("impossible to fetch no stream");
 
@@ -241,7 +240,7 @@ impl<'a> AsyncParquetSstReader<'a> {
 
         AsyncParquetSstReader {
             path,
-            store,
+            objectStore: store,
             file_size_hint,
             num_rows_per_row_group: options.num_rows_per_row_group,
             projected_schema: options.projected_schema.clone(),
@@ -255,51 +254,49 @@ impl<'a> AsyncParquetSstReader<'a> {
         }
     }
 
-    async fn read_parallel(&mut self, read_parallelism: usize) -> Result<Vec<RecordBatchWithKeyStream>> {
+    async fn parallelRead(&mut self, read_parallelism: usize) -> Result<Vec<RecordBatchWithKeyStream>> {
         assert!(read_parallelism > 0);
 
-        self.init_if_necessary().await?;
+        self.init().await?;
 
-        let subStreamVec = self.getRecordBatchStreams(read_parallelism).await?;
+        let subStreams = self.getRecordBatchStreams(read_parallelism).await?;
 
-        if subStreamVec.is_empty() {
+        if subStreams.is_empty() {
             return Ok(Vec::new());
         }
 
-        let row_projector = {
-            let row_projector = self.row_projector.take().unwrap();
-            ArrowRecordBatchProjector::from(row_projector)
-        };
+        let row_projector = ArrowRecordBatchProjector::from(self.row_projector.take().unwrap());
 
         // metadata must be inited after `init_if_necessary`.
         let sst_meta_data = self.meta_data.as_ref().unwrap().custom();
 
-        let streams: Vec<_> = subStreamVec.into_iter().map(|stream| {
-            Box::new(RecordBatchProjector::new(
-                stream,
-                row_projector.clone(),
-                sst_meta_data.clone(),
-                self.metrics.metricsCollector.clone(),
-            )) as _
+        // RecordBatchProjector 装饰 原始stream 装成stream的 fenquen
+        let streams: Vec<_> = subStreams.into_iter().map(|stream| {
+            Box::new(
+                RecordBatchProjector::new(stream,
+                                          row_projector.clone(),
+                                          sst_meta_data.clone(),
+                                          self.metrics.metricsCollector.clone())) as _
         }).collect();
 
         Ok(streams)
     }
 
-    fn prune_row_groups(&self,
-                        arrowSchema: SchemaRef,
-                        row_groups: &[RowGroupMetaData],
-                        parquet_filter: Option<&ParquetFilter>) -> Result<Vec<usize>> {
+    /// 得到的是1系列选中的row group的index
+    fn pruneRowGroups(&self,
+                      arrowSchema: SchemaRef,
+                      row_groups: &[RowGroupMetaData],
+                      parquet_filter: Option<&ParquetFilter>) -> Result<Vec<usize>> {
         let metricsCollector = self.metrics.metricsCollector.as_ref().map(|v| v.span(PRUNE_ROW_GROUPS_METRICS_COLLECTOR_NAME.to_string()));
 
-        let mut pruner =
+        let mut rowGroupPruner =
             RowGroupPruner::new(&arrowSchema,
                                 row_groups,
                                 parquet_filter,
                                 &self.predicate.exprs,
                                 metricsCollector)?;
 
-        Ok(pruner.prune())
+        Ok(rowGroupPruner.prune())
     }
 
     /// The final parallelism is ensured in the range: [1, num_row_groups].
@@ -308,101 +305,93 @@ impl<'a> AsyncParquetSstReader<'a> {
         suggested.min(num_row_groups).max(1)
     }
 
-    fn build_row_selection(&self,
-                           arrow_schema: SchemaRef,
-                           row_groups: &[usize],
-                           file_metadata: &parquet_ext::ParquetMetaData) -> Result<Option<RowSelection>> {
-        // TODO: remove fixed partition
-        let partition = 0;
-        let exprs = datafusion::optimizer::utils::conjunction(self.predicate.exprs().to_vec());
-        let exprs = match exprs {
-            Some(exprs) => exprs,
+    fn buildRowSelection(&self,
+                         arrowSchema: SchemaRef,
+                         rowGroupIndexes: &[usize],
+                         file_metadata: &parquet_ext::ParquetMetaData) -> Result<Option<RowSelection>> {
+        let mergedExpr = match datafusion::optimizer::utils::conjunction(self.predicate.exprs.to_vec()) {
+            Some(mergedExpr) => mergedExpr,
             None => return Ok(None),
         };
 
-        let df_schema = arrow_schema.clone().to_dfschema().context(DataFusionError)?;
+        // arrowSchema -> dfSchema -> physicalExpr
+        let dfSchema = arrowSchema.clone().to_dfschema().context(DataFusionError)?;
+        let physical_expr = physical_expr::create_physical_expr(&mergedExpr, &dfSchema, &arrowSchema, &ExecutionProps::new()).context(DataFusionError)?;
+        let page_predicate = PagePruningPredicate::try_new(&physical_expr, arrowSchema.clone()).context(DataFusionError)?;
 
-        let physical_expr = create_physical_expr(&exprs, &df_schema, &arrow_schema, &ExecutionProps::new()).context(DataFusionError)?;
+        // TODO: remove fixed partition
+        let metrics = ParquetFileMetrics::new(0, self.path.as_ref(), &self.df_plan_metrics);
 
-        let page_predicate = PagePruningPredicate::try_new(&physical_expr, arrow_schema.clone()).context(DataFusionError)?;
-
-        let metrics = ParquetFileMetrics::new(partition, self.path.as_ref(), &self.df_plan_metrics);
-
-        page_predicate.prune(row_groups, file_metadata, &metrics).context(DataFusionError)
+        page_predicate.prune(rowGroupIndexes, file_metadata, &metrics).context(DataFusionError)
     }
 
     // TODO: remove it and use the suggested api.
     #[allow(deprecated)]
-    async fn getRecordBatchStreams(&mut self, suggested_parallelism: usize) -> Result<Vec<SendableRecordBatchStream>> {
+    async fn getRecordBatchStreams(&mut self, suggested_parallelism: usize) -> Result<Vec<ArrowRecordBatchStream>> {
         assert!(self.meta_data.is_some());
 
         let meta_data = self.meta_data.as_ref().unwrap();
         let row_projector = self.row_projector.as_ref().unwrap();
-        let arrow_schema = meta_data.custom().schema.arrow_schema.clone();
+        let arrowSchema = meta_data.custom().schema.arrow_schema.clone();
 
-        // Get target row groups.
-        let target_row_groups =
-            self.prune_row_groups(arrow_schema.clone(),
-                                  meta_data.parquet.row_groups(),
-                                  meta_data.custom.parquet_filter.as_ref())?;
+        // 牵涉到了parquet 得到的是1系列选中的row group的index
+        let selectedRowGroupIndexes =
+            self.pruneRowGroups(arrowSchema.clone(),
+                                meta_data.parquet.row_groups(),
+                                meta_data.custom.parquet_filter.as_ref())?;
 
-        debug!("reader fetch record batches, path:{}, row_groups total:{}, after prune:{}",self.path,meta_data.parquet().num_row_groups(),target_row_groups.len());
+        debug!("reader fetch record batches, path:{}, row_groups total:{}, after prune:{}",self.path,meta_data.parquet().num_row_groups(),selectedRowGroupIndexes.len());
 
-        if target_row_groups.is_empty() {
+        if selectedRowGroupIndexes.is_empty() {
             return Ok(Vec::new());
         }
 
+        // 把selectedRowGroupIndexes通过了并行度切分 -----------------------------
         // Partition the batches by `read_parallelism`.
-        let parallelism = Self::decide_read_parallelism(suggested_parallelism, target_row_groups.len());
+        let parallelism = suggested_parallelism.min(selectedRowGroupIndexes.len()).max(1);
 
-        // TODO: we only support read parallelly when `batch_size` == `num_rows_per_row_group`, so this placing method is ok, we should
-        // adjust it when supporting it other situations.
-        let chunks_num = parallelism;
-        let chunk_size = target_row_groups.len() / parallelism;
+        // TODO: we only support read parallelly when `batch_size` == `num_rows_per_row_group`, so this placing method is ok, we should adjust it when supporting it other situations.
+        let chunk_size = selectedRowGroupIndexes.len() / parallelism;
+
         self.metrics.parallelism = parallelism;
 
-        let mut target_row_group_chunks = vec![Vec::with_capacity(chunk_size); chunks_num];
+        let mut target_row_group_chunks = vec![Vec::with_capacity(chunk_size); parallelism];
 
-        for (row_group_idx, row_group) in target_row_groups.into_iter().enumerate() {
-            let chunk_idx = row_group_idx % chunks_num;
-            target_row_group_chunks[chunk_idx].push(row_group);
+        for (index, rowGroupIndex) in selectedRowGroupIndexes.into_iter().enumerate() {
+            target_row_group_chunks[index % parallelism].push(rowGroupIndex);
         }
+        //----------------------------------------------------------------------------
 
-        let parquet_metadata = meta_data.parquet();
-        let proj_mask = ProjectionMask::leaves(
-            meta_data.parquet().file_metadata().schema_descr(),
-            row_projector.existed_source_projection().iter().copied(),
-        );
+        let projectionMask =
+            ProjectionMask::leaves(meta_data.parquet.file_metadata().schema_descr(),
+                                   row_projector.existed_source_projection().iter().copied());
 
-        debug!("reader fetch record batches, parallelism suggest:{}, real:{}, chunk_size:{}, project:{:?}",suggested_parallelism, parallelism, chunk_size, proj_mask);
+        debug!("reader fetch record batches, parallelism suggest:{}, real:{}, chunk_size:{}, project:{:?}",suggested_parallelism, parallelism, chunk_size, projectionMask);
 
         let mut streams = Vec::with_capacity(target_row_group_chunks.len());
 
-        for chunk in target_row_group_chunks {
-            let object_store_reader = ObjectStoreReader::new(
-                self.store.clone(),
-                self.path.clone(),
-                parquet_metadata.clone(),
-            );
+        for rowGroupIndexVec in target_row_group_chunks {
+            let objectStoreReader =
+                ObjectStoreReader::new(self.objectStore.clone(),
+                                       self.path.clone(),
+                                       meta_data.parquet.clone());
 
-            let mut builder = ParquetRecordBatchStreamBuilder::new(object_store_reader).await.with_context(|| ParquetError)?;
+            let mut arrowReaderBuilder = ParquetRecordBatchStreamBuilder::new(objectStoreReader).await.with_context(|| ParquetError)?;
 
-            let row_selection =
-                self.build_row_selection(arrow_schema.clone(), &chunk, parquet_metadata)?;
+            let rowSelection = self.buildRowSelection(arrowSchema.clone(), &rowGroupIndexVec, &meta_data.parquet)?;
 
-            debug!("build row selection for file path:{}, result:{:?}, page indexes:{}",self.path,row_selection,parquet_metadata.page_indexes().is_some());
+            debug!("build row selection for file path:{}, result:{:?}, page indexes:{}",self.path, rowSelection, meta_data.parquet.page_indexes().is_some());
 
-            if let Some(selection) = row_selection {
-                builder = builder.with_row_selection(selection);
+            if let Some(rowSelection) = rowSelection {
+                arrowReaderBuilder = arrowReaderBuilder.with_row_selection(rowSelection);
             };
 
-            let stream = builder
+            let stream = arrowReaderBuilder
                 .with_batch_size(self.num_rows_per_row_group)
-                .with_row_groups(chunk)
-                .with_projection(proj_mask.clone())
+                .with_row_groups(rowGroupIndexVec)
+                .with_projection(projectionMask.clone())
                 .build()
-                .with_context(|| ParquetError)?
-                .map(|batch| batch.with_context(|| ParquetError));
+                .with_context(|| ParquetError)?.map(|batch| batch.with_context(|| ParquetError));
 
             streams.push(Box::pin(stream) as _);
         }
@@ -410,7 +399,7 @@ impl<'a> AsyncParquetSstReader<'a> {
         Ok(streams)
     }
 
-    async fn init_if_necessary(&mut self) -> Result<()> {
+    async fn init(&mut self) -> Result<()> {
         if self.meta_data.is_some() {
             return Ok(());
         }
@@ -426,6 +415,7 @@ impl<'a> AsyncParquetSstReader<'a> {
 
         self.meta_data = Some(meta_data);
         self.row_projector = Some(row_projector);
+
         Ok(())
     }
 
@@ -433,30 +423,12 @@ impl<'a> AsyncParquetSstReader<'a> {
         let file_size = match self.file_size_hint {
             Some(v) => v,
             None => {
-                let object_meta = self.store.head(self.path).await.context(ObjectStoreError)?;
+                let object_meta = self.objectStore.head(self.path).await.context(ObjectStoreError)?;
                 object_meta.size
             }
         };
 
         Ok(file_size)
-    }
-
-    async fn load_meta_data_from_storage(&self, ignore_sst_filter: bool) -> Result<MetaData> {
-        let file_size = self.load_file_size().await?;
-        let chunk_reader_adapter = ChunkReaderAdapter::new(self.path, self.store);
-
-        let (parquet_meta_data, _) =
-            parquet_ext::meta_data::fetch_parquet_metadata(file_size, &chunk_reader_adapter)
-                .await
-                .with_context(|| FetchAndDecodeSstMeta {
-                    file_path: self.path.to_string(),
-                })?;
-
-        // TODO: Support page index until https://github.com/CeresDB/ceresdb/issues/1040 is fixed.
-
-        MetaData::try_new(&parquet_meta_data, ignore_sst_filter)
-            .box_err()
-            .context(DecodeSstMeta)
     }
 
     fn need_update_cache(&self) -> bool {
@@ -474,8 +446,7 @@ impl<'a> AsyncParquetSstReader<'a> {
             }
         }
 
-        // The metadata can't be found in the cache, and let's fetch it from the
-        // storage.
+        // The metadata can't be found in the cache, and let's fetch it from the storage.
         let avoid_update_cache = !self.need_update_cache();
         let empty_predicate = self.predicate.exprs().is_empty();
 
@@ -493,12 +464,24 @@ impl<'a> AsyncParquetSstReader<'a> {
 
         Ok(meta_data)
     }
+
+    async fn load_meta_data_from_storage(&self, ignore_sst_filter: bool) -> Result<MetaData> {
+        let file_size = self.load_file_size().await?;
+        let chunk_reader_adapter = ChunkReaderAdapter::new(self.path, self.objectStore);
+
+        let (parquet_meta_data, _) =
+            parquet_ext::meta_data::fetch_parquet_metadata(file_size, &chunk_reader_adapter).await.with_context(|| FetchAndDecodeSstMeta { file_path: self.path.to_string()})?;
+
+        // TODO: Support page index until https://github.com/CeresDB/ceresdb/issues/1040 is fixed.
+
+        MetaData::try_new(&parquet_meta_data, ignore_sst_filter).box_err().context(DecodeSstMeta)
+    }
 }
 
 struct RecordBatchReceiver {
-    bg_prefetch_tx: Option<watch::Sender<()>>,
-    rx_group: Vec<Receiver<Result<RecordBatchWithKey>>>,
-    cur_rx_idx: usize,
+    startSignalSender: Option<watch::Sender<()>>,
+    receivers: Vec<Receiver<Result<RecordBatchWithKey>>>,
+    currentReceiverIndex: usize,
     #[allow(dead_code)]
     drop_helper: AbortOnDropMany<()>,
 }
@@ -509,8 +492,8 @@ impl PrefetchableStream for RecordBatchReceiver {
 
     async fn start_prefetch(&mut self) {
         // Start the prefetch work in background when first poll is called.
-        if let Some(tx) = self.bg_prefetch_tx.take() {
-            if tx.send(()).is_err() {
+        if let Some(startSignalSender) = self.startSignalSender.take() {
+            if startSignalSender.send(()).is_err() {
                 error!("The receiver for start prefetching has been closed");
             }
         }
@@ -525,31 +508,28 @@ impl Stream for RecordBatchReceiver {
     type Item = Result<RecordBatchWithKey>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        if self.rx_group.is_empty() {
+        if self.receivers.is_empty() {
             return Poll::Ready(None);
         }
 
         // Start the prefetch work in background when first poll is called.
-        if let Some(tx) = self.bg_prefetch_tx.take() {
+        if let Some(tx) = self.startSignalSender.take() {
             if tx.send(()).is_err() {
                 error!("The receiver for start prefetching has been closed");
             }
         }
 
-        let cur_rx_idx = self.cur_rx_idx;
+        let currentReceiverIndex = self.currentReceiverIndex;
 
-        // `cur_rx_idx` is impossible to be out-of-range, because it is got by round robin.
-        let rx_group_len = self.rx_group.len();
-
-        let cur_rx = self.rx_group.get_mut(cur_rx_idx).unwrap_or_else(|| {
-            panic!("cur_rx_idx is impossible to be out-of-range, cur_rx_idx:{cur_rx_idx}, rx_group len:{rx_group_len}")
+        let currentReceiver = self.receivers.get_mut(currentReceiverIndex).unwrap_or_else(|| {
+            panic!("currentReceiverIndex is impossible to be out-of-range")
         });
 
-        match cur_rx.poll_recv(cx) {
+        match currentReceiver.poll_recv(cx) {
+            // 如果单单瞧这里的话 会有担忧要是read中的是None怎能的办 这样的话整个的poll_next外部就不会去调用了 会影响到其它尚未耗尽的receiver 其实是不会这样 相见 sendSubStreamData 会阻拦这样的情形的 fenquen
             Poll::Ready(result) => {
-                // If found `Poll::Pending`, we need to keep polling current rx
-                // until found `Poll::Ready` for ensuring the order of record batches,
-                // because batches are placed into each stream by round robin:
+                // If found `Poll::Pending`, we need to keep polling current rx until found `Poll::Ready` for ensuring the order of record batches,
+                // because batches are placed into each stream by 轮询:
                 // +------+    +------+    +------+
                 // |  1   |    |  2   |    |  3   |
                 // +------+    +------+    +------+
@@ -557,15 +537,13 @@ impl Stream for RecordBatchReceiver {
                 // +------+    +------+    +------+
                 // | ...  |    | ...  |    | ...  |
                 // +------+    +------+    +------+
-                self.cur_rx_idx = (self.cur_rx_idx + 1) % self.rx_group.len();
+
+                // 起到了各个receiver轮询的效果
+                self.currentReceiverIndex = (self.currentReceiverIndex + 1) % self.receivers.len();
                 Poll::Ready(result)
             }
             Poll::Pending => Poll::Pending,
         }
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        (0, None)
     }
 }
 
@@ -585,14 +563,14 @@ impl<'a> SstReader for ThreadedReader<'a> {
     }
 
     async fn read(&mut self) -> Result<Box<dyn PrefetchableStream<Item=Result<RecordBatchWithKey>>>> {
-        // Get underlying sst readers and channels.
-        let subStreamVec = self.asyncParquetSstReader.read_parallel(self.read_parallelism).await?;
+        // get underlying sst readers and channels.
+        let subStreamVec = self.asyncParquetSstReader.parallelRead(self.read_parallelism).await?;
 
         if subStreamVec.is_empty() {
             return Ok(Box::new(RecordBatchReceiver {
-                bg_prefetch_tx: None,
-                rx_group: Vec::new(),
-                cur_rx_idx: 0,
+                startSignalSender: None,
+                receivers: Vec::new(),
+                currentReceiverIndex: 0,
                 drop_helper: AbortOnDropMany(Vec::new()),
             }) as _);
         }
@@ -601,25 +579,24 @@ impl<'a> SstReader for ThreadedReader<'a> {
 
         debug!("threadedReader read, suggest read_parallelism:{}, actual:{}",self.read_parallelism, read_parallelism);
 
-        let channel_cap_per_sub_reader = self.channel_cap / read_parallelism;
+        let (senders, receivers): (Vec<_>, Vec<_>) =
+            (0..read_parallelism).map(|_| mpsc::channel::<Result<RecordBatchWithKey>>(self.channel_cap / read_parallelism)).unzip();
 
-        let (tx_group, rx_group): (Vec<_>, Vec<_>) =
-            (0..read_parallelism).map(|_| mpsc::channel::<Result<RecordBatchWithKey>>(channel_cap_per_sub_reader)).unzip();
+        let (startSignalSender, startSignalReceiver) = watch::channel(());
 
-        let (bg_prefetch_tx, bg_prefetch_rx) = watch::channel(());
-
-        // Start the background readings.
+        // start the background readings.
         let mut handles = Vec::with_capacity(subStreamVec.len());
 
-        for (sub_reader, tx) in subStreamVec.into_iter().zip(tx_group.into_iter()) {
-            let bg_prefetch_handle = self.read_record_batches_from_sub_reader(sub_reader, tx, bg_prefetch_rx.clone());
+        for (stream, sender) in subStreamVec.into_iter().zip(senders.into_iter()) {
+            let bg_prefetch_handle = self.sendSubStreamData(stream, sender, startSignalReceiver.clone());
             handles.push(bg_prefetch_handle);
         }
 
+        // fenquen
         Ok(Box::new(RecordBatchReceiver {
-            bg_prefetch_tx: Some(bg_prefetch_tx),
-            rx_group,
-            cur_rx_idx: 0,
+            startSignalSender: Some(startSignalSender),
+            receivers,
+            currentReceiverIndex: 0,
             drop_helper: AbortOnDropMany(handles),
         }) as _)
     }
@@ -627,24 +604,24 @@ impl<'a> SstReader for ThreadedReader<'a> {
 
 
 impl<'a> ThreadedReader<'a> {
-    pub fn new(reader: AsyncParquetSstReader<'a>,
+    pub fn new(asyncParquetSstReader: AsyncParquetSstReader<'a>,
                runtime: Arc<Runtime>,
                read_parallelism: usize,
                channel_cap: usize) -> ThreadedReader {
         assert!(read_parallelism > 0, "read parallelism must be greater than 0");
 
         ThreadedReader {
-            asyncParquetSstReader: reader,
+            asyncParquetSstReader,
             runtime,
             channel_cap,
             read_parallelism,
         }
     }
 
-    fn read_record_batches_from_sub_reader(&mut self,
-                                           mut reader: Box<dyn Stream<Item=Result<RecordBatchWithKey>> + Send + Unpin>,
-                                           tx: Sender<Result<RecordBatchWithKey>>,
-                                           mut rx: watch::Receiver<()>) -> JoinHandle<()> {
+    fn sendSubStreamData(&mut self,
+                         mut stream: Box<dyn Stream<Item=Result<RecordBatchWithKey>> + Send + Unpin>,
+                         sender: Sender<Result<RecordBatchWithKey>>,
+                         mut rx: watch::Receiver<()>) -> JoinHandle<()> {
         self.runtime.spawn(async move {
             // Wait for the notification to start the bg prefetch work.
             if rx.changed().await.is_err() {
@@ -652,8 +629,9 @@ impl<'a> ThreadedReader<'a> {
                 return;
             }
 
-            while let Some(batch) = reader.next().await {
-                if let Err(e) = tx.send(batch).await {
+            // 之前有疑问 RecordBatchReceiver中会收拢多条自stream上的data 要是其中1个有none了岂不是其它的也会收到牵连也被强行停了 这里证明了不会这样 因为阻拦了none fenquen
+            while let Some(batch) = stream.next().await {
+                if let Err(e) = sender.send(batch).await {
                     error!("fail to send the fetched record batch result, err:{}", e);
                 }
             }

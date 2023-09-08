@@ -444,21 +444,21 @@ impl ParquetEncoder {
     }
 }
 
-/// RecordDecoder is used for decoding ArrowRecordBatch based on `schema.StorageFormat`
-trait RecordDecoder {
-    fn decode(&self, arrow_record_batch: ArrowRecordBatch) -> Result<ArrowRecordBatch>;
+pub trait ArrowRecordBatchDecoder {
+    /// 如果是Columnar的话是透传
+    fn decode(&self, arrowRecordBatch: ArrowRecordBatch) -> Result<ArrowRecordBatch>;
 }
 
-struct ColumnarRecordDecoder {}
+pub struct ColumnarRecordDecoder {}
 
-impl RecordDecoder for ColumnarRecordDecoder {
+impl ArrowRecordBatchDecoder for ColumnarRecordDecoder {
     fn decode(&self, arrow_record_batch: ArrowRecordBatch) -> Result<ArrowRecordBatch> {
         Ok(arrow_record_batch)
     }
 }
 
-struct HybridRecordDecoder {
-    collapsible_cols_idx: Vec<u32>,
+pub struct HybridRecordDecoder {
+    pub collapsible_cols_idx: Vec<u32>,
 }
 
 impl HybridRecordDecoder {
@@ -637,7 +637,7 @@ impl HybridRecordDecoder {
     }
 }
 
-impl RecordDecoder for HybridRecordDecoder {
+impl ArrowRecordBatchDecoder for HybridRecordDecoder {
     /// Decode records from hybrid to columnar format
     fn decode(&self, arrow_record_batch: ArrowRecordBatch) -> Result<ArrowRecordBatch> {
         let new_arrow_schema = Self::convert_schema(arrow_record_batch.schema());
@@ -654,9 +654,7 @@ impl RecordDecoder for HybridRecordDecoder {
         }
 
         let value_offsets = value_offsets.unwrap();
-        let arrays = arrays
-            .iter()
-            .map(|array_ref| {
+        let arrays = arrays.iter().map(|array_ref| {
                 let data_type = array_ref.data_type();
                 match data_type {
                     // TODO:
@@ -681,36 +679,28 @@ impl RecordDecoder for HybridRecordDecoder {
                         }
                     }
                 }
-            })
-            .collect::<Result<Vec<_>>>()?;
+            }).collect::<Result<Vec<_>>>()?;
 
-        ArrowRecordBatch::try_new(new_arrow_schema, arrays)
-            .box_err()
-            .context(EncodeRecordBatch)
+        ArrowRecordBatch::try_new(new_arrow_schema, arrays).box_err().context(EncodeRecordBatch)
     }
 }
 
 pub struct ParquetDecoder {
-    record_decoder: Box<dyn RecordDecoder>,
+   pub record_decoder: Box<dyn ArrowRecordBatchDecoder>,
 }
 
 impl ParquetDecoder {
     pub fn new(collapsible_cols_idx: &[u32]) -> Self {
-        let record_decoder: Box<dyn RecordDecoder> = if collapsible_cols_idx.is_empty() {
+        let record_decoder: Box<dyn ArrowRecordBatchDecoder> = if collapsible_cols_idx.is_empty() {
             Box::new(ColumnarRecordDecoder {})
         } else {
-            Box::new(HybridRecordDecoder {
-                collapsible_cols_idx: collapsible_cols_idx.to_vec(),
-            })
+            Box::new(HybridRecordDecoder { collapsible_cols_idx: collapsible_cols_idx.to_vec()})
         };
 
         Self { record_decoder }
     }
 
-    pub fn decode_record_batch(
-        &self,
-        arrow_record_batch: ArrowRecordBatch,
-    ) -> Result<ArrowRecordBatch> {
+    pub fn decode(&self, arrow_record_batch: ArrowRecordBatch) -> Result<ArrowRecordBatch> {
         self.record_decoder.decode(arrow_record_batch)
     }
 }

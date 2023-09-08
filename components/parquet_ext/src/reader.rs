@@ -8,7 +8,7 @@ use futures::{
     TryFutureExt,
 };
 use log::debug;
-use object_store::{ObjectStore, ObjectStoreRef, Path};
+use object_store::{ObjectStore, Path};
 use parquet::{arrow::async_reader::AsyncFileReader, file::metadata::ParquetMetaData};
 
 /// Implemention AsyncFileReader based on `ObjectStore`
@@ -17,7 +17,7 @@ use parquet::{arrow::async_reader::AsyncFileReader, file::metadata::ParquetMetaD
 /// keep the crate `parquet_ext` more pure.
 #[derive(Clone)]
 pub struct ObjectStoreReader {
-    storage: Arc<dyn ObjectStore>,
+    objectStore: Arc<dyn ObjectStore>,
     path: Path,
     meta_data: Arc<ParquetMetaData>,
     begin: Instant,
@@ -26,7 +26,7 @@ pub struct ObjectStoreReader {
 impl ObjectStoreReader {
     pub fn new(storage: Arc<dyn ObjectStore>, path: Path, meta_data: Arc<ParquetMetaData>) -> Self {
         Self {
-            storage,
+            objectStore: storage,
             path,
             meta_data,
             begin: Instant::now(),
@@ -42,14 +42,14 @@ impl Drop for ObjectStoreReader {
 
 impl AsyncFileReader for ObjectStoreReader {
     fn get_bytes(&mut self, range: Range<usize>) -> BoxFuture<'_, parquet::errors::Result<Bytes>> {
-        self.storage.get_range(&self.path, range).map_err(|e| {
+        self.objectStore.get_range(&self.path, range).map_err(|e| {
             parquet::errors::ParquetError::General(format!("failed to fetch range from object store, err:{e}"))
         }).boxed()
     }
 
     fn get_byte_ranges(&mut self, ranges: Vec<Range<usize>>) -> BoxFuture<'_, parquet::errors::Result<Vec<Bytes>>> {
         async move {
-            self.storage.get_ranges(&self.path, &ranges).map_err(|e| {
+            self.objectStore.get_ranges(&self.path, &ranges).map_err(|e| {
                 parquet::errors::ParquetError::General(format!("failed to fetch ranges from object store, err:{e}"))
             }).await
         }.boxed()

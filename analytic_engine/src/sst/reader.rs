@@ -86,6 +86,5 @@ pub use error::*;
 #[async_trait]
 pub trait SstReader {
     async fn meta_data(&mut self) -> Result<SstMetaData>;
-
     async fn read(&mut self) -> Result<Box<dyn PrefetchableStream<Item=Result<RecordBatchWithKey>>>>;
 }
