@@ -637,3 +637,1168 @@ Build date: 2023-08-06T01:31:02.035308000Z
 killed
 
 Process finished with exit code 9
+
+  <component name="BookmarksManager">
+    <option name="groups">
+      <GroupState>
+        <option name="bookmarks">
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/server/src/http.rs" />
+              <entry key="line" value="247" />
+            </attributes>
+            <option name="description" value="handle_http_sql_query(&amp;ctx, req)" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/proxy/src/http/sql.rs" />
+              <entry key="line" value="40" />
+            </attributes>
+            <option name="description" value="-self.handle_sql()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/proxy/src/read.rs" />
+              <entry key="line" value="49" />
+            </attributes>
+            <option name="description" value="--self.fetch_sql_query_output(ctx, schema, sql).await?," />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/proxy/src/read.rs" />
+              <entry key="line" value="79" />
+            </attributes>
+            <option name="description" value="---parse_sql(&amp;mut sql_ctx, sql)" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/query_frontend/src/frontend.rs" />
+              <entry key="line" value="101" />
+            </attributes>
+            <option name="description" value="----Parser::parse_sql(sql)" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/query_frontend/src/parser.rs" />
+              <entry key="line" value="145" />
+            </attributes>
+            <option name="description" value="-----statement = parser.parse_statement()?;" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/proxy/src/read.rs" />
+              <entry key="line" value="103" />
+            </attributes>
+            <option name="description" value="---statementToPlan()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/query_frontend/src/frontend.rs" />
+              <entry key="line" value="129" />
+            </attributes>
+            <option name="description" value="----planner.statementToPlan(statement)" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/proxy/src/read.rs" />
+              <entry key="line" value="120" />
+            </attributes>
+            <option name="description" value="---execute_plan()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/proxy/src/lib.rs" />
+              <entry key="line" value="423" />
+            </attributes>
+            <option name="description" value="----build_interpreter()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/query_frontend/src/planner.rs" />
+              <entry key="line" value="294" />
+            </attributes>
+            <option name="description" value="-----select的statement变为logicalPlan" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/query_frontend/src/planner.rs" />
+              <entry key="line" value="559" />
+            </attributes>
+            <option name="description" value="------sqlStatement2DatafusionLogicalPlan(sqlStatement)" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/query_frontend/src/planner.rs" />
+              <entry key="line" value="569" />
+            </attributes>
+            <option name="description" value="-------dataFusionLogicalPlan = dataFusionPlanner.sql_statement_to_plan(sqlStatement)" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/proxy/src/lib.rs" />
+              <entry key="line" value="430" />
+            </attributes>
+            <option name="description" value="----interpreter_execute_plan()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/proxy/src/lib.rs" />
+              <entry key="line" value="482" />
+            </attributes>
+            <option name="description" value="-----interpreter.execute()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/interpreters/src/select.rs" />
+              <entry key="line" value="56" />
+            </attributes>
+            <option name="description" value="------recordBatchVec=queryExecutor.executeLogicalPlan()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/query_engine/src/executor.rs" />
+              <entry key="line" value="94" />
+            </attributes>
+            <option name="description" value="-------生成dfSessionContext" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/query_engine/src/executor.rs" />
+              <entry key="line" value="103" />
+            </attributes>
+            <option name="description" value="-------逻辑计划的优化" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/query_engine/src/executor.rs" />
+              <entry key="line" value="107" />
+            </attributes>
+            <option name="description" value="-------生成了物理计划" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/query_engine/src/df_planner_extension/mod.rs" />
+              <entry key="line" value="29" />
+            </attributes>
+            <option name="description" value="--------dfQueryPlanner自实现类调用physicalPlanner生成了物理计划" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/table_engine/src/provider.rs" />
+              <entry key="line" value="204" />
+            </attributes>
+            <option name="description" value="----------df联动 自实现的TableProvider的scan函数调用scanTable" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/table_engine/src/provider.rs" />
+              <entry key="line" value="149" />
+            </attributes>
+            <option name="description" value="-----------scanTable.initStream()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/table_engine/src/provider.rs" />
+              <entry key="line" value="280" />
+            </attributes>
+            <option name="description" value="------------table.partitionedRead()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/table/mod.rs" />
+              <entry key="line" value="522" />
+            </attributes>
+            <option name="description" value="-------------tableEngineInstance.partitionedRead()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/instance/read.rs" />
+              <entry key="line" value="91" />
+            </attributes>
+            <option name="description" value="--------------buildMergeIters()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/instance/read.rs" />
+              <entry key="line" value="141" />
+            </attributes>
+            <option name="description" value="---------------得到以segmentDuration分组的memTable和sst" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/instance/read.rs" />
+              <entry key="line" value="239" />
+            </attributes>
+            <option name="description" value="----------------得到了满足timeRange的多个memTable和sst" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/table/version.rs" />
+              <entry key="line" value="654" />
+            </attributes>
+            <option name="description" value="-----------------得到相应的memtables" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/table/version.rs" />
+              <entry key="line" value="657" />
+            </attributes>
+            <option name="description" value="-----------------得到相应的ssts" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/sst/manager.rs" />
+              <entry key="line" value="57" />
+            </attributes>
+            <option name="description" value="------------------在某level得到满足timeRange的ssts" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/instance/read.rs" />
+              <entry key="line" value="257" />
+            </attributes>
+            <option name="description" value="----------------memTables和ssts以segmentDuration分组" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/instance/read.rs" />
+              <entry key="line" value="172" />
+            </attributes>
+            <option name="description" value="---------------得到了mergeriter" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/row_iter/merge.rs" />
+              <entry key="line" value="186" />
+            </attributes>
+            <option name="description" value="----------------stream化memTable" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/row_iter/record_batch_stream.rs" />
+              <entry key="line" value="178" />
+            </attributes>
+            <option name="description" value="-----------------memtable.scan()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/row_iter/merge.rs" />
+              <entry key="line" value="200" />
+            </attributes>
+            <option name="description" value="----------------stream化sst" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/row_iter/record_batch_stream.rs" />
+              <entry key="line" value="210" />
+            </attributes>
+            <option name="description" value="-----------------sstFactory.createReader()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/row_iter/record_batch_stream.rs" />
+              <entry key="line" value="216" />
+            </attributes>
+            <option name="description" value="-----------------读取sst的meta" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/row_iter/record_batch_stream.rs" />
+              <entry key="line" value="219" />
+            </attributes>
+            <option name="description" value="-----------------sstReader.read()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/sst/parquet/async_reader.rs" />
+              <entry key="line" value="566" />
+            </attributes>
+            <option name="description" value="------------------asyncParquetSstReader.parallelRead()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/sst/parquet/async_reader.rs" />
+              <entry key="line" value="261" />
+            </attributes>
+            <option name="description" value="-------------------getRecordBatchStreams()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/sst/parquet/async_reader.rs" />
+              <entry key="line" value="338" />
+            </attributes>
+            <option name="description" value="pruneRowGroups" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/sst/parquet/async_reader.rs" />
+              <entry key="line" value="298" />
+            </attributes>
+            <option name="description" value="rowGroupPruner.prune()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/sst/parquet/row_group_pruner.rs" />
+              <entry key="line" value="80" />
+            </attributes>
+            <option name="description" value="pruneRowGroups()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/query_engine/src/executor.rs" />
+              <entry key="line" value="112" />
+            </attributes>
+            <option name="description" value="-------物理计划的调用" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/query_engine/src/physical_plan.rs" />
+              <entry key="line" value="72" />
+            </attributes>
+            <option name="description" value="--------dataFusionExecutionPlan.execute()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+        </option>
+        <option name="name" value="应对sql" />
+      </GroupState>
+      <GroupState>
+        <option name="bookmarks">
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/src/setup.rs" />
+              <entry key="line" value="282" />
+            </attributes>
+            <option name="description" value="async fn create_static_topology_schema(" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/src/setup.rs" />
+              <entry key="line" value="246" />
+            </attributes>
+            <option name="description" value="catalogManagerTableBased.getTableInfos()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/system_catalog/src/sys_catalog_table.rs" />
+              <entry key="line" value="497" />
+            </attributes>
+            <option name="description" value="table.read()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/table/mod.rs" />
+              <entry key="line" value="438" />
+            </attributes>
+            <option name="description" value="tableEngineInstance.partitionedRead()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+        </option>
+        <option name="name" value="getTableInfos()涉及读取" />
+      </GroupState>
+      <GroupState>
+        <option name="bookmarks">
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/interpreters/src/table_manipulator/catalog_based.rs" />
+              <entry key="line" value="68" />
+            </attributes>
+            <option name="description" value="table_operator.create_table_on_shard()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/catalog/src/table_operator.rs" />
+              <entry key="line" value="214" />
+            </attributes>
+            <option name="description" value="schema.create_table(request.clone(), opts).await.box_err()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/catalog_impls/src/table_based.rs" />
+              <entry key="line" value="690" />
+            </attributes>
+            <option name="description" value="tableEngine维度上的createTable()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/catalog_impls/src/table_based.rs" />
+              <entry key="line" value="693" />
+            </attributes>
+            <option name="description" value="sysCatalogTable维度上的createTable()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/interpreters/src/create.rs" />
+              <entry key="line" value="60" />
+            </attributes>
+            <option name="description" value="executeCreate()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/system_catalog/src/sys_catalog_table.rs" />
+              <entry key="line" value="335" />
+            </attributes>
+            <option name="description" value="writeTableInfo()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/system_catalog/src/sys_catalog_table.rs" />
+              <entry key="line" value="420" />
+            </attributes>
+            <option name="description" value="tableWriter.write().await?;" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/system_catalog/src/sys_catalog_table.rs" />
+              <entry key="line" value="928" />
+            </attributes>
+            <option name="description" value="rowGroup = self.convertTableInfo2RowGroup()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/system_catalog/src/sys_catalog_table.rs" />
+              <entry key="line" value="929" />
+            </attributes>
+            <option name="description" value="sysCatalogTableUnderlyingTable.write()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/table/mod.rs" />
+              <entry key="line" value="431" />
+            </attributes>
+            <option name="description" value="writer.write()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/instance/write.rs" />
+              <entry key="line" value="337" />
+            </attributes>
+            <option name="description" value="要不要flush memTable" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/instance/write.rs" />
+              <entry key="line" value="471" />
+            </attributes>
+            <option name="description" value="-flushMemTable()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/instance/write.rs" />
+              <entry key="line" value="523" />
+            </attributes>
+            <option name="description" value="--flusher.flushAsync()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/instance/flush_compaction.rs" />
+              <entry key="line" value="185" />
+            </attributes>
+            <option name="description" value="---flush()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/instance/flush_compaction.rs" />
+              <entry key="line" value="208" />
+            </attributes>
+            <option name="description" value="----flushTask.run()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/instance/flush_compaction.rs" />
+              <entry key="line" value="230" />
+            </attributes>
+            <option name="description" value="-----tableFlushRequest = getLastSequence()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/instance/flush_compaction.rs" />
+              <entry key="line" value="242" />
+            </attributes>
+            <option name="description" value="-----dumpMemTables()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/instance/flush_compaction.rs" />
+              <entry key="line" value="322" />
+            </attributes>
+            <option name="description" value="------dumpNormalMemTable()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/instance/flush_compaction.rs" />
+              <entry key="line" value="533" />
+            </attributes>
+            <option name="description" value="-------得到sst文件的path" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/instance/flush_compaction.rs" />
+              <entry key="line" value="545" />
+            </attributes>
+            <option name="description" value="-------sstFactory.createWriter()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/instance/flush_compaction.rs" />
+              <entry key="line" value="551" />
+            </attributes>
+            <option name="description" value="-------得到了memtable的迭代器" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/instance/flush_compaction.rs" />
+              <entry key="line" value="899" />
+            </attributes>
+            <option name="description" value="memTable.scan()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/instance/flush_compaction.rs" />
+              <entry key="line" value="555" />
+            </attributes>
+            <option name="description" value="-------sstWriter.write()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/sst/parquet/writer.rs" />
+              <entry key="line" value="260" />
+            </attributes>
+            <option name="description" value="--------recordBatchGroupWriter.writeAll()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/sst/parquet/writer.rs" />
+              <entry key="line" value="176" />
+            </attributes>
+            <option name="description" value="---------recordBatchWithKeyVec = fetchNextRowGroup()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/sst/parquet/writer.rs" />
+              <entry key="line" value="191" />
+            </attributes>
+            <option name="description" value="---------recordEncoder.encode(arrowRecordBatchVec)" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/sst/parquet/encoding.rs" />
+              <entry key="line" value="273" />
+            </attributes>
+            <option name="description" value="----------asyncArrowWriter.write()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/instance/write.rs" />
+              <entry key="line" value="355" />
+            </attributes>
+            <option name="description" value="writeTableRowGroup()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/instance/write.rs" />
+              <entry key="line" value="391" />
+            </attributes>
+            <option name="description" value="写wal" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/instance/write.rs" />
+              <entry key="line" value="502" />
+            </attributes>
+            <option name="description" value="和生成sysCatalogTable会和 walManager.write(logWriteBatch)" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/instance/write.rs" />
+              <entry key="line" value="396" />
+            </attributes>
+            <option name="description" value="写memTable" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/instance/write.rs" />
+              <entry key="line" value="304" />
+            </attributes>
+            <option name="description" value="-tableData.findOrCreateMutable()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/table/data.rs" />
+              <entry key="line" value="391" />
+            </attributes>
+            <option name="description" value="--memTableFactory.createMemTable()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/table/data.rs" />
+              <entry key="line" value="404" />
+            </attributes>
+            <option name="description" value="--currentVersion.insertMutableMemTable()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/instance/write.rs" />
+              <entry key="line" value="315" />
+            </attributes>
+            <option name="description" value="-memTable保存到了" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/table/version.rs" />
+              <entry key="line" value="175" />
+            </attributes>
+            <option name="description" value="--memTable.put()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/memtable/skiplist/mod.rs" />
+              <entry key="line" value="96" />
+            </attributes>
+            <option name="description" value="rowWriter.writeRow(row)" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/memtable/skiplist/mod.rs" />
+              <entry key="line" value="98" />
+            </attributes>
+            <option name="description" value="skiplist.put()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+        </option>
+        <option name="name" value="createTable涉及到写入到逻辑" />
+      </GroupState>
+      <GroupState>
+        <option name="bookmarks">
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/query_frontend/src/planner.rs" />
+              <entry key="line" value="896" />
+            </attributes>
+            <option name="description" value="-rowGroup = build_row_group()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/query_frontend/src/planner.rs" />
+              <entry key="line" value="1056" />
+            </attributes>
+            <option name="description" value="--读取insert中的设置的value生成datum的" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/query_frontend/src/planner.rs" />
+              <entry key="line" value="1012" />
+            </attributes>
+            <option name="description" value="---Datum::fromValue()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/query_frontend/src/planner.rs" />
+              <entry key="line" value="561" />
+            </attributes>
+            <option name="description" value="stmt2InsertPlan(sqlStatement)" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/interpreters/src/factory.rs" />
+              <entry key="line" value="55" />
+            </attributes>
+            <option name="description" value="insertInterpreter生成会把insertPlan注入" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/interpreters/src/insert.rs" />
+              <entry key="line" value="90" />
+            </attributes>
+            <option name="description" value="generateTsId()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/interpreters/src/insert.rs" />
+              <entry key="line" value="108" />
+            </attributes>
+            <option name="description" value="table.write()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+        </option>
+        <option name="name" value="insert" />
+      </GroupState>
+      <GroupState>
+        <option name="bookmarks">
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/catalog_impls/src/table_based.rs" />
+              <entry key="line" value="109" />
+            </attributes>
+            <option name="description" value="生成sysCatalogTable" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/system_catalog/src/sys_catalog_table.rs" />
+              <entry key="line" value="261" />
+            </attributes>
+            <option name="description" value="tableEngine.open_table()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/engine.rs" />
+              <entry key="line" value="132" />
+            </attributes>
+            <option name="description" value="tableEngineInstance.open_tables_of_same_shard()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/instance/open.rs" />
+              <entry key="line" value="237" />
+            </attributes>
+            <option name="description" value="recover_table_metas()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/instance/open.rs" />
+              <entry key="line" value="266" />
+            </attributes>
+            <option name="description" value="recover_single_table_meta()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/instance/open.rs" />
+              <entry key="line" value="396" />
+            </attributes>
+            <option name="description" value="manifest.recover()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/manifest/details.rs" />
+              <entry key="line" value="478" />
+            </attributes>
+            <option name="description" value="snapshotRecoverer.recover()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/manifest/details.rs" />
+              <entry key="line" value="208" />
+            </attributes>
+            <option name="description" value="createLatestSnapshotWithoutPrev()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/manifest/details.rs" />
+              <entry key="line" value="240" />
+            </attributes>
+            <option name="description" value="iter = self.metaUpdateLogStore.scan()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/manifest/details.rs" />
+              <entry key="line" value="626" />
+            </attributes>
+            <option name="description" value="iterator = self.wal_manager.read_batch()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/system_catalog/src/sys_catalog_table.rs" />
+              <entry key="line" value="291" />
+            </attributes>
+            <option name="description" value="tableEngine维度上的createTable()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/engine.rs" />
+              <entry key="line" value="91" />
+            </attributes>
+            <option name="description" value="space_table = tableEngineInstance.create_table()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/instance/engine.rs" />
+              <entry key="line" value="296" />
+            </attributes>
+            <option name="description" value="space = findOrCreateSpace()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/instance/engine.rs" />
+              <entry key="line" value="297" />
+            </attributes>
+            <option name="description" value="doCreateTable()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/instance/create.rs" />
+              <entry key="line" value="61" />
+            </attributes>
+            <option name="description" value="space_store.manifest.apply_edit(metaEditRequest)" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/manifest/details.rs" />
+              <entry key="line" value="436" />
+            </attributes>
+            <option name="description" value="变更落地到wal store_update_to_wal()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/manifest/details.rs" />
+              <entry key="line" value="439" />
+            </attributes>
+            <option name="description" value="变更落地到内存上 tableMetaSet.apply_edit_to_table()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/table_meta_set_impl.rs" />
+              <entry key="line" value="326" />
+            </attributes>
+            <option name="description" value="-apply_update()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/table_meta_set_impl.rs" />
+              <entry key="line" value="119" />
+            </attributes>
+            <option name="description" value="--space.insert_table(table_data.clone());" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/manifest/details.rs" />
+              <entry key="line" value="379" />
+            </attributes>
+            <option name="description" value="latest_sequence = metaUpdateLogStoreWalBased.append(metaUpdate)" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/manifest/details.rs" />
+              <entry key="line" value="640" />
+            </attributes>
+            <option name="description" value="表的生成等使用proto来序列化 对应的byte变为后续的kv中的value" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/manifest/details.rs" />
+              <entry key="line" value="646" />
+            </attributes>
+            <option name="description" value="walManager.write(logWriteBatch)" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/wal/src/rocks_impl/manager.rs" />
+              <entry key="line" value="876" />
+            </attributes>
+            <option name="description" value="table_unit = getOrCreateTableUnit()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/wal/src/rocks_impl/manager.rs" />
+              <entry key="line" value="877" />
+            </attributes>
+            <option name="description" value="table_unit.write(ctx, batch).await" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/wal/src/rocks_impl/manager.rs" />
+              <entry key="line" value="209" />
+            </attributes>
+            <option name="description" value="对createTable来说 key是regionId加上tableId value是AddTableMeta的序列化后的byte" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/wal/src/rocks_impl/manager.rs" />
+              <entry key="line" value="219" />
+            </attributes>
+            <option name="description" value="db.write(&amp;rocksDbWriteBatch)" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+        </option>
+        <option name="name" value="生成sysCatalogTable" />
+      </GroupState>
+      <GroupState>
+        <option name="bookmarks">
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/setup.rs" />
+              <entry key="line" value="100" />
+            </attributes>
+            <option name="description" value="open_storage(self.analyticConfig.storage.clone()," />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/setup.rs" />
+              <entry key="line" value="354" />
+            </attributes>
+            <option name="description" value="默认是local" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+        </option>
+        <option name="name" value="storage" />
+      </GroupState>
+      <GroupState>
+        <option name="bookmarks">
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/server/src/server.rs" />
+              <entry key="line" value="301" />
+            </attributes>
+            <option name="description" value="let table_manipulator = self.table_manipulator.context(MissingTableManipulator)?;" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/src/bin/ceresdb-server.rs" />
+              <entry key="line" value="88" />
+            </attributes>
+            <option name="description" value="run_server(config, logLevel);" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/src/setup.rs" />
+              <entry key="line" value="83" />
+            </attributes>
+            <option name="description" value="run_server_with_runtimes()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/src/setup.rs" />
+              <entry key="line" value="116" />
+            </attributes>
+            <option name="description" value="build_without_meta()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/src/setup.rs" />
+              <entry key="line" value="250" />
+            </attributes>
+            <option name="description" value="let table_manipulator =TableManipulatorCatalogBased::new()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/src/setup.rs" />
+              <entry key="line" value="275" />
+            </attributes>
+            <option name="description" value="serverBuilder.table_manipulator(table_manipulator)" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+        </option>
+        <option name="name" value="tableManipulator如何诞生" />
+      </GroupState>
+      <GroupState>
+        <option name="name" value="datafusion联动实现读取表data" />
+      </GroupState>
+      <GroupState>
+        <option name="bookmarks">
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/memtable/skiplist/iter.rs" />
+              <entry key="line" value="107" />
+            </attributes>
+            <option name="description" value="columnarIter.init()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/memtable/skiplist/iter.rs" />
+              <entry key="line" value="122" />
+            </attributes>
+            <option name="description" value="-skipListIter.seek(seekKey)" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/components/skiplist/src/list.rs" />
+              <entry key="line" value="584" />
+            </attributes>
+            <option name="description" value="--skipList.find_near()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/memtable/skiplist/iter.rs" />
+              <entry key="line" value="80" />
+            </attributes>
+            <option name="description" value="fetchNextRecordBatch()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/memtable/skiplist/iter.rs" />
+              <entry key="line" value="153" />
+            </attributes>
+            <option name="description" value="-fetchNextRow()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/memtable/skiplist/iter.rs" />
+              <entry key="line" value="176" />
+            </attributes>
+            <option name="description" value="-recordBatchWithKeyBuilder.build()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+        </option>
+        <option name="name" value="memTable跳表是如何遍历迭代 当flush和select的时候会迭代读取memtable" />
+      </GroupState>
+      <GroupState>
+        <option name="bookmarks">
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/catalog_impls/src/table_based.rs" />
+              <entry key="line" value="671" />
+            </attributes>
+            <option name="description" value="validate_schema_info()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/catalog_impls/src/table_based.rs" />
+              <entry key="line" value="445" />
+            </attributes>
+            <option name="description" value="schema_by_name()" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/catalog_impls/src/table_based.rs" />
+              <entry key="line" value="660" />
+            </attributes>
+            <option name="description" value="table_by_name" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/common_types/src/schema.rs" />
+              <entry key="line" value="779" />
+            </attributes>
+            <option name="description" value="如何直到column是不是写入的时候用到" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+          <BookmarkState>
+            <attributes>
+              <entry key="url" value="file://$PROJECT_DIR$/analytic_engine/src/compaction/scheduler.rs" />
+              <entry key="line" value="411" />
+            </attributes>
+            <option name="description" value="compact" />
+            <option name="provider" value="com.intellij.ide.bookmark.providers.LineBookmarkProvider" />
+          </BookmarkState>
+        </option>
+        <option name="name" value="other" />
+      </GroupState>
+    </option>
+  </component>
