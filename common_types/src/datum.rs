@@ -25,13 +25,13 @@ const NULL_VALUE_FOR_HASH: u128 = u128::MAX;
 
 #[derive(Debug, Snafu)]
 pub enum Error {
-    #[snafu(display("Unsupported SQL data type, type:{sql_type}.\nBacktrace:\n{backtrace}"))]
+    #[snafu(display("unsupported SQL data type, type:{sql_type}.\nBacktrace:\n{backtrace}"))]
     UnsupportedDataType {
         sql_type: SqlDataType,
         backtrace: Backtrace,
     },
 
-    #[snafu(display("Invalid double or float, err:{source}.\nBacktrace:\n{backtrace}"))]
+    #[snafu(display("invalid double or float, err:{source}.\nBacktrace:\n{backtrace}"))]
     InvalidDouble {
         source: std::num::ParseFloatError,
         backtrace: Backtrace,
@@ -44,43 +44,43 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
-    #[snafu(display("Invalid timestamp, err:{source}.\nBacktrace:\n{backtrace}"))]
+    #[snafu(display("invalid timestamp, err:{source}.\nBacktrace:\n{backtrace}"))]
     InvalidTimestamp {
         source: std::num::ParseIntError,
         backtrace: Backtrace,
     },
 
-    #[snafu(display("Invalid date, err:{source}.\nBacktrace:\n{backtrace}"))]
+    #[snafu(display("invalid date, err:{source}.\nBacktrace:\n{backtrace}"))]
     InvalidDate {
         source: chrono::ParseError,
         backtrace: Backtrace,
     },
 
-    #[snafu(display("Invalid time, err:{source}.\nBacktrace:\n{backtrace}"))]
+    #[snafu(display("invalid time, err:{source}.\nBacktrace:\n{backtrace}"))]
     InvalidTimeCause {
         source: chrono::ParseError,
         backtrace: Backtrace,
     },
 
-    #[snafu(display("Invalid time, err:{source}.\nBacktrace:\n{backtrace}"))]
+    #[snafu(display("invalid time, err:{source}.\nBacktrace:\n{backtrace}"))]
     InvalidTimeHourFormat {
         source: std::num::ParseIntError,
         backtrace: Backtrace,
     },
 
-    #[snafu(display("Invalid time, err:{msg}.\nBacktrace:\n{backtrace}"))]
+    #[snafu(display("invalid time, err:{msg}.\nBacktrace:\n{backtrace}"))]
     InvalidTimeNoCause { msg: String, backtrace: Backtrace },
 
-    #[snafu(display("Invalid integer, err:{source}.\nBacktrace:\n{backtrace}"))]
+    #[snafu(display("invalid integer, err:{source}.\nBacktrace:\n{backtrace}"))]
     InvalidInt {
         source: std::num::ParseIntError,
         backtrace: Backtrace,
     },
 
-    #[snafu(display("Invalid datum byte, byte:{value}.\nBacktrace:\n{backtrace}"))]
+    #[snafu(display("invalid datum byte, byte:{value}.\nBacktrace:\n{backtrace}"))]
     InvalidDatumByte { value: u8, backtrace: Backtrace },
 
-    #[snafu(display("Invalid hex value, hex_val:{hex_val}.\nBacktrace:\n{backtrace}"))]
+    #[snafu(display("invalid hex value, hex_val:{hex_val}.\nBacktrace:\n{backtrace}"))]
     InvalidHexValue {
         hex_val: String,
         backtrace: Backtrace,

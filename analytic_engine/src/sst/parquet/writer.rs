@@ -181,7 +181,7 @@ impl RecordBatchGroupWriter {
             }
 
             if let Some(filter) = &mut parquet_filter {
-                filter.row_group_filters.push(self.build_row_group_filter(&recordBatchWithKeyVec)?);
+                filter.rowGroupFilters.push(self.build_row_group_filter(&recordBatchWithKeyVec)?);
             }
 
             let batchNum = recordBatchWithKeyVec.len();

@@ -20,9 +20,7 @@ pub enum Error {
     CreateQueryContext { source: crate::context::Error },
 
     #[snafu(display("Failed to execute logical plan, err:{}", source))]
-    ExecutePlan {
-        source: query_engine::executor::Error,
-    },
+    ExecutePlan { source: query_engine::executor::Error },
 }
 
 define_result!(Error);

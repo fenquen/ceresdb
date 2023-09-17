@@ -71,10 +71,7 @@ pub struct ResponseColumn {
 struct Row<'a>(Vec<(&'a String, &'a Datum)>);
 
 impl<'a> Serialize for Row<'a> {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-        where
-            S: serde::Serializer,
-    {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> where S: serde::Serializer {
         let rows = &self.0;
         let mut map = serializer.serialize_map(Some(rows.len()))?;
         for (key, value) in rows {
@@ -113,12 +110,12 @@ impl Serialize for ResponseRows {
 pub fn convert_output(output: Output) -> Response {
     match output {
         Output::AffectedRows(n) => Response::AffectedRows(n),
-        Output::Records(records) => convert_records(records),
+        Output::Records(recordBatchVec) => convert_records(recordBatchVec),
     }
 }
 
-fn convert_records(records: RecordBatchVec) -> Response {
-    if records.is_empty() {
+fn convert_records(recordBatchVec: RecordBatchVec) -> Response {
+    if recordBatchVec.is_empty() {
         return Response::Rows(ResponseRows {
             column_names: Vec::new(),
             data: Vec::new(),
@@ -128,23 +125,23 @@ fn convert_records(records: RecordBatchVec) -> Response {
     let mut column_names = vec![];
     let mut column_data = vec![];
 
-    for record_batch in records {
-        let num_cols = record_batch.num_columns();
-        let num_rows = record_batch.num_rows();
-        let schema = record_batch.schema();
+    for recordBatch in recordBatchVec {
+        let num_cols = recordBatch.recordSchema.num_columns();
 
         for col_idx in 0..num_cols {
-            let column_schema = schema.column(col_idx).clone();
+            let columnSchema = recordBatch.recordSchema.column(col_idx).clone();
+
             column_names.push(ResponseColumn {
-                name: column_schema.name,
-                data_type: column_schema.datumKind,
+                name: columnSchema.name,
+                data_type: columnSchema.datumKind,
             });
         }
 
-        for row_idx in 0..num_rows {
+        for row_idx in 0..recordBatch.recordBatchData.num_rows() {
             let mut row_data = Vec::with_capacity(num_cols);
+
             for col_idx in 0..num_cols {
-                let column = record_batch.column(col_idx);
+                let column = recordBatch.column(col_idx);
                 let column = column.datum(row_idx);
 
                 row_data.push(column);

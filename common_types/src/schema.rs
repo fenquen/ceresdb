@@ -521,16 +521,13 @@ impl RecordSchemaWithKey {
 
     /// Returns an immutable reference of the key column vector.
     pub fn key_columns(&self) -> Vec<ColumnSchema> {
-        self.columns()
-            .iter()
-            .enumerate()
-            .filter_map(|(idx, col)| {
-                if self.primaryKeyIndexVec.contains(&idx) {
-                    Some(col.clone())
-                } else {
-                    None
-                }
-            }).collect::<Vec<_>>()
+        self.columns().iter().enumerate().filter_map(|(idx, col)| {
+            if self.primaryKeyIndexVec.contains(&idx) {
+                Some(col.clone())
+            } else {
+                None
+            }
+        }).collect::<Vec<_>>()
     }
 
     pub fn to_arrow_schema_ref(&self) -> ArrowSchemaRef {

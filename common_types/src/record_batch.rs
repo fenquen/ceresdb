@@ -97,7 +97,7 @@ impl RecordBatchData {
         Ok(RecordBatchData { arrowRecordBatch, columnBlockVec })
     }
 
-    fn num_rows(&self) -> usize {
+    pub fn num_rows(&self) -> usize {
         self.columnBlockVec.first().map(|column| column.num_rows()).unwrap_or(0)
     }
 
@@ -145,8 +145,8 @@ impl TryFrom<ArrowRecordBatch> for RecordBatchData {
 // TODO(yingwen): The schema in RecordBatch should be much simple because it may lack some information.
 #[derive(Debug, Clone)]
 pub struct RecordBatch {
-    recordSchema: RecordSchema,
-    recordBatchData: RecordBatchData,
+    pub recordSchema: RecordSchema,
+    pub recordBatchData: RecordBatchData,
 }
 
 impl RecordBatch {

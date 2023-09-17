@@ -110,8 +110,7 @@ impl<'a> RowGroupPruner<'a> {
         let is_equal =
             |col_pos: ColumnPosition, val: &ScalarValue, negated: bool| -> Option<bool> {
                 let datum = Datum::from_scalar_value(val)?;
-                let exist = parquet_filter[col_pos.row_group_idx]
-                    .contains_column_data(col_pos.column_idx, &datum.to_bytes())?;
+                let exist = parquet_filter[col_pos.row_group_idx].contains_column_data(col_pos.column_idx, &datum.to_bytes())?;
                 if exist {
                     // parquet_filter has false positivity, that is to say we are unsure whether
                     // this value exists even if the parquet_filter says it

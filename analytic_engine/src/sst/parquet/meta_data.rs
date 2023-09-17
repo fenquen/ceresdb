@@ -69,7 +69,7 @@ trait Filter: fmt::Debug {
     /// Serialize the bitmap index to binary array.
     fn to_bytes(&self) -> Vec<u8>;
 
-    /// Serialized size
+    /// serialized size 用来打印和统计的
     fn size(&self) -> usize {
         self.to_bytes().len()
     }
@@ -118,13 +118,10 @@ pub struct RowGroupFilterBuilder {
 }
 
 impl RowGroupFilterBuilder {
-    pub(crate) fn new(record_schema: &RecordSchemaWithKey) -> Self {
-        let builders = record_schema
-            .columns()
-            .iter()
-            .enumerate()
-            .map(|(i, col)| {
-                if record_schema.is_primary_key_index(i) {
+    pub(crate) fn new(recordSchemaWithKey: &RecordSchemaWithKey) -> Self {
+        let builders =
+            recordSchemaWithKey.columns().iter().enumerate().map(|(i, col)| {
+                if recordSchemaWithKey.is_primary_key_index(i) {
                     return None;
                 }
 
@@ -134,14 +131,12 @@ impl RowGroupFilterBuilder {
                         | DatumKind::Double
                         | DatumKind::Float
                         | DatumKind::Varbinary
-                        | DatumKind::Boolean
-                ) {
+                        | DatumKind::Boolean) {
                     return None;
                 }
 
                 Some(Xor8Builder::default())
-            })
-            .collect();
+            }).collect();
 
         Self { builders }
     }
@@ -157,23 +152,24 @@ impl RowGroupFilterBuilder {
             b.map(|mut b| {
                 b.build().context(BuildXor8Filter).map(|xor8| Box::new(Xor8Filter { xor8 }) as _)
             }).transpose()
-        }).collect::<Result<Vec<_>>>().map(|column_filters| RowGroupFilter { column_filters })
+        }).collect::<Result<Vec<_>>>().map(|column_filters| RowGroupFilter { columnFilters: column_filters })
     }
 }
 
+/// 它是由多个 column filters
 #[derive(Debug, Default)]
 pub struct RowGroupFilter {
-    // The column filter can be None if the column is not indexed.
-    column_filters: Vec<Option<Box<dyn Filter + Send + Sync>>>,
+    // the column filter can be None if the column is not indexed
+    columnFilters: Vec<Option<Box<dyn Filter + Send + Sync>>>,
 }
 
 impl PartialEq for RowGroupFilter {
     fn eq(&self, other: &Self) -> bool {
-        if self.column_filters.len() != other.column_filters.len() {
+        if self.columnFilters.len() != other.columnFilters.len() {
             return false;
         }
 
-        for (a, b) in self.column_filters.iter().zip(other.column_filters.iter()) {
+        for (a, b) in self.columnFilters.iter().zip(other.columnFilters.iter()) {
             if !a.as_ref().map(|a| a.to_bytes()).eq(&b.as_ref().map(|b| b.to_bytes())) {
                 return false;
             }
@@ -185,45 +181,40 @@ impl PartialEq for RowGroupFilter {
 
 impl Clone for RowGroupFilter {
     fn clone(&self) -> Self {
-        let column_filters = self
-            .column_filters
-            .iter()
-            .map(|f| {
-                f.as_ref()
-                    .map(|f| Box::new(Xor8Filter::from_bytes(f.to_bytes()).unwrap()) as Box<_>)
-            })
-            .collect();
+        let column_filters =
+            self.columnFilters.iter().map(|f| {
+                f.as_ref().map(|f| Box::new(Xor8Filter::from_bytes(f.to_bytes()).unwrap()) as Box<_>)
+            }).collect();
 
-        Self { column_filters }
+        Self { columnFilters: column_filters }
     }
 }
 
 impl RowGroupFilter {
     /// Return None if the column is not indexed.
     pub fn contains_column_data(&self, column_idx: usize, data: &[u8]) -> Option<bool> {
-        self.column_filters[column_idx]
+        self.columnFilters[column_idx]
             .as_ref()
             .map(|v| v.contains(data))
     }
 
     fn size(&self) -> usize {
-        self.column_filters.iter().map(|cf| cf.as_ref().map(|cf| cf.size()).unwrap_or(0)).sum()
+        self.columnFilters.iter().map(|cf| cf.as_ref().map(|cf| cf.size()).unwrap_or(0)).sum()
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct ParquetFilter {
-    /// a row group filter consists of column filters.
-    pub row_group_filters: Vec<RowGroupFilter>,
+    pub rowGroupFilters: Vec<RowGroupFilter>,
 }
 
 impl ParquetFilter {
     pub fn len(&self) -> usize {
-        self.row_group_filters.len()
+        self.rowGroupFilters.len()
     }
 
     pub fn size(&self) -> usize {
-        self.row_group_filters.iter().map(|f| f.size()).sum()
+        self.rowGroupFilters.iter().map(|f| f.size()).sum()
     }
 }
 
@@ -231,14 +222,14 @@ impl Index<usize> for ParquetFilter {
     type Output = RowGroupFilter;
 
     fn index(&self, index: usize) -> &Self::Output {
-        &self.row_group_filters[index]
+        &self.rowGroupFilters[index]
     }
 }
 
 impl From<ParquetFilter> for sst_pb::ParquetFilter {
     fn from(parquet_filter: ParquetFilter) -> Self {
-        let row_group_filters = parquet_filter.row_group_filters.into_iter().map(|row_group_filter| {
-            let column_filters = row_group_filter.column_filters.into_iter().map(|column_filter| match column_filter {
+        let row_group_filters = parquet_filter.rowGroupFilters.into_iter().map(|row_group_filter| {
+            let column_filters = row_group_filter.columnFilters.into_iter().map(|column_filter| match column_filter {
                 Some(v) => {
                     let encoded_filter = v.to_bytes();
                     match v.r#type() {
@@ -276,11 +267,11 @@ impl TryFrom<sst_pb::ParquetFilter> for ParquetFilter {
                         None => Ok(None),
                     })
                     .collect::<Result<Vec<_>>>()?;
-                Ok(RowGroupFilter { column_filters })
+                Ok(RowGroupFilter { columnFilters: column_filters })
             })
             .collect::<Result<Vec<_>>>()?;
 
-        Ok(ParquetFilter { row_group_filters })
+        Ok(ParquetFilter { rowGroupFilters: row_group_filters })
     }
 }
 

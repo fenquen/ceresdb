@@ -334,7 +334,7 @@ impl<'a> AsyncParquetSstReader<'a> {
         let row_projector = self.row_projector.as_ref().unwrap();
         let arrowSchema = meta_data.custom().schema.arrow_schema.clone();
 
-        // 牵涉到了parquet 得到的是1系列选中的row group的index
+        // 牵涉到了parquet体系的过滤 得到的是1系列选中的row group的index
         let selectedRowGroupIndexes =
             self.pruneRowGroups(arrowSchema.clone(),
                                 meta_data.parquet.row_groups(),

@@ -105,6 +105,7 @@ impl QueryExecutor for QueryExecutorImpl {
         debug!("executor logical optimization finished, request_id:{}, plan: {:#?}",queryContext.request_id, dataFusionLogicalPlan);
 
         // dataFusionLogicalPlan变为物理 dataFusion包办
+        // create_physical_plan内部的本身也谁对logicalPlan优化 这样就和上边的
         let dataFusionExecutionPlan = dfSessionContext.state().create_physical_plan(&dataFusionLogicalPlan).await.context(PhysicalOptimize)?;
         let physicalPlan = PhysicalPlanImpl::new(dfSessionContext, dataFusionExecutionPlan);
         let physicalPlan:PhysicalPlanPtr = Box::new(physicalPlan);

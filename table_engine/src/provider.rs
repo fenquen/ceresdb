@@ -65,16 +65,12 @@ impl ExtensionOptions for CeresdbOptions {
         match key {
             "request_id" => {
                 self.request_id = value.parse::<u64>().map_err(|e| {
-                    DataFusionError::External(
-                        format!("could not parse request_id, input:{value}, err:{e:?}").into(),
-                    )
+                    DataFusionError::External(format!("could not parse request_id, input:{value}, err:{e:?}").into())
                 })?
             }
             "request_timeout" => {
                 self.request_timeout = Some(value.parse::<u64>().map_err(|e| {
-                    DataFusionError::External(
-                        format!("could not parse request_timeout, input:{value}, err:{e:?}").into(),
-                    )
+                    DataFusionError::External(format!("could not parse request_timeout, input:{value}, err:{e:?}").into())
                 })?)
             }
             _ => Err(DataFusionError::External(
@@ -199,7 +195,7 @@ impl TableProvider for TableProviderImpl {
 
     async fn scan(&self,
                   dataFusionSessionState: &SessionState,
-                  projection: Option<&Vec<usize>>,// // 投影的index -> index
+                  projection: Option<&Vec<usize>>,// // 投影的index -> colunm真实的在table的index
                   filters: &[Expr],
                   limit: Option<usize>) -> Result<Arc<dyn ExecutionPlan>> {
         self.scanTable(dataFusionSessionState, projection, filters, limit).await
@@ -278,17 +274,18 @@ impl ScanTable {
             metrics_collector: self.metrics_collector.clone(),
         };
 
-        let read_res = self.table.partitionedRead(readRequest).await;
+        let partitionedStreams = self.table.partitionedRead(readRequest).await;
 
         let mut scanStreamState = self.stream_state.lock().unwrap();
+
         if scanStreamState.inited {
             return Ok(());
         }
 
-        match read_res {
-            Ok(partitioned_streams) => {
-                self.read_parallelism = partitioned_streams.streams.len();
-                scanStreamState.streams = partitioned_streams.streams.into_iter().map(Some).collect();
+        match partitionedStreams {
+            Ok(partitionedStreams) => {
+                self.read_parallelism = partitionedStreams.streams.len();
+                scanStreamState.streams = partitionedStreams.streams.into_iter().map(Some).collect();
             }
             Err(e) => scanStreamState.err = Some(e),
         }
@@ -316,8 +313,8 @@ impl ExecutionPlan for ScanTable {
         None
     }
 
+    // scanTable依然是最底部的了不会有children
     fn children(&self) -> Vec<Arc<dyn ExecutionPlan>> {
-        // this is a leaf node and has no children
         vec![]
     }
 

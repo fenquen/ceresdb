@@ -246,10 +246,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
                 let result = runtime
                     .spawn(async move {
                         proxy.handle_http_sql_query(&requestContext, request).await.map(convert_output)
-                    })
-                    .await
-                    .box_err()
-                    .context(HandleRequest);
+                    }).await.box_err().context(HandleRequest);
 
                 match result {
                     Ok(Ok(res)) => Ok(reply::json(&res)),
@@ -263,8 +260,7 @@ impl<Q: QueryExecutor + 'static> Service<Q> {
                     }
                     Err(e) => Err(reject::custom(e)),
                 }
-            },
-            )
+            },)
     }
 
     // GET /route

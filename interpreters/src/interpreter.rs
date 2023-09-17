@@ -6,6 +6,7 @@ use async_trait::async_trait;
 use macros::define_result;
 use query_engine::executor::RecordBatchVec;
 use snafu::Snafu;
+use common_types::record_batch::RecordBatch;
 
 // Make the variant closer to actual error code like invalid arguments.
 #[derive(Debug, Snafu)]
@@ -56,7 +57,7 @@ pub enum Output {
     /// Affected rows number
     AffectedRows(usize),
     /// A vec of RecordBatch
-    Records(RecordBatchVec),
+    Records(Vec<RecordBatch>),
 }
 
 impl TryFrom<Output> for RecordBatchVec {

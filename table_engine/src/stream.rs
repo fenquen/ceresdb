@@ -41,7 +41,7 @@ pub trait RecordBatchStream: Stream<Item=Result<RecordBatch>> {
 
 pub type SendableRecordBatchStream = Pin<Box<dyn RecordBatchStream + Send>>;
 
-/// Record batch streams divided by time range.
+/// Record batch streams divided by time range. 包含了以timeRange分组的多个recordBatchStream
 pub struct PartitionedStreams {
     pub streams: Vec<SendableRecordBatchStream>,
 }
